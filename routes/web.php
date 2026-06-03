@@ -10,6 +10,7 @@ use App\Http\Controllers\OrderController;
 use App\Http\Controllers\PromoController;
 use App\Http\Controllers\PurchasingController;
 use App\Http\Controllers\ShippingAreaController;
+use App\Http\Controllers\ReportController;
 
 // Auth
 Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
@@ -48,11 +49,19 @@ Route::middleware('auth')->group(function () {
     Route::get('purchasing/{purchasing}', [PurchasingController::class, 'show'])->name('purchasing.show');
     Route::post('purchasing/{purchasing}/arrival', [PurchasingController::class, 'confirmArrival'])->name('purchasing.arrival');
 
-    // Shipping Areas
-    Route::resource('shipping', ShippingAreaController::class)->except(['show']);
+    // Shipping Areas (specific routes BEFORE resource to avoid conflicts)
     Route::get('shipping/template', [ShippingAreaController::class, 'template'])->name('shipping.template');
     Route::get('shipping/export', [ShippingAreaController::class, 'export'])->name('shipping.export');
     Route::post('shipping/import', [ShippingAreaController::class, 'import'])->name('shipping.import');
+    Route::resource('shipping', ShippingAreaController::class)->except(['show']);
+
+    // Reports & Export
+    Route::get('reports', [ReportController::class, 'index'])->name('reports.index');
+    Route::get('reports/export/orders', [ReportController::class, 'exportOrders'])->name('reports.export.orders');
+    Route::get('reports/export/items', [ReportController::class, 'exportOrderItems'])->name('reports.export.items');
+    Route::get('reports/export/customers', [ReportController::class, 'exportCustomers'])->name('reports.export.customers');
+    Route::get('reports/export/products', [ReportController::class, 'exportProducts'])->name('reports.export.products');
+    Route::post('reports/import/customers', [ReportController::class, 'importCustomers'])->name('reports.import.customers');
 
     // AJAX APIs
     Route::get('api/trips/{trip}/products', [OrderController::class, 'tripProducts'])->name('api.trip.products');

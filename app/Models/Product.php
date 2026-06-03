@@ -11,7 +11,7 @@ class Product extends Model
 
     protected $fillable = [
         'trip_id', 'name', 'sku', 'product_code', 'brand',
-        'description', 'image', 'price', 'shipping_weight',
+        'notes', 'image', 'price', 'shipping_weight',
         'weight_gram', 'excluded_from_promo', 'status',
     ];
 

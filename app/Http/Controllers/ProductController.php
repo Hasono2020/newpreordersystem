@@ -34,11 +34,10 @@ class ProductController extends Controller
             'sku'              => 'nullable|string|max:100',
             'product_code'     => 'nullable|string|max:50',
             'brand'            => 'nullable|string|max:100',
-            'description'      => 'nullable|string',
             'price'            => 'required|numeric|min:0',
             'weight_gram'      => 'nullable|integer|min:0',
-            'shipping_weight'  => 'nullable|numeric|min:0',
-            'image'            => 'nullable|image|max:2048',
+            'notes'            => 'nullable|string',
+            'image'            => 'nullable|image|max:512', // 512KB hard server limit
             'variants'         => 'nullable|array',
             'variants.*.color' => 'nullable|string|max:50',
             'variants.*.size'  => 'nullable|string|max:20',
@@ -84,17 +83,16 @@ class ProductController extends Controller
     public function update(Request $request, Product $product)
     {
         $data = $request->validate([
-            'trip_id'         => 'required|exists:trips,id',
-            'name'            => 'required|string|max:255',
-            'sku'             => 'nullable|string|max:100',
-            'product_code'    => 'nullable|string|max:50',
-            'brand'           => 'nullable|string|max:100',
-            'description'     => 'nullable|string',
-            'price'           => 'required|numeric|min:0',
-            'weight_gram'     => 'nullable|integer|min:0',
-            'shipping_weight' => 'nullable|numeric|min:0',
-            'status'          => 'required|in:active,closed,arrived',
-            'image'           => 'nullable|image|max:2048',
+            'trip_id'      => 'required|exists:trips,id',
+            'name'         => 'required|string|max:255',
+            'sku'          => 'nullable|string|max:100',
+            'product_code' => 'nullable|string|max:50',
+            'brand'        => 'nullable|string|max:100',
+            'price'        => 'required|numeric|min:0',
+            'weight_gram'  => 'nullable|integer|min:0',
+            'notes'        => 'nullable|string',
+            'status'       => 'required|in:active,closed,arrived',
+            'image'        => 'nullable|image|max:512',
         ]);
 
         $data['excluded_from_promo'] = $request->boolean('excluded_from_promo');
