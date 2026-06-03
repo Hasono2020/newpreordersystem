@@ -1,0 +1,77 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Trip;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+
+class TripController extends Controller
+{
+    public function index()
+    {
+        $trips = Trip::withCount('orders', 'products')
+            ->latest()
+            ->paginate(15);
+        return view('trips.index', compact('trips'));
+    }
+
+    public function create()
+    {
+        return view('trips.create');
+    }
+
+    public function store(Request $request)
+    {
+        $data = $request->validate([
+            'name' => 'required|string|max:255',
+            'destination' => 'nullable|string|max:255',
+            'trip_date' => 'nullable|date',
+            'order_deadline' => 'nullable|date',
+            'notes' => 'nullable|string',
+        ]);
+
+        $data['created_by'] = Auth::id();
+        $trip = Trip::create($data);
+
+        return redirect()->route('trips.show', $trip)->with('success', 'Trip created successfully.');
+    }
+
+    public function show(Trip $trip)
+    {
+        $trip->load(['products.variants', 'orders.customer']);
+        $orderSummary = [
+            'total' => $trip->orders->count(),
+            'unpaid' => $trip->orders->where('payment_status', 'unpaid')->count(),
+            'partial' => $trip->orders->where('payment_status', 'partial')->count(),
+            'paid' => $trip->orders->where('payment_status', 'paid')->count(),
+        ];
+        return view('trips.show', compact('trip', 'orderSummary'));
+    }
+
+    public function edit(Trip $trip)
+    {
+        return view('trips.edit', compact('trip'));
+    }
+
+    public function update(Request $request, Trip $trip)
+    {
+        $data = $request->validate([
+            'name' => 'required|string|max:255',
+            'destination' => 'nullable|string|max:255',
+            'trip_date' => 'nullable|date',
+            'order_deadline' => 'nullable|date',
+            'status' => 'required|in:open,purchasing,arrived,closed',
+            'notes' => 'nullable|string',
+        ]);
+
+        $trip->update($data);
+        return redirect()->route('trips.show', $trip)->with('success', 'Trip updated.');
+    }
+
+    public function destroy(Trip $trip)
+    {
+        $trip->delete();
+        return redirect()->route('trips.index')->with('success', 'Trip deleted.');
+    }
+}
