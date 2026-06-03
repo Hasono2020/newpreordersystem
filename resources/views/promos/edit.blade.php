@@ -72,6 +72,18 @@
         @endforeach
     </div>
 
+    <div class="mb-4">
+        <label class="form-label fw-semibold">Excluded Product Code Prefixes</label>
+        <input type="text" name="excluded_product_codes" class="form-control"
+            value="{{ old('excluded_product_codes', implode(', ', $promo->excluded_product_codes ?? [])) }}"
+            placeholder="e.g. MZ, NZ, PZ">
+        <div class="form-text">
+            Comma-separated code prefixes to <strong>exclude from discount</strong>.
+            Products with codes like <code>NZ_01</code>, <code>MZ_03</code> will not count toward item total for this promo.
+            Leave empty to include all products.
+        </div>
+    </div>
+
     <div class="d-flex gap-2">
         <button type="submit" class="btn btn-primary">{{ isset($promo) ? 'Update' : 'Create Rule' }}</button>
         <a href="{{ route('promos.index') }}" class="btn btn-outline-secondary">Cancel</a>

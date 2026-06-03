@@ -29,19 +29,23 @@ class ProductController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
-            'trip_id' => 'required|exists:trips,id',
-            'name' => 'required|string|max:255',
-            'sku' => 'nullable|string|max:100',
-            'brand' => 'nullable|string|max:100',
-            'description' => 'nullable|string',
-            'price' => 'required|numeric|min:0',
-            'shipping_weight' => 'nullable|numeric|min:0',
-            'image' => 'nullable|image|max:2048',
-            'variants' => 'nullable|array',
+            'trip_id'          => 'required|exists:trips,id',
+            'name'             => 'required|string|max:255',
+            'sku'              => 'nullable|string|max:100',
+            'product_code'     => 'nullable|string|max:50',
+            'brand'            => 'nullable|string|max:100',
+            'description'      => 'nullable|string',
+            'price'            => 'required|numeric|min:0',
+            'weight_gram'      => 'nullable|integer|min:0',
+            'shipping_weight'  => 'nullable|numeric|min:0',
+            'image'            => 'nullable|image|max:2048',
+            'variants'         => 'nullable|array',
             'variants.*.color' => 'nullable|string|max:50',
-            'variants.*.size' => 'nullable|string|max:20',
+            'variants.*.size'  => 'nullable|string|max:20',
             'variants.*.price_adjustment' => 'nullable|numeric',
         ]);
+
+        $data['excluded_from_promo'] = $request->boolean('excluded_from_promo');
 
         if ($request->hasFile('image')) {
             $data['image'] = $request->file('image')->store('products', 'public');
@@ -80,16 +84,20 @@ class ProductController extends Controller
     public function update(Request $request, Product $product)
     {
         $data = $request->validate([
-            'trip_id' => 'required|exists:trips,id',
-            'name' => 'required|string|max:255',
-            'sku' => 'nullable|string|max:100',
-            'brand' => 'nullable|string|max:100',
-            'description' => 'nullable|string',
-            'price' => 'required|numeric|min:0',
+            'trip_id'         => 'required|exists:trips,id',
+            'name'            => 'required|string|max:255',
+            'sku'             => 'nullable|string|max:100',
+            'product_code'    => 'nullable|string|max:50',
+            'brand'           => 'nullable|string|max:100',
+            'description'     => 'nullable|string',
+            'price'           => 'required|numeric|min:0',
+            'weight_gram'     => 'nullable|integer|min:0',
             'shipping_weight' => 'nullable|numeric|min:0',
-            'status' => 'required|in:active,closed,arrived',
-            'image' => 'nullable|image|max:2048',
+            'status'          => 'required|in:active,closed,arrived',
+            'image'           => 'nullable|image|max:2048',
         ]);
+
+        $data['excluded_from_promo'] = $request->boolean('excluded_from_promo');
 
         if ($request->hasFile('image')) {
             if ($product->image) Storage::disk('public')->delete($product->image);

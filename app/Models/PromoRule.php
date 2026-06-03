@@ -12,22 +12,17 @@ class PromoRule extends Model
     protected $fillable = [
         'name', 'description', 'min_items', 'discount_per_item',
         'discount_flat', 'max_shipping_subsidy', 'eligible_customer_types',
-        'trip_id', 'is_active',
+        'excluded_product_codes', 'trip_id', 'is_active',
     ];
 
     protected $casts = [
         'eligible_customer_types' => 'array',
-        'is_active' => 'boolean',
+        'excluded_product_codes'  => 'array',
+        'is_active'               => 'boolean',
     ];
 
-    public function trip()
-    {
-        return $this->belongsTo(Trip::class);
-    }
+    public function trip() { return $this->belongsTo(Trip::class); }
 
-    /**
-     * Check if this promo applies to a customer type and item count.
-     */
     public function appliesTo(string $customerType, int $itemCount): bool
     {
         if (!$this->is_active) return false;
@@ -39,13 +34,36 @@ class PromoRule extends Model
     }
 
     /**
-     * Calculate discount for a given item count.
+     * Filter items eligible for this promo.
+     * Excludes:
+     *  1. Products flagged excluded_from_promo = true (product-level toggle)
+     *  2. Products whose code prefix matches excluded_product_codes on this rule
      */
+    public function filterEligibleItems($items)
+    {
+        $excludedCodes = array_map('strtoupper', $this->excluded_product_codes ?? []);
+
+        return $items->filter(function ($item) use ($excludedCodes) {
+            $product = $item->product;
+            if (!$product) return true;
+
+            // Product-level flag takes priority
+            if ($product->excluded_from_promo) return false;
+
+            // Rule-level code prefix exclusion
+            if (!empty($excludedCodes)) {
+                $prefix = strtoupper($product->code_prefix ?? '');
+                if ($prefix && in_array($prefix, $excludedCodes)) return false;
+            }
+
+            return true;
+        });
+    }
+
     public function calculateDiscount(int $itemCount): array
     {
-        $discount = $this->discount_flat + ($this->discount_per_item * $itemCount);
         return [
-            'discount' => $discount,
+            'discount'             => $this->discount_flat + ($this->discount_per_item * $itemCount),
             'max_shipping_subsidy' => $this->max_shipping_subsidy,
         ];
     }

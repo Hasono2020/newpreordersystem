@@ -17,8 +17,19 @@
             <table class="table table-sm mb-0 small">
                 <tr><td class="text-muted">Trip</td><td>{{ $product->trip->name }}</td></tr>
                 <tr><td class="text-muted">Brand</td><td>{{ $product->brand ?? '—' }}</td></tr>
+                <tr><td class="text-muted">Product Code</td><td class="font-monospace">{{ $product->product_code ?? '—' }}</td></tr>
                 <tr><td class="text-muted">Base Price</td><td>Rp {{ number_format($product->price, 0, ',', '.') }}</td></tr>
-                <tr><td class="text-muted">Weight</td><td>{{ $product->shipping_weight ? $product->shipping_weight.' kg' : '—' }}</td></tr>
+                <tr><td class="text-muted">Weight</td><td>{{ $product->weight_gram ? number_format($product->weight_gram).' g' : '—' }}</td></tr>
+                <tr>
+                    <td class="text-muted">Promo</td>
+                    <td>
+                        @if($product->excluded_from_promo)
+                            <span class="badge bg-danger">Excluded from promos</span>
+                        @else
+                            <span class="badge bg-success">Eligible</span>
+                        @endif
+                    </td>
+                </tr>
             </table>
         </div>
 

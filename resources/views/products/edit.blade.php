@@ -11,18 +11,24 @@
     @csrf @method('PUT')
 
     <div class="row g-3 mb-3">
-        <div class="col-md-8">
+        <div class="col-md-6">
             <label class="form-label fw-semibold">Product Name <span class="text-danger">*</span></label>
             <input type="text" name="name" class="form-control" value="{{ old('name', $product->name) }}" required>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
+            <label class="form-label fw-semibold">Product Code</label>
+            <input type="text" name="product_code" class="form-control text-uppercase"
+                value="{{ old('product_code', $product->product_code) }}" placeholder="e.g. NA_01">
+            <div class="form-text">Prefix used for promo exclusion</div>
+        </div>
+        <div class="col-md-3">
             <label class="form-label fw-semibold">Brand</label>
             <input type="text" name="brand" class="form-control" value="{{ old('brand', $product->brand) }}">
         </div>
     </div>
 
     <div class="row g-3 mb-3">
-        <div class="col-md-5">
+        <div class="col-md-4">
             <label class="form-label fw-semibold">Trip <span class="text-danger">*</span></label>
             <select name="trip_id" class="form-select" required>
                 @foreach($trips as $trip)
@@ -35,10 +41,13 @@
             <input type="number" name="price" class="form-control" value="{{ old('price', $product->price) }}" step="1000">
         </div>
         <div class="col-md-2">
-            <label class="form-label fw-semibold">Weight (kg)</label>
-            <input type="number" name="shipping_weight" class="form-control" value="{{ old('shipping_weight', $product->shipping_weight) }}" step="0.01">
+            <label class="form-label fw-semibold">Weight (gram)</label>
+            <div class="input-group">
+                <input type="number" name="weight_gram" class="form-control" value="{{ old('weight_gram', $product->weight_gram) }}" min="0" step="1">
+                <span class="input-group-text">g</span>
+            </div>
         </div>
-        <div class="col-md-2">
+        <div class="col-md-3">
             <label class="form-label fw-semibold">Status</label>
             <select name="status" class="form-select">
                 @foreach(['active','closed','arrived'] as $s)
@@ -51,6 +60,22 @@
     <div class="mb-3">
         <label class="form-label fw-semibold">Description</label>
         <textarea name="description" class="form-control" rows="3">{{ old('description', $product->description) }}</textarea>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label fw-semibold">Description</label>
+        <textarea name="description" class="form-control" rows="3">{{ old('description', $product->description) }}</textarea>
+    </div>
+
+    <div class="mb-3">
+        <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" name="excluded_from_promo" value="1" id="excludedFromPromo"
+                {{ old('excluded_from_promo', $product->excluded_from_promo) ? 'checked' : '' }}>
+            <label class="form-check-label fw-semibold" for="excludedFromPromo">
+                Exclude from all promos
+            </label>
+        </div>
+        <div class="form-text">When ticked, this product will <strong>never count</strong> toward any promo discount threshold.</div>
     </div>
 
     <div class="mb-4">

@@ -11,13 +11,19 @@
     @csrf
 
     <div class="row g-3 mb-3">
-        <div class="col-md-8">
+        <div class="col-md-6">
             <label class="form-label fw-semibold">Product Name <span class="text-danger">*</span></label>
             <input type="text" name="name" class="form-control @error('name') is-invalid @enderror"
                 value="{{ old('name') }}" required>
             @error('name')<div class="invalid-feedback">{{ $message }}</div>@enderror
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
+            <label class="form-label fw-semibold">Product Code</label>
+            <input type="text" name="product_code" class="form-control text-uppercase"
+                value="{{ old('product_code') }}" placeholder="e.g. NA_01, NZ_01">
+            <div class="form-text">Prefix before _ is used for promo exclusion (NZ, MZ, PZ…)</div>
+        </div>
+        <div class="col-md-3">
             <label class="form-label fw-semibold">Brand</label>
             <input type="text" name="brand" class="form-control" value="{{ old('brand') }}">
         </div>
@@ -43,8 +49,11 @@
             @error('price')<div class="invalid-feedback">{{ $message }}</div>@enderror
         </div>
         <div class="col-md-3">
-            <label class="form-label fw-semibold">Weight (kg)</label>
-            <input type="number" name="shipping_weight" class="form-control" value="{{ old('shipping_weight') }}" step="0.01">
+            <label class="form-label fw-semibold">Weight (gram)</label>
+            <div class="input-group">
+                <input type="number" name="weight_gram" class="form-control" value="{{ old('weight_gram', 0) }}" min="0" step="1">
+                <span class="input-group-text">g</span>
+            </div>
         </div>
     </div>
 
@@ -54,7 +63,15 @@
     </div>
 
     <div class="mb-3">
-        <label class="form-label fw-semibold">Product Image</label>
+        <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" name="excluded_from_promo" value="1" id="excludedFromPromo"
+                {{ old('excluded_from_promo') ? 'checked' : '' }}>
+            <label class="form-check-label fw-semibold" for="excludedFromPromo">
+                Exclude from all promos
+            </label>
+        </div>
+        <div class="form-text">When ticked, this product will <strong>never count</strong> toward any promo discount threshold, regardless of promo rules.</div>
+    </div>
         <input type="file" name="image" class="form-control" accept="image/*">
     </div>
 

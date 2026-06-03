@@ -10,35 +10,18 @@ class Order extends Model
     use HasFactory;
 
     protected $fillable = [
-        'order_number', 'trip_id', 'customer_id', 'created_by',
+        'order_number', 'trip_id', 'customer_id', 'shipping_area_id', 'created_by',
         'subtotal', 'discount_amount', 'shipping_fee', 'shipping_discount',
+        'shipping_weight_gram', 'shipping_kg_charged',
         'total_amount', 'deposit_paid', 'payment_status', 'notes',
     ];
 
-    public function trip()
-    {
-        return $this->belongsTo(Trip::class);
-    }
-
-    public function customer()
-    {
-        return $this->belongsTo(Customer::class);
-    }
-
-    public function items()
-    {
-        return $this->hasMany(OrderItem::class);
-    }
-
-    public function payments()
-    {
-        return $this->hasMany(Payment::class);
-    }
-
-    public function createdBy()
-    {
-        return $this->belongsTo(User::class, 'created_by');
-    }
+    public function trip()        { return $this->belongsTo(Trip::class); }
+    public function customer()    { return $this->belongsTo(Customer::class); }
+    public function shippingArea(){ return $this->belongsTo(ShippingArea::class); }
+    public function items()       { return $this->hasMany(OrderItem::class); }
+    public function payments()    { return $this->hasMany(Payment::class); }
+    public function createdBy()   { return $this->belongsTo(User::class, 'created_by'); }
 
     public function getActiveItemsCountAttribute(): int
     {
@@ -53,9 +36,9 @@ class Order extends Model
     public function getPaymentStatusBadgeAttribute(): string
     {
         return match($this->payment_status) {
-            'paid' => '<span class="badge bg-success">Fully Paid</span>',
+            'paid'    => '<span class="badge bg-success">Fully Paid</span>',
             'partial' => '<span class="badge bg-warning text-dark">Partially Paid</span>',
-            default => '<span class="badge bg-danger">Unpaid</span>',
+            default   => '<span class="badge bg-danger">Unpaid</span>',
         };
     }
 

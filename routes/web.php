@@ -9,13 +9,13 @@ use App\Http\Controllers\ProductController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\PromoController;
 use App\Http\Controllers\PurchasingController;
+use App\Http\Controllers\ShippingAreaController;
 
-// Auth routes
+// Auth
 Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
-// Protected routes
 Route::middleware('auth')->group(function () {
 
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
@@ -38,7 +38,6 @@ Route::middleware('auth')->group(function () {
     Route::patch('orders/{order}/items/{item}/status', [OrderController::class, 'updateItemStatus'])->name('orders.items.status');
     Route::delete('orders/{order}/items/{item}', [OrderController::class, 'removeItem'])->name('orders.items.remove');
     Route::post('orders/{order}/payments', [OrderController::class, 'addPayment'])->name('orders.payments.add');
-    Route::get('api/trips/{trip}/products', [OrderController::class, 'tripProducts'])->name('api.trip.products');
 
     // Promos
     Route::resource('promos', PromoController::class)->except(['show']);
@@ -49,4 +48,16 @@ Route::middleware('auth')->group(function () {
     Route::get('purchasing/{purchasing}', [PurchasingController::class, 'show'])->name('purchasing.show');
     Route::post('purchasing/{purchasing}/arrival', [PurchasingController::class, 'confirmArrival'])->name('purchasing.arrival');
 
+    // Shipping Areas
+    Route::resource('shipping', ShippingAreaController::class)->except(['show']);
+    Route::get('shipping/template', [ShippingAreaController::class, 'template'])->name('shipping.template');
+    Route::get('shipping/export', [ShippingAreaController::class, 'export'])->name('shipping.export');
+    Route::post('shipping/import', [ShippingAreaController::class, 'import'])->name('shipping.import');
+
+    // AJAX APIs
+    Route::get('api/trips/{trip}/products', [OrderController::class, 'tripProducts'])->name('api.trip.products');
+    Route::get('api/customers/search', [OrderController::class, 'searchCustomers'])->name('api.customers.search');
+    Route::post('api/customers/quick', [OrderController::class, 'quickCreateCustomer'])->name('api.customers.quick');
+    Route::get('api/shipping/calc', [OrderController::class, 'calcShipping'])->name('api.shipping.calc');
+    Route::get('api/shipping/areas', [ShippingAreaController::class, 'apiList'])->name('api.shipping.areas');
 });
