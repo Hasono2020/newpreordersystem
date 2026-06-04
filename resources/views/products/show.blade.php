@@ -61,26 +61,44 @@
                             <td class="fw-semibold">{{ $variant->label }}</td>
                             <td>Rp {{ number_format($variant->final_price, 0, ',', '.') }}</td>
                             <td>
-                                <form method="POST" action="{{ route('products.variants.update', [$product, $variant]) }}" class="d-inline">
-                                    @csrf @method('PATCH')
-                                    <input type="hidden" name="color" value="{{ $variant->color }}">
-                                    <input type="hidden" name="size" value="{{ $variant->size }}">
-                                    <input type="hidden" name="price_adjustment" value="{{ $variant->price_adjustment }}">
-                                    <div class="input-group input-group-sm" style="width:100px;">
-                                        <input type="number" name="supplier_stock" class="form-control form-control-sm" value="{{ $variant->supplier_stock }}" min="0">
-                                        <button type="submit" class="btn btn-outline-secondary btn-sm">✓</button>
-                                    </div>
-                                </form>
+                                @if($variant->allocated_qty > 0)
+                                    {{-- Locked after allocation --}}
+                                    <span class="badge bg-success">{{ $variant->supplier_stock }}</span>
+                                    <span class="text-muted small ms-1" title="Stock locked after allocation">🔒</span>
+                                @else
+                                    <form method="POST" action="{{ route('products.variants.update', [$product, $variant]) }}" class="d-inline">
+                                        @csrf @method('PATCH')
+                                        <input type="hidden" name="color" value="{{ $variant->color }}">
+                                        <input type="hidden" name="size" value="{{ $variant->size }}">
+                                        <input type="hidden" name="price_adjustment" value="{{ $variant->price_adjustment }}">
+                                        <div class="input-group input-group-sm" style="width:100px;">
+                                            <input type="number" name="supplier_stock" class="form-control form-control-sm" value="{{ $variant->supplier_stock }}" min="0">
+                                            <button type="submit" class="btn btn-outline-secondary btn-sm">✓</button>
+                                        </div>
+                                    </form>
+                                @endif
                             </td>
-                            <td>{{ $variant->allocated_qty }}</td>
                             <td>
-                                <span class="{{ $variant->remaining_stock < 0 ? 'text-danger fw-bold' : '' }}">{{ $variant->remaining_stock }}</span>
+                                <span class="{{ $variant->allocated_qty > 0 ? 'text-success fw-semibold' : 'text-muted' }}">
+                                    {{ $variant->allocated_qty }}
+                                </span>
                             </td>
                             <td>
-                                <form method="POST" action="{{ route('products.variants.destroy', [$product, $variant]) }}" onsubmit="return confirm('Delete variant?')">
-                                    @csrf @method('DELETE')
-                                    <button type="submit" class="btn btn-sm btn-outline-danger">×</button>
-                                </form>
+                                <span class="{{ $variant->remaining_stock < 0 ? 'text-danger fw-bold' : ($variant->remaining_stock == 0 && $variant->allocated_qty > 0 ? 'text-success' : '') }}">
+                                    {{ $variant->remaining_stock }}
+                                </span>
+                            </td>
+                            <td>
+                                @php $hasOrders = $variant->orderItems()->exists(); @endphp
+                                @if(!$hasOrders && $variant->allocated_qty == 0)
+                                    <form method="POST" action="{{ route('products.variants.destroy', [$product, $variant]) }}"
+                                        onsubmit="return confirm('Delete this variant? This cannot be undone.')">
+                                        @csrf @method('DELETE')
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">×</button>
+                                    </form>
+                                @else
+                                    <span class="text-muted small" title="Cannot delete — variant has orders">—</span>
+                                @endif
                             </td>
                         </tr>
                         @empty

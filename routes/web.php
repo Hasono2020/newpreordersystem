@@ -11,6 +11,7 @@ use App\Http\Controllers\PromoController;
 use App\Http\Controllers\PurchasingController;
 use App\Http\Controllers\ShippingAreaController;
 use App\Http\Controllers\ReportController;
+use App\Http\Controllers\StaffController;
 
 // Auth
 Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
@@ -32,13 +33,16 @@ Route::middleware('auth')->group(function () {
 
     // Customers
     Route::resource('customers', CustomerController::class);
+    Route::delete('customers-bulk', [CustomerController::class, 'bulkDestroy'])->name('customers.bulk-destroy');
 
     // Orders
     Route::resource('orders', OrderController::class);
     Route::post('orders/{order}/items', [OrderController::class, 'addItem'])->name('orders.items.add');
+    Route::patch('orders/{order}/items/{item}', [OrderController::class, 'updateItem'])->name('orders.items.update');
     Route::patch('orders/{order}/items/{item}/status', [OrderController::class, 'updateItemStatus'])->name('orders.items.status');
     Route::delete('orders/{order}/items/{item}', [OrderController::class, 'removeItem'])->name('orders.items.remove');
     Route::post('orders/{order}/payments', [OrderController::class, 'addPayment'])->name('orders.payments.add');
+    Route::get('orders/{order}/invoice', [OrderController::class, 'invoice'])->name('orders.invoice');
 
     // Promos
     Route::resource('promos', PromoController::class)->except(['show']);
@@ -47,9 +51,12 @@ Route::middleware('auth')->group(function () {
     Route::get('purchasing', [PurchasingController::class, 'index'])->name('purchasing.index');
     Route::post('purchasing', [PurchasingController::class, 'store'])->name('purchasing.store');
     Route::get('purchasing/{purchasing}', [PurchasingController::class, 'show'])->name('purchasing.show');
+    Route::get('purchasing/{purchasing}/edit', [PurchasingController::class, 'edit'])->name('purchasing.edit');
+    Route::put('purchasing/{purchasing}', [PurchasingController::class, 'update'])->name('purchasing.update');
+    Route::delete('purchasing/{purchasing}', [PurchasingController::class, 'destroy'])->name('purchasing.destroy');
     Route::post('purchasing/{purchasing}/arrival', [PurchasingController::class, 'confirmArrival'])->name('purchasing.arrival');
 
-    // Shipping Areas (specific routes BEFORE resource to avoid conflicts)
+    // Shipping Areas
     Route::get('shipping/template', [ShippingAreaController::class, 'template'])->name('shipping.template');
     Route::get('shipping/export', [ShippingAreaController::class, 'export'])->name('shipping.export');
     Route::post('shipping/import', [ShippingAreaController::class, 'import'])->name('shipping.import');
@@ -61,7 +68,25 @@ Route::middleware('auth')->group(function () {
     Route::get('reports/export/items', [ReportController::class, 'exportOrderItems'])->name('reports.export.items');
     Route::get('reports/export/customers', [ReportController::class, 'exportCustomers'])->name('reports.export.customers');
     Route::get('reports/export/products', [ReportController::class, 'exportProducts'])->name('reports.export.products');
+    Route::get('reports/import/orders/template', [ReportController::class, 'orderImportTemplate'])->name('reports.import.orders.template');
+    Route::post('reports/import/orders', [ReportController::class, 'importOrders'])->name('reports.import.orders');
     Route::post('reports/import/customers', [ReportController::class, 'importCustomers'])->name('reports.import.customers');
+
+    // Suppliers
+    Route::resource('suppliers', \App\Http\Controllers\SupplierController::class);
+
+    // Store Settings (admin only)
+    Route::get('settings', [\App\Http\Controllers\SettingsController::class, 'index'])->name('settings.index');
+    Route::put('settings', [\App\Http\Controllers\SettingsController::class, 'update'])->name('settings.update');
+
+    // Staff management (admin only)
+    Route::get('staff', [StaffController::class, 'index'])->name('staff.index');
+    Route::post('staff', [StaffController::class, 'store'])->name('staff.store');
+    Route::put('staff/{staff}', [StaffController::class, 'update'])->name('staff.update');
+    Route::delete('staff/{staff}', [StaffController::class, 'destroy'])->name('staff.destroy');
+
+    Route::get('api/suppliers/search', [\App\Http\Controllers\SupplierController::class, 'search'])->name('api.suppliers.search');
+    Route::post('api/suppliers/quick', [\App\Http\Controllers\SupplierController::class, 'quickStore'])->name('api.suppliers.quick');
 
     // AJAX APIs
     Route::get('api/trips/{trip}/products', [OrderController::class, 'tripProducts'])->name('api.trip.products');

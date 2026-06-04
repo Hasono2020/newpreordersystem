@@ -139,8 +139,24 @@ class OrderController extends Controller
         return redirect()->route('orders.index')->with('success', 'Order deleted.');
     }
 
-    public function addItem(Request $request, Order $order)
+    public function updateItem(Request $request, Order $order, OrderItem $item)
     {
+        $request->validate([
+            'quantity'   => 'required|integer|min:1',
+            'unit_price' => 'required|numeric|min:0',
+        ]);
+
+        $item->update([
+            'quantity'   => $request->quantity,
+            'unit_price' => $request->unit_price,
+            'line_total' => $request->unit_price * $request->quantity,
+        ]);
+
+        $this->_recalcAndSave($order);
+        return back()->with('success', 'Item updated.');
+    }
+
+    public function addItem(Request $request, Order $order)    {
         $request->validate([
             'product_id'         => 'required|exists:products,id',
             'product_variant_id' => 'nullable|exists:product_variants,id',
@@ -211,11 +227,14 @@ class OrderController extends Controller
     public function quickCreateCustomer(Request $request)
     {
         $data = $request->validate([
-            'name'  => 'required|string|max:255',
-            'phone' => 'nullable|string|max:50',
-            'type'  => 'required|in:customer,reseller,selected_customer',
+            'name'                     => 'required|string|max:255',
+            'phone'                    => 'nullable|string|max:50',
+            'type'                     => 'required|in:customer,reseller,selected_customer',
+            'address'                  => 'nullable|string|max:500',
+            'default_shipping_area_id' => 'nullable|exists:shipping_areas,id',
         ]);
         $customer = Customer::create($data);
+        $customer->load('defaultShippingArea');
         return response()->json($customer);
     }
 
@@ -227,7 +246,7 @@ class OrderController extends Controller
             ->orWhere('phone', 'like', "%{$q}%")
             ->orderBy('name')
             ->limit(20)
-            ->get(['id', 'name', 'phone', 'type']);
+            ->get(['id', 'name', 'phone', 'type', 'address', 'default_shipping_area_id']);
         return response()->json($customers);
     }
 
@@ -266,6 +285,12 @@ class OrderController extends Controller
         $fee = $area->calcShippingFee($totalGrams);
 
         return response()->json(['fee' => $fee, 'kg' => $kg, 'grams' => $totalGrams]);
+    }
+
+    public function invoice(Order $order)
+    {
+        $order->load(['customer', 'trip', 'shippingArea', 'items.product', 'items.variant', 'payments', 'createdBy']);
+        return view('orders.invoice', compact('order'));
     }
 
     private function _recalcAndSave(Order $order): void

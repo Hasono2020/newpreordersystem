@@ -10,6 +10,18 @@
     <span class="badge align-self-center {{ match($purchasing->status) { 'arrived' => 'bg-success', 'confirmed' => 'bg-primary', 'submitted' => 'bg-warning text-dark', default => 'bg-secondary' } }}">
         {{ ucfirst($purchasing->status) }}
     </span>
+    @if($purchasing->status !== 'arrived')
+    <a href="{{ route('purchasing.edit', $purchasing) }}" class="btn btn-sm btn-outline-secondary ms-2">
+        <i class="bi bi-pencil me-1"></i>Edit PO
+    </a>
+    @endif
+    <form method="POST" action="{{ route('purchasing.destroy', $purchasing) }}"
+        onsubmit="return confirm('{{ $purchasing->status === 'arrived' ? '⚠️ WARNING: This PO is already ARRIVED and stock has been allocated.\n\nDeleting it will NOT reverse allocated order items.\nAre you absolutely sure you want to delete this PO?' : 'Delete this purchase order? This cannot be undone.' }}')">
+        @csrf @method('DELETE')
+        <button type="submit" class="btn btn-sm btn-outline-danger">
+            <i class="bi bi-trash3 me-1"></i>Delete PO
+        </button>
+    </form>
 </div>
 
 <div class="row g-3">
@@ -19,7 +31,7 @@
                 <div class="row g-3">
                     <div class="col-md-4"><div class="text-muted small">PO Number</div><div class="font-monospace fw-bold">{{ $purchasing->po_number }}</div></div>
                     <div class="col-md-4"><div class="text-muted small">Trip</div><div>{{ $purchasing->trip->name }}</div></div>
-                    <div class="col-md-4"><div class="text-muted small">Supplier</div><div>{{ $purchasing->supplier_name ?? '—' }}</div></div>
+                    <div class="col-md-4"><div class="text-muted small">Supplier</div><div>{{ $purchasing->supplier?->name ?? '—' }}</div></div>
                     <div class="col-md-4"><div class="text-muted small">Purchased Date</div><div>{{ $purchasing->purchased_at?->format('d M Y') ?? '—' }}</div></div>
                     <div class="col-md-4"><div class="text-muted small">Total</div><div class="fw-bold">Rp {{ number_format($purchasing->total_amount, 0, ',', '.') }}</div></div>
                 </div>

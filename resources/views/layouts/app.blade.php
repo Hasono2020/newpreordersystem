@@ -69,12 +69,23 @@
         <a href="{{ route('customers.index') }}" class="nav-link {{ request()->routeIs('customers.*') ? 'active' : '' }}">
             <i class="bi bi-people"></i> Customers
         </a>
+        <a href="{{ route('suppliers.index') }}" class="nav-link {{ request()->routeIs('suppliers.*') ? 'active' : '' }}">
+            <i class="bi bi-building"></i> Suppliers
+        </a>
         <a href="{{ route('shipping.index') }}" class="nav-link {{ request()->routeIs('shipping.*') ? 'active' : '' }}">
             <i class="bi bi-truck"></i> Shipping Areas
         </a>
         <a href="{{ route('promos.index') }}" class="nav-link {{ request()->routeIs('promos.*') ? 'active' : '' }}">
             <i class="bi bi-percent"></i> Promo Rules
         </a>
+        @if(auth()->user()?->isAdmin())
+        <a href="{{ route('staff.index') }}" class="nav-link {{ request()->routeIs('staff.*') ? 'active' : '' }}">
+            <i class="bi bi-person-badge"></i> Staff Accounts
+        </a>
+        <a href="{{ route('settings.index') }}" class="nav-link {{ request()->routeIs('settings.*') ? 'active' : '' }}">
+            <i class="bi bi-shop"></i> Store Settings
+        </a>
+        @endif
     </nav>
 </div>
 

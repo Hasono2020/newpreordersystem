@@ -19,38 +19,80 @@ class PurchasingController extends Controller
         $trips        = Trip::whereIn('status', ['open', 'purchasing'])->orderByDesc('id')->get();
         $selectedTrip = $request->trip_id ? Trip::find($request->trip_id) : $trips->first();
 
-        $demandData = [];
+        // Group demand by supplier for multi-supplier support
+        $demandBySupplier = [];
         if ($selectedTrip) {
-            $items = OrderItem::whereHas('order', fn($q) => $q->where('trip_id', $selectedTrip->id))
+            $allItems = OrderItem::whereHas('order', fn($q) => $q->where('trip_id', $selectedTrip->id))
                 ->whereNotIn('status', ['cancelled', 'sold_out'])
-                ->with('product', 'variant')
-                ->get()
-                ->groupBy('product_variant_id');
+                ->with('product.supplier', 'variant')
+                ->get();
 
-            foreach ($items as $variantId => $group) {
-                $first = $group->first();
-                $demandData[] = [
-                    'product'        => $first->product,
-                    'variant'        => $first->variant,
-                    'total_demanded' => $group->sum('quantity'),
-                    'supplier_stock' => $first->variant?->supplier_stock ?? 0,
-                    'remaining'      => $first->variant ? $first->variant->remaining_stock : 0,
-                ];
+            // Get supplier IDs that already have a PO for this trip (exclude cancelled)
+            $supplierIdsWithPO = PurchaseOrder::where('trip_id', $selectedTrip->id)
+                ->whereNotIn('status', ['cancelled'])
+                ->whereNotNull('supplier_id')
+                ->pluck('supplier_id')
+                ->unique()
+                ->toArray();
+
+            // Check if a no-supplier PO already exists
+            $hasNoSupplierPO = PurchaseOrder::where('trip_id', $selectedTrip->id)
+                ->whereNotIn('status', ['cancelled'])
+                ->whereNull('supplier_id')
+                ->exists();
+
+            $bySupplier = $allItems->groupBy(fn($item) => $item->product->supplier_id ?? 'no_supplier');
+
+            foreach ($bySupplier as $supplierId => $supplierItems) {
+                // Skip if PO already exists for this supplier
+                if ($supplierId === 'no_supplier' && $hasNoSupplierPO) continue;
+                if ($supplierId !== 'no_supplier' && in_array($supplierId, $supplierIdsWithPO)) continue;
+
+                $firstProduct = $supplierItems->first()->product;
+                $supplierObj  = $firstProduct->supplier;
+                $supplierName = $supplierObj?->name ?? '(No Supplier)';
+
+                $rows = [];
+                foreach ($supplierItems->groupBy('product_variant_id') as $variantId => $group) {
+                    $first = $group->first();
+                    $rows[] = [
+                        'product_id'     => $first->product->id,
+                        'product_name'   => $first->product->name,
+                        'product_code'   => $first->product->product_code,
+                        'variant_id'     => $first->variant?->id,
+                        'variant_label'  => $first->variant?->label,
+                        'total_demanded' => $group->sum('quantity'),
+                        'supplier_stock' => $first->variant?->supplier_stock ?? 0,
+                        'unit_cost'      => $first->product->price,
+                        'product'        => $first->product,
+                        'variant'        => $first->variant,
+                        'remaining'      => $first->variant ? $first->variant->remaining_stock : 0,
+                    ];
+                }
+
+                if (!empty($rows)) {
+                    $demandBySupplier[$supplierId] = [
+                        'supplier_id'   => $supplierId === 'no_supplier' ? null : $supplierId,
+                        'supplier_name' => $supplierName,
+                        'rows'          => $rows,
+                    ];
+                }
             }
         }
 
+        $suppliers = \App\Models\Supplier::where('is_active', true)->orderBy('name')->get();
         $purchaseOrders = $selectedTrip
-            ? PurchaseOrder::where('trip_id', $selectedTrip->id)->with('items.product', 'items.variant')->latest()->get()
+            ? PurchaseOrder::where('trip_id', $selectedTrip->id)->with('items.product', 'items.variant', 'supplier')->latest()->get()
             : collect();
 
-        return view('purchasing.index', compact('trips', 'selectedTrip', 'demandData', 'purchaseOrders'));
+        return view('purchasing.index', compact('trips', 'selectedTrip', 'demandBySupplier', 'purchaseOrders', 'suppliers'));
     }
 
     public function store(Request $request)
     {
         $request->validate([
             'trip_id'                        => 'required|exists:trips,id',
-            'supplier_name'                  => 'nullable|string',
+            'supplier_id'                    => 'nullable|exists:suppliers,id',
             'items'                          => 'required|array|min:1',
             'items.*.product_id'             => 'required|exists:products,id',
             'items.*.product_variant_id'     => 'nullable|exists:product_variants,id',
@@ -60,10 +102,10 @@ class PurchasingController extends Controller
 
         DB::transaction(function () use ($request, &$po) {
             $po = PurchaseOrder::create([
-                'trip_id'      => $request->trip_id,
-                'supplier_name'=> $request->supplier_name,
-                'created_by'   => Auth::id(),
-                'purchased_at' => now()->toDateString(),
+                'trip_id'     => $request->trip_id,
+                'supplier_id' => $request->supplier_id ?: null,
+                'created_by'  => Auth::id(),
+                'purchased_at'=> now()->toDateString(),
             ]);
 
             $total = 0;
@@ -86,8 +128,65 @@ class PurchasingController extends Controller
 
     public function show(PurchaseOrder $purchasing)
     {
-        $purchasing->load(['items.product', 'items.variant', 'trip']);
+        $purchasing->load(['items.product', 'items.variant', 'trip', 'supplier']);
         return view('purchasing.show', compact('purchasing'));
+    }
+
+    public function edit(PurchaseOrder $purchasing)
+    {
+        $purchasing->load(['items.product', 'items.variant', 'trip', 'supplier']);
+        $suppliers = \App\Models\Supplier::where('is_active', true)->orderBy('name')->get();
+        return view('purchasing.edit', compact('purchasing', 'suppliers'));
+    }
+
+    public function update(Request $request, PurchaseOrder $purchasing)
+    {
+        $request->validate([
+            'supplier_id'  => 'nullable|exists:suppliers,id',
+            'purchased_at' => 'nullable|date',
+            'status'       => 'required|in:draft,submitted,confirmed,arrived',
+            'notes'        => 'nullable|string',
+            'items'        => 'required|array|min:1',
+            'items.*.id'            => 'required|exists:purchase_order_items,id',
+            'items.*.quantity_ordered' => 'required|integer|min:0',
+            'items.*.unit_cost'     => 'required|numeric|min:0',
+        ]);
+
+        \DB::transaction(function () use ($request, $purchasing) {
+            $purchasing->update([
+                'supplier_id'  => $request->supplier_id ?: null,
+                'purchased_at' => $request->purchased_at,
+                'status'       => $request->status,
+                'notes'        => $request->notes,
+            ]);
+
+            $total = 0;
+            foreach ($request->items as $itemData) {
+                $poItem = $purchasing->items()->find($itemData['id']);
+                if ($poItem) {
+                    $lineTotal = $itemData['unit_cost'] * $itemData['quantity_ordered'];
+                    $poItem->update([
+                        'quantity_ordered' => $itemData['quantity_ordered'],
+                        'unit_cost'        => $itemData['unit_cost'],
+                        'line_total'       => $lineTotal,
+                    ]);
+                    $total += $lineTotal;
+                }
+            }
+            $purchasing->update(['total_amount' => $total]);
+        });
+
+        return redirect()->route('purchasing.show', $purchasing)->with('success', 'Purchase order updated.');
+    }
+
+    public function destroy(PurchaseOrder $purchasing)
+    {
+        \DB::transaction(function () use ($purchasing) {
+            $purchasing->items()->delete();
+            $purchasing->delete();
+        });
+        return redirect()->route('purchasing.index', ['trip_id' => $purchasing->trip_id])
+            ->with('success', 'Purchase order deleted.');
     }
 
     /**
@@ -137,29 +236,21 @@ class PurchasingController extends Controller
 
                 foreach ($pendingItems as $orderItem) {
                     if ($remaining <= 0) {
-                        // No stock left — entire line is sold out
                         $orderItem->update(['status' => 'sold_out']);
-
                     } elseif ($orderItem->quantity <= $remaining) {
-                        // Full fill — customer gets everything they ordered
                         $remaining -= $orderItem->quantity;
                         $orderItem->update(['status' => 'arrived']);
-
                     } else {
-                        // Partial fill — customer gets $remaining pcs, rest is sold out
-                        // Keep original item for the arrived portion
                         $arrivedQty  = $remaining;
                         $soldOutQty  = $orderItem->quantity - $remaining;
                         $remaining   = 0;
 
-                        // Update original item to arrived qty
                         $orderItem->update([
                             'quantity'   => $arrivedQty,
                             'line_total' => $orderItem->unit_price * $arrivedQty,
                             'status'     => 'arrived',
                         ]);
 
-                        // Create a new sold_out line for the unfulfilled portion
                         OrderItem::create([
                             'order_id'           => $orderItem->order_id,
                             'product_id'         => $orderItem->product_id,
@@ -171,6 +262,17 @@ class PurchasingController extends Controller
                             'notes'              => 'Partial — only '.$arrivedQty.' of '.($arrivedQty + $soldOutQty).' available (FIFO)',
                         ]);
                     }
+                }
+
+                // Update allocated_qty = total arrived quantity for this variant/product
+                if ($poItem->product_variant_id) {
+                    $allocatedQty = OrderItem::where('product_variant_id', $poItem->product_variant_id)
+                        ->whereHas('order', fn($q) => $q->where('trip_id', $purchasing->trip_id))
+                        ->where('status', 'arrived')
+                        ->sum('quantity');
+
+                    ProductVariant::where('id', $poItem->product_variant_id)
+                        ->update(['allocated_qty' => $allocatedQty]);
                 }
             }
 

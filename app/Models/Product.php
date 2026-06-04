@@ -10,7 +10,7 @@ class Product extends Model
     use HasFactory;
 
     protected $fillable = [
-        'trip_id', 'name', 'sku', 'product_code', 'brand',
+        'trip_id', 'name', 'sku', 'product_code', 'brand', 'supplier_id',
         'notes', 'image', 'price', 'shipping_weight',
         'weight_gram', 'excluded_from_promo', 'status',
     ];
@@ -20,6 +20,7 @@ class Product extends Model
     ];
 
     public function trip()      { return $this->belongsTo(Trip::class); }
+    public function supplier()  { return $this->belongsTo(Supplier::class); }
     public function variants()  { return $this->hasMany(ProductVariant::class); }
     public function orderItems(){ return $this->hasMany(OrderItem::class); }
 

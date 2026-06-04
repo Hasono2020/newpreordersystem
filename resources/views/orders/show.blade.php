@@ -6,6 +6,9 @@
 <div class="d-flex gap-2 mb-3 flex-wrap">
     <a href="{{ route('orders.index') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Back</a>
     <a href="{{ route('orders.edit', $order) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil me-1"></i>Edit</a>
+    <a href="{{ route('orders.invoice', $order) }}" class="btn btn-sm btn-outline-primary" target="_blank">
+        <i class="bi bi-printer me-1"></i>Print Invoice
+    </a>
     <form method="POST" action="{{ route('orders.destroy', $order) }}" onsubmit="return confirm('Delete this order?')">
         @csrf @method('DELETE')
         <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
@@ -47,53 +50,8 @@
 
         {{-- Order Items --}}
         <div class="card mb-3">
-            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+            <div class="card-header bg-white py-3">
                 <span class="fw-semibold">Order Items</span>
-                <button class="btn btn-sm btn-outline-primary" data-bs-toggle="collapse" data-bs-target="#addItemPanel">
-                    <i class="bi bi-plus-lg me-1"></i>Add Item
-                </button>
-            </div>
-
-            {{-- Add item panel --}}
-            <div class="collapse" id="addItemPanel">
-                <div class="card-body border-bottom bg-light">
-                    <form method="POST" action="{{ route('orders.items.add', $order) }}">
-                        @csrf
-                        <div class="row g-2 align-items-end">
-                            <div class="col-md-4">
-                                <label class="form-label small">Product</label>
-                                <select name="product_id" class="form-select form-select-sm" required>
-                                    <option value="">Select…</option>
-                                    @foreach($order->trip->products as $p)
-                                        <option value="{{ $p->id }}">{{ $p->name }}</option>
-                                    @endforeach
-                                </select>
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label small">Variant</label>
-                                <select name="product_variant_id" class="form-select form-select-sm">
-                                    <option value="">No variant</option>
-                                    @foreach($order->trip->products as $p)
-                                        @foreach($p->variants as $v)
-                                            <option value="{{ $v->id }}">[{{ $p->name }}] {{ $v->label }}</option>
-                                        @endforeach
-                                    @endforeach
-                                </select>
-                            </div>
-                            <div class="col-md-2">
-                                <label class="form-label small">Qty</label>
-                                <input type="number" name="quantity" class="form-control form-control-sm" value="1" min="1">
-                            </div>
-                            <div class="col-md-2">
-                                <label class="form-label small">Price (Rp)</label>
-                                <input type="number" name="unit_price" class="form-control form-control-sm" value="0" step="1000">
-                            </div>
-                            <div class="col-md-1">
-                                <button type="submit" class="btn btn-sm btn-primary w-100">Add</button>
-                            </div>
-                        </div>
-                    </form>
-                </div>
             </div>
 
             <div class="table-responsive">
@@ -103,16 +61,23 @@
                     </thead>
                     <tbody>
                         @foreach($order->items as $item)
-                        <tr>
+                        @php $soldOut = $item->status === 'sold_out'; @endphp
+                        <tr class="{{ $soldOut ? 'text-muted' : '' }}">
                             <td class="fw-semibold small">{{ $item->product->name }}</td>
                             <td class="small text-muted">{{ $item->variant?->label ?? '—' }}</td>
                             <td>{{ $item->quantity }}</td>
-                            <td class="small">Rp {{ number_format($item->unit_price, 0, ',', '.') }}</td>
-                            <td class="fw-semibold small">Rp {{ number_format($item->line_total, 0, ',', '.') }}</td>
+                            <td class="small">
+                                {{ $soldOut ? 'Rp 0' : 'Rp '.number_format($item->unit_price, 0, ',', '.') }}
+                                @if(!$soldOut && $item->unit_price == 0)
+                                    <i class="bi bi-exclamation-triangle-fill text-warning" title="Price is 0"></i>
+                                @endif
+                            </td>
+                            <td class="fw-semibold small">
+                                {{ $soldOut ? 'Rp 0' : 'Rp '.number_format($item->line_total, 0, ',', '.') }}
+                            </td>
                             <td>{!! $item->status_badge !!}</td>
                             <td>
                                 <div class="d-flex gap-1">
-                                    {{-- Status dropdown --}}
                                     <form method="POST" action="{{ route('orders.items.status', [$order, $item]) }}">
                                         @csrf @method('PATCH')
                                         <select name="status" class="form-select form-select-sm" style="width:110px;" onchange="this.form.submit()">
@@ -240,19 +205,32 @@
         </div>
 
         <div class="card">
-            <div class="card-header bg-white py-3 fw-semibold">Update Shipping</div>
+            <div class="card-header bg-white py-3 fw-semibold">Shipping & Recalculate</div>
             <div class="card-body">
                 <form method="POST" action="{{ route('orders.update', $order) }}">
                     @csrf @method('PUT')
                     <div class="mb-3">
-                        <label class="form-label small fw-semibold">Shipping Fee (Rp)</label>
-                        <input type="number" name="shipping_fee" class="form-control form-control-sm" value="{{ $order->shipping_fee }}" step="1000">
+                        <label class="form-label small fw-semibold">Shipping Area</label>
+                        <select name="shipping_area_id" class="form-select form-select-sm">
+                            <option value="">— None —</option>
+                            @foreach(\App\Models\ShippingArea::where('is_active',true)->orderBy('name')->get() as $area)
+                                <option value="{{ $area->id }}" {{ $order->shipping_area_id == $area->id ? 'selected' : '' }}>
+                                    {{ $area->name }}{{ $area->province ? ' ('.$area->province.')' : '' }}
+                                    — Rp {{ number_format($area->price_per_kg, 0, ',', '.') }}/kg
+                                </option>
+                            @endforeach
+                        </select>
                     </div>
                     <div class="mb-3">
                         <label class="form-label small fw-semibold">Notes</label>
                         <textarea name="notes" class="form-control form-control-sm" rows="2">{{ $order->notes }}</textarea>
                     </div>
-                    <button type="submit" class="btn btn-sm btn-primary w-100">Recalculate & Save</button>
+                    <button type="submit" class="btn btn-sm btn-primary w-100">
+                        <i class="bi bi-arrow-repeat me-1"></i>Recalculate & Save
+                    </button>
+                    <div class="form-text mt-2 text-muted">
+                        Use this after editing a product's weight to recalculate shipping fee.
+                    </div>
                 </form>
             </div>
         </div>

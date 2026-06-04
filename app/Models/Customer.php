@@ -9,11 +9,16 @@ class Customer extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['name', 'phone', 'address', 'type', 'notes'];
+    protected $fillable = ['name', 'phone', 'address', 'type', 'notes', 'default_shipping_area_id'];
 
     public function orders()
     {
         return $this->hasMany(Order::class);
+    }
+
+    public function defaultShippingArea()
+    {
+        return $this->belongsTo(ShippingArea::class, 'default_shipping_area_id');
     }
 
     public function getTypeLabelAttribute(): string

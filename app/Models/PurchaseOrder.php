@@ -9,26 +9,16 @@ class PurchaseOrder extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['po_number', 'trip_id', 'supplier_name', 'total_amount', 'status', 'purchased_at', 'notes', 'created_by'];
+    protected $fillable = ['po_number', 'trip_id', 'supplier_id', 'total_amount', 'status', 'purchased_at', 'notes', 'created_by'];
 
     protected $casts = [
         'purchased_at' => 'date',
     ];
 
-    public function trip()
-    {
-        return $this->belongsTo(Trip::class);
-    }
-
-    public function items()
-    {
-        return $this->hasMany(PurchaseOrderItem::class);
-    }
-
-    public function createdBy()
-    {
-        return $this->belongsTo(User::class, 'created_by');
-    }
+    public function trip()      { return $this->belongsTo(Trip::class); }
+    public function supplier()  { return $this->belongsTo(Supplier::class); }
+    public function items()     { return $this->hasMany(PurchaseOrderItem::class); }
+    public function createdBy() { return $this->belongsTo(User::class, 'created_by'); }
 
     protected static function boot()
     {

@@ -49,9 +49,12 @@
         <div class="card mb-3">
             <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
                 <span class="fw-semibold">Order Items</span>
-                <button class="btn btn-sm btn-outline-primary" data-bs-toggle="collapse" data-bs-target="#addItemPanel">
-                    <i class="bi bi-plus-lg me-1"></i>Add Item
-                </button>
+                <div class="d-flex gap-2 align-items-center">
+                    <span class="text-muted small"><i class="bi bi-info-circle me-1"></i>To change price, edit the product</span>
+                    <button class="btn btn-sm btn-outline-primary" data-bs-toggle="collapse" data-bs-target="#addItemPanel">
+                        <i class="bi bi-plus-lg me-1"></i>Add Item
+                    </button>
+                </div>
             </div>
 
             {{-- Add item panel --}}
@@ -104,15 +107,34 @@
                     <tbody>
                         @foreach($order->items as $item)
                         <tr>
-                            <td class="fw-semibold small">{{ $item->product->name }}</td>
+                            <td class="fw-semibold small">
+                                {{ $item->product->name }}
+                                @if($item->product->product_code)
+                                    <div class="text-muted font-monospace" style="font-size:.7rem;">{{ $item->product->product_code }}</div>
+                                @endif
+                            </td>
                             <td class="small text-muted">{{ $item->variant?->label ?? '—' }}</td>
-                            <td>{{ $item->quantity }}</td>
-                            <td class="small">Rp {{ number_format($item->unit_price, 0, ',', '.') }}</td>
+                            <td>
+                                <form method="POST" action="{{ route('orders.items.update', [$order, $item]) }}" class="d-flex gap-1 align-items-center">
+                                    @csrf @method('PATCH')
+                                    <input type="number" name="quantity" value="{{ $item->quantity }}"
+                                        min="1" style="width:65px;" class="form-control form-control-sm">
+                                    <input type="hidden" name="unit_price" value="{{ $item->unit_price }}">
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary py-0 px-2" title="Save qty">✓</button>
+                                </form>
+                            </td>
+                            <td class="small text-muted">
+                                Rp {{ number_format($item->unit_price, 0, ',', '.') }}
+                                @if($item->unit_price == 0)
+                                    <span class="text-warning ms-1" title="Price is 0 — edit from Products menu">
+                                        <i class="bi bi-exclamation-triangle-fill"></i>
+                                    </span>
+                                @endif
+                            </td>
                             <td class="fw-semibold small">Rp {{ number_format($item->line_total, 0, ',', '.') }}</td>
                             <td>{!! $item->status_badge !!}</td>
                             <td>
                                 <div class="d-flex gap-1">
-                                    {{-- Status dropdown --}}
                                     <form method="POST" action="{{ route('orders.items.status', [$order, $item]) }}">
                                         @csrf @method('PATCH')
                                         <select name="status" class="form-select form-select-sm" style="width:110px;" onchange="this.form.submit()">

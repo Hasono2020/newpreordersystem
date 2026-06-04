@@ -88,6 +88,28 @@
             <input type="text" name="sku" class="form-control"
                 value="{{ old('sku') }}" placeholder="Internal SKU">
         </div>
+        <div class="col-md-4">
+            <label class="form-label fw-semibold">Supplier</label>
+            <input type="hidden" name="supplier_id" id="supplierId">
+            <div class="position-relative">
+                <input type="text" id="supplierSearch" class="form-control"
+                    placeholder="Type to search supplier…" autocomplete="off">
+                <div id="supplierDropdown" style="display:none;position:absolute;z-index:1050;width:100%;background:#fff;border:1px solid #dee2e6;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);max-height:220px;overflow-y:auto;">
+                    <div id="supplierResults"></div>
+                    <div id="supplierAddBtn" style="padding:.65rem 1rem;cursor:pointer;color:#2563eb;font-weight:600;font-size:.85rem;border-top:2px solid #e5e7eb;">
+                        <i class="bi bi-plus-circle me-1"></i>Add new supplier…
+                    </div>
+                </div>
+            </div>
+            <div id="selectedSupplierCard" style="display:none;background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;padding:.5rem .9rem;margin-top:.4rem;align-items:center;justify-content:space-between;">
+                <div>
+                    <span class="fw-semibold small" id="selectedSupplierName"></span>
+                    <span class="text-muted small ms-2" id="selectedSupplierCountry"></span>
+                </div>
+                <button type="button" class="btn btn-xs btn-outline-secondary btn-sm py-0 px-2" id="clearSupplier">×</button>
+            </div>
+            <div class="form-text">Links to purchasing. <a href="{{ route('suppliers.index') }}" target="_blank">Manage suppliers</a></div>
+        </div>
     </div>
 </div>
 
@@ -110,7 +132,7 @@
         </div>
         <div class="col-md-4">
             <label class="form-label fw-semibold">
-                Selling Price (Rp) <span class="text-danger">*</span>
+                Price (Rp) <span class="text-danger">*</span>
             </label>
             <div class="input-group">
                 <span class="input-group-text text-muted">Rp</span>
@@ -123,11 +145,15 @@
         <div class="col-md-3">
             <label class="form-label fw-semibold">Weight per Item</label>
             <div class="input-group">
-                <input type="number" name="weight_gram" class="form-control"
-                    value="{{ old('weight_gram', 0) }}" min="0" step="1" placeholder="0">
+                <input type="number" name="weight_gram" id="weightInput" class="form-control"
+                    value="{{ old('weight_gram', 0) }}" min="0" step="1" placeholder="0"
+                    oninput="document.getElementById('weightWarnMsg').style.display = this.value == 0 ? 'block' : 'none'">
                 <span class="input-group-text text-muted">gram</span>
             </div>
             <div class="form-text">For shipping calculation</div>
+            <div id="weightWarnMsg" class="text-warning small mt-1" {{ old('weight_gram', 0) == 0 ? '' : 'style=display:none' }}>
+                <i class="bi bi-exclamation-triangle-fill me-1"></i>0g — shipping won't calculate for this product.
+            </div>
         </div>
     </div>
 </div>
@@ -187,6 +213,12 @@
             <i class="bi bi-plus-lg me-1"></i>Add Variant
         </button>
     </div>
+    <div class="alert alert-light border py-2 px-3 small mb-3">
+        <i class="bi bi-info-circle me-1 text-primary"></i>
+        <strong>Extra price</strong> = additional amount added on top of the base price above for this specific variant.
+        Leave <strong>0</strong> if all variants share the same price.
+        Example: base price Rp 110,000 + extra Rp 5,000 = customer pays <strong>Rp 115,000</strong> for this variant.
+    </div>
     <div id="variantsContainer">
         <div class="variant-row row g-2 align-items-center">
             <div class="col-md-4">
@@ -199,9 +231,9 @@
             </div>
             <div class="col-md-4">
                 <div class="input-group input-group-sm">
-                    <span class="input-group-text text-muted">±Rp</span>
                     <input type="number" name="variants[0][price_adjustment]"
-                        class="form-control" placeholder="Price adjustment" value="0" step="1000">
+                        class="form-control" placeholder="Extra price for this variant (Rp), 0 = same price" value="0" step="1000">
+                    <span class="input-group-text text-muted">Rp extra</span>
                 </div>
             </div>
             <div class="col-md-1 text-center">
@@ -223,11 +255,128 @@
 </form>
 </div>
 </div>
+<div class="modal fade" id="quickSupplierModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-building me-2"></i>Add New Supplier</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Supplier Name <span class="text-danger">*</span></label>
+                    <input type="text" id="qsName" class="form-control">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Country</label>
+                    <input type="text" id="qsCountry" class="form-control" placeholder="e.g. China, Korea" list="qsCountryList">
+                    <datalist id="qsCountryList">
+                        <option value="China"><option value="Korea"><option value="Japan"><option value="Thailand"><option value="Turkey">
+                    </datalist>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Phone / WeChat</label>
+                    <input type="text" id="qsPhone" class="form-control">
+                </div>
+                <div id="qsError" class="text-danger small" style="display:none;"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="saveQuickSupplier">
+                    <span id="qsSpinner" class="spinner-border spinner-border-sm me-1 d-none"></span>
+                    Save Supplier
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 @endsection
 
 @push('scripts')
 <script>
 let variantIndex = 1;
+
+/* ── Supplier search ── */
+let supplierTimeout = null;
+const supplierSearch   = document.getElementById('supplierSearch');
+const supplierDropdown = document.getElementById('supplierDropdown');
+const supplierResults  = document.getElementById('supplierResults');
+const supplierCard     = document.getElementById('selectedSupplierCard');
+
+supplierSearch.addEventListener('input', function () {
+    clearTimeout(supplierTimeout);
+    const q = this.value.trim();
+    supplierTimeout = setTimeout(() => {
+        fetch(`/api/suppliers/search?q=${encodeURIComponent(q)}`)
+            .then(r => r.json())
+            .then(data => {
+                supplierResults.innerHTML = '';
+                if (!data.length) {
+                    supplierResults.innerHTML = '<div style="padding:.6rem 1rem;color:#94a3b8;font-size:.85rem;">No suppliers found</div>';
+                } else {
+                    data.forEach(s => {
+                        const d = document.createElement('div');
+                        d.style.cssText = 'padding:.55rem 1rem;cursor:pointer;border-bottom:1px solid #f3f4f6;font-size:.875rem;';
+                        d.innerHTML = `<div style="font-weight:600;">${s.name}</div><div style="font-size:.75rem;color:#6b7280;">${s.country || ''}${s.phone ? ' · '+s.phone : ''}</div>`;
+                        d.addEventListener('mousedown', () => selectSupplier(s));
+                        supplierResults.appendChild(d);
+                    });
+                }
+                supplierDropdown.style.display = 'block';
+            });
+    }, 200);
+});
+
+function selectSupplier(s) {
+    document.getElementById('supplierId').value = s.id;
+    document.getElementById('selectedSupplierName').textContent = s.name;
+    document.getElementById('selectedSupplierCountry').textContent = s.country || '';
+    supplierCard.style.display = 'flex';
+    supplierSearch.style.display = 'none';
+    supplierDropdown.style.display = 'none';
+}
+
+document.getElementById('clearSupplier').addEventListener('click', () => {
+    document.getElementById('supplierId').value = '';
+    supplierSearch.value = '';
+    supplierSearch.style.display = '';
+    supplierCard.style.display = 'none';
+    supplierSearch.focus();
+});
+
+document.addEventListener('click', e => {
+    if (!e.target.closest('#supplierSearch') && !e.target.closest('#supplierDropdown')) {
+        supplierDropdown.style.display = 'none';
+    }
+});
+
+// Quick-add supplier modal
+const supplierModal = new bootstrap.Modal(document.getElementById('quickSupplierModal'));
+document.getElementById('supplierAddBtn').addEventListener('mousedown', () => {
+    document.getElementById('qsName').value = supplierSearch.value;
+    document.getElementById('qsCountry').value = '';
+    document.getElementById('qsPhone').value = '';
+    document.getElementById('qsError').style.display = 'none';
+    supplierDropdown.style.display = 'none';
+    supplierModal.show();
+});
+
+document.getElementById('saveQuickSupplier').addEventListener('click', () => {
+    const name  = document.getElementById('qsName').value.trim();
+    const errEl = document.getElementById('qsError');
+    const spin  = document.getElementById('qsSpinner');
+    if (!name) { errEl.textContent = 'Name is required.'; errEl.style.display = 'block'; return; }
+
+    spin.classList.remove('d-none');
+    fetch('/api/suppliers/quick', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content },
+        body: JSON.stringify({ name, country: document.getElementById('qsCountry').value, phone: document.getElementById('qsPhone').value })
+    })
+    .then(r => r.json())
+    .then(s => { spin.classList.add('d-none'); supplierModal.hide(); selectSupplier(s); })
+    .catch(() => { spin.classList.add('d-none'); errEl.textContent = 'Error. Try again.'; errEl.style.display = 'block'; });
+});
 
 /* ── Z-code auto-exclude ── */
 function checkZCode(val) {
@@ -291,9 +440,9 @@ document.getElementById('addVariant').addEventListener('click', function () {
         </div>
         <div class="col-md-4">
             <div class="input-group input-group-sm">
-                <span class="input-group-text text-muted">±Rp</span>
                 <input type="number" name="variants[${variantIndex}][price_adjustment]"
-                    class="form-control" placeholder="Price adj." value="0" step="1000">
+                    class="form-control" placeholder="Extra price for this variant (Rp)" value="0" step="1000">
+                <span class="input-group-text text-muted">Rp extra</span>
             </div>
         </div>
         <div class="col-md-1 text-center">

@@ -76,7 +76,7 @@ class ProductController extends Controller
     public function edit(Product $product)
     {
         $trips = Trip::whereIn('status', ['open', 'purchasing'])->orderByDesc('id')->get();
-        $product->load('variants');
+        $product->load('variants', 'supplier');
         return view('products.edit', compact('product', 'trips'));
     }
 
@@ -88,6 +88,7 @@ class ProductController extends Controller
             'sku'          => 'nullable|string|max:100',
             'product_code' => 'nullable|string|max:50',
             'brand'        => 'nullable|string|max:100',
+            'supplier_id'  => 'nullable|exists:suppliers,id',
             'price'        => 'required|numeric|min:0',
             'weight_gram'  => 'nullable|integer|min:0',
             'notes'        => 'nullable|string',
@@ -108,7 +109,32 @@ class ProductController extends Controller
 
     public function destroy(Product $product)
     {
-        $product->delete();
+        // Must delete in order: purchase_order_items → order_items → variants → product
+        // to avoid foreign key constraint violations
+        \DB::transaction(function () use ($product) {
+            $variantIds = $product->variants()->pluck('id');
+
+            // Remove purchase order items referencing these variants or this product
+            \App\Models\PurchaseOrderItem::whereIn('product_variant_id', $variantIds)
+                ->orWhere('product_id', $product->id)
+                ->delete();
+
+            // Remove order items referencing these variants or this product
+            \App\Models\OrderItem::whereIn('product_variant_id', $variantIds)
+                ->orWhere('product_id', $product->id)
+                ->delete();
+
+            // Delete variants
+            $product->variants()->delete();
+
+            // Delete product image from storage
+            if ($product->image) {
+                \Storage::disk('public')->delete($product->image);
+            }
+
+            $product->delete();
+        });
+
         return redirect()->route('products.index')->with('success', 'Product deleted.');
     }
 
@@ -138,6 +164,17 @@ class ProductController extends Controller
 
     public function destroyVariant(Product $product, ProductVariant $variant)
     {
+        // Block if any order items or purchase order items reference this variant
+        $orderItemCount = $variant->orderItems()->count();
+        if ($orderItemCount > 0) {
+            return back()->with('error', "Cannot delete this variant — it has {$orderItemCount} order item(s) referencing it. Remove those orders first.");
+        }
+
+        $poItemCount = \App\Models\PurchaseOrderItem::where('product_variant_id', $variant->id)->count();
+        if ($poItemCount > 0) {
+            return back()->with('error', "Cannot delete this variant — it is referenced in {$poItemCount} purchase order item(s).");
+        }
+
         $variant->delete();
         return back()->with('success', 'Variant removed.');
     }

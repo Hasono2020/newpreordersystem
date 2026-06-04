@@ -210,7 +210,49 @@
     <i class="bi bi-upload me-1"></i>Import Data
 </div>
 <div class="row g-3">
-    <div class="col-lg-5">
+    {{-- Order Import --}}
+    <div class="col-lg-6">
+        <div class="export-card bg-white">
+            <div class="d-flex align-items-center gap-3 mb-2">
+                <div class="icon bg-primary bg-opacity-10 text-primary"><i class="bi bi-cart-plus"></i></div>
+                <div>
+                    <div class="fw-semibold">Import Orders from Excel</div>
+                    <div class="text-muted small">Same format as Contoh.xlsx</div>
+                </div>
+                <a href="{{ route('reports.import.orders.template') }}" class="btn btn-sm btn-outline-secondary ms-auto">
+                    <i class="bi bi-download me-1"></i>Template
+                </a>
+            </div>
+            <div class="alert alert-light border py-2 px-3 small mb-3">
+                <strong>Columns:</strong> No · Name · Phone · Area · Code · Color · Size · Price · DP · Date of DP · AN · Notes<br>
+                <span class="text-muted">Each row = one item. Rows with the same Name are grouped into one order. Products must already exist in the selected trip.</span>
+            </div>
+            <form method="POST" action="{{ route('reports.import.orders') }}" enctype="multipart/form-data">
+                @csrf
+                <div class="row g-2">
+                    <div class="col-md-5">
+                        <select name="trip_id" class="form-select form-select-sm" required>
+                            <option value="">Select trip…</option>
+                            @foreach($trips as $trip)
+                                <option value="{{ $trip->id }}" {{ $selectedTrip?->id == $trip->id ? 'selected' : '' }}>
+                                    {{ $trip->name }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-5">
+                        <input type="file" name="file" class="form-control form-control-sm" accept=".xlsx,.xls" required>
+                    </div>
+                    <div class="col-md-2">
+                        <button type="submit" class="btn btn-sm btn-primary w-100">Import</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {{-- Customer Import --}}
+    <div class="col-lg-6">
         <div class="export-card bg-white">
             <div class="d-flex align-items-center gap-3 mb-2">
                 <div class="icon bg-success bg-opacity-10 text-success"><i class="bi bi-people"></i></div>
@@ -229,7 +271,7 @@
             </form>
             <div class="mt-2">
                 <a href="{{ route('reports.export.customers') }}" class="small text-muted text-decoration-none">
-                    <i class="bi bi-download me-1"></i>Download template (export existing as reference)
+                    <i class="bi bi-download me-1"></i>Export existing customers as CSV reference
                 </a>
             </div>
         </div>

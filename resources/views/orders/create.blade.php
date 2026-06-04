@@ -23,16 +23,20 @@
 <form method="POST" action="{{ route('orders.store') }}" id="orderForm">
     @csrf
 
-    {{-- ── Customer + Trip ── --}}
+    {{-- ── Customer Card ── --}}
     <div class="card mb-3">
-        <div class="card-header bg-white py-3 fw-semibold">Order Details</div>
+        <div class="card-header bg-white py-3 fw-semibold">
+            <i class="bi bi-person me-2"></i>Customer & Delivery
+        </div>
         <div class="card-body">
             <div class="row g-3">
 
-                {{-- Customer search with quick-add --}}
-                <div class="col-md-6">
+                {{-- Customer search --}}
+                <div class="col-12">
                     <label class="form-label fw-semibold">Customer <span class="text-danger">*</span></label>
                     <input type="hidden" name="customer_id" id="customerId">
+                    {{-- Hidden shipping area - set by modal --}}
+                    <input type="hidden" name="shipping_area_id" id="shippingAreaSelect">
                     <div class="position-relative">
                         <input type="text" id="customerSearch" class="form-control"
                             placeholder="Type name or phone to search…" autocomplete="off">
@@ -43,18 +47,37 @@
                             </div>
                         </div>
                     </div>
-                    <div class="selected-customer-card mt-2" id="selectedCustomerCard">
+                    <div id="selectedCustomerCard" class="selected-customer-card mt-2">
                         <div>
                             <span class="fw-semibold" id="selectedCustomerName"></span>
                             <span class="badge bg-secondary ms-2" id="selectedCustomerType"></span>
                             <span class="text-muted small ms-2" id="selectedCustomerPhone"></span>
+                            <div class="text-muted small mt-1" id="selectedCustomerAddr" style="font-size:.75rem;"></div>
+                            <div class="text-muted small mt-1" id="selectedCustomerArea" style="font-size:.75rem;"></div>
                         </div>
                         <button type="button" class="btn btn-sm btn-outline-secondary" id="clearCustomer">Change</button>
                     </div>
+                    {{-- Shipping calc display --}}
+                    <div class="mt-2 p-2 bg-light rounded small" id="shippingCalcBox" style="display:none;">
+                        <i class="bi bi-truck me-1 text-primary"></i>
+                        Shipping area: <strong id="shippingAreaName"></strong>
+                        &nbsp;·&nbsp; Est. fee: <strong id="shippingFeeDisplay">Rp 0</strong>
+                        <span class="text-muted ms-2" id="shippingWeightNote"></span>
+                    </div>
                 </div>
 
-                {{-- Trip --}}
-                <div class="col-md-6">
+            </div>
+        </div>
+    </div>
+
+    {{-- ── Trip & Notes ── --}}
+    <div class="card mb-3">
+        <div class="card-header bg-white py-3 fw-semibold">
+            <i class="bi bi-airplane me-2"></i>Trip & Notes
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-8">
                     <label class="form-label fw-semibold">Trip <span class="text-danger">*</span></label>
                     <select name="trip_id" id="tripSelect" class="form-select" required>
                         <option value="">Select trip…</option>
@@ -65,31 +88,6 @@
                             </option>
                         @endforeach
                     </select>
-                </div>
-
-                {{-- Shipping area --}}
-                <div class="col-md-5">
-                    <label class="form-label fw-semibold">Shipping Area</label>
-                    <select name="shipping_area_id" id="shippingAreaSelect" class="form-select">
-                        <option value="">— No shipping area —</option>
-                        @foreach($shippingAreas as $area)
-                            <option value="{{ $area->id }}"
-                                data-price="{{ $area->price_per_kg }}"
-                                {{ old('shipping_area_id') == $area->id ? 'selected' : '' }}>
-                                {{ $area->name }}
-                                @if($area->province) ({{ $area->province }}) @endif
-                                — Rp {{ number_format($area->price_per_kg, 0, ',', '.') }}/kg
-                            </option>
-                        @endforeach
-                    </select>
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label fw-semibold">Est. Shipping Fee</label>
-                    <div class="input-group">
-                        <span class="input-group-text">Rp</span>
-                        <input type="text" id="shippingFeeDisplay" class="form-control bg-light" readonly value="0">
-                    </div>
-                    <div class="form-text" id="shippingKgNote">Select area to auto-calculate</div>
                 </div>
                 <div class="col-md-4">
                     <label class="form-label fw-semibold">Notes</label>
@@ -139,6 +137,9 @@
                         Line: <strong class="line-total">Rp 0</strong>
                         &nbsp;·&nbsp; Weight: <strong class="line-weight">0g</strong>
                         &nbsp;·&nbsp; Code: <span class="product-code text-info">—</span>
+                        <span class="weight-warn text-warning ms-2" style="display:none;">
+                            <i class="bi bi-exclamation-triangle-fill"></i> Product weight is 0 — shipping may be incorrect. <a href="#" onclick="return false;" class="edit-product-link text-warning">Edit product</a>
+                        </span>
                     </div>
                 </div>
             </div>
@@ -146,6 +147,10 @@
     </div>
 
     {{-- ── Summary ── --}}
+    <div id="zeroPriceWarning" class="alert alert-warning py-2 small mb-2" style="display:none;">
+        <i class="bi bi-exclamation-triangle-fill me-1"></i>
+        <strong>Some items have a price of Rp 0.</strong> Please check the product's selling price or enter the price manually in the item row.
+    </div>
     <div class="card mb-3">
         <div class="card-body">
             <div class="row justify-content-end">
@@ -184,7 +189,7 @@
                     <input type="text" id="qcName" class="form-control" placeholder="Customer name">
                 </div>
                 <div class="mb-3">
-                    <label class="form-label fw-semibold">Phone / WhatsApp</label>
+                    <label class="form-label fw-semibold">Phone / WhatsApp <span class="text-danger">*</span></label>
                     <input type="text" id="qcPhone" class="form-control" placeholder="e.g. 08123456789">
                 </div>
                 <div class="mb-3">
@@ -193,6 +198,24 @@
                         <option value="customer">Customer</option>
                         <option value="reseller">Reseller</option>
                         <option value="selected_customer">Selected Customer</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Address</label>
+                    <textarea id="qcAddress" class="form-control" rows="2" placeholder="Full shipping address…"></textarea>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Shipping Area <span class="text-danger">*</span></label>
+                    <select id="qcShippingArea" class="form-select">
+                        <option value="">— Select shipping area —</option>
+                        @foreach($shippingAreas as $area)
+                            <option value="{{ $area->id }}"
+                                data-price="{{ $area->price_per_kg }}"
+                                data-name="{{ $area->name }}">
+                                {{ $area->name }}{{ $area->province ? ' ('.$area->province.')' : '' }}
+                                — Rp {{ number_format($area->price_per_kg, 0, ',', '.') }}/kg
+                            </option>
+                        @endforeach
                     </select>
                 </div>
                 <div id="qcError" class="text-danger small" style="display:none;"></div>
@@ -261,8 +284,16 @@ document.addEventListener('change', function(e) {
         const variants = JSON.parse(opt.dataset.variants || '[]');
         const code     = opt.dataset.code || '—';
 
-        priceIn.value   = price;
+        priceIn.value      = price;
         codeEl.textContent = code || '—';
+
+        // Update edit product link if weight is 0
+        const weightWarn = row.querySelector('.weight-warn');
+        const editLink   = row.querySelector('.edit-product-link');
+        if (weightWarn && editLink) {
+            editLink.href = `/products/${opt.value}/edit`;
+            editLink.target = '_blank';
+        }
 
         varSel.innerHTML = '<option value="">No variant</option>';
         variants.forEach(v => {
@@ -283,34 +314,80 @@ document.addEventListener('change', function(e) {
 
 function recalc() {
     let subtotal = 0, totalGrams = 0;
+    let hasZeroPrice = false;
+
     document.querySelectorAll('.item-row').forEach(row => {
         const qty   = parseInt(row.querySelector('.item-qty').value) || 0;
         const price = parseFloat(row.querySelector('.item-price').value) || 0;
         const line  = qty * price;
         row.querySelector('.line-total').textContent = fmt(line);
 
+        // Warn if price is 0
+        const priceInput = row.querySelector('.item-price');
+        if (price === 0 && qty > 0) {
+            priceInput.classList.add('border-warning');
+            hasZeroPrice = true;
+        } else {
+            priceInput.classList.remove('border-warning');
+        }
+
         // weight per product
-        const prodSel = row.querySelector('.product-select');
-        const prodOpt = prodSel.options[prodSel.selectedIndex];
-        const wGram   = parseInt(prodOpt?.dataset?.weight || 0);
+        const prodSel   = row.querySelector('.product-select');
+        const prodOpt   = prodSel.options[prodSel.selectedIndex];
+        const wGram     = parseInt(prodOpt?.dataset?.weight || 0);
         const lineGrams = wGram * qty;
         row.querySelector('.line-weight').textContent = fmtG(lineGrams);
+        // Warn if weight is 0
+        const weightWarn = row.querySelector('.weight-warn');
+        if (wGram === 0 && prodOpt?.value && weightWarn) {
+            weightWarn.style.display = 'block';
+        } else if (weightWarn) {
+            weightWarn.style.display = 'none';
+        }
 
-        subtotal    += line;
-        totalGrams  += lineGrams;
+        subtotal   += line;
+        totalGrams += lineGrams;
     });
 
-    const kg            = calcKg(totalGrams);
-    const areaOpt       = document.getElementById('shippingAreaSelect').options[document.getElementById('shippingAreaSelect').selectedIndex];
-    const pricePerKg    = parseFloat(areaOpt?.dataset?.price || 0);
-    const shippingFee   = kg * pricePerKg;
+    const kg         = calcKg(totalGrams);
+    const hiddenArea = document.getElementById('shippingAreaSelect');
+    const areaId     = hiddenArea ? hiddenArea.value : '';
+    // Look up price_per_kg from the modal's select options
+    const modalAreaSel = document.getElementById('qcShippingArea');
+    let pricePerKg = 0;
+    if (modalAreaSel && areaId) {
+        for (const opt of modalAreaSel.options) {
+            if (opt.value === areaId) { pricePerKg = parseFloat(opt.dataset.price || 0); break; }
+        }
+    }
+    const shippingFee = kg * pricePerKg;
 
-    document.getElementById('displaySubtotal').textContent  = fmt(subtotal);
-    document.getElementById('displayWeight').textContent    = `${totalGrams.toLocaleString('id-ID')} g → ${kg} kg charged`;
-    document.getElementById('displayShipping').textContent  = fmt(shippingFee);
-    document.getElementById('shippingFeeDisplay').value     = Math.round(shippingFee).toLocaleString('id-ID');
-    document.getElementById('shippingKgNote').textContent   = totalGrams > 0 ? `${totalGrams.toLocaleString()}g → ${kg} kg` : 'Select area to auto-calculate';
-    document.getElementById('displayTotal').textContent     = fmt(subtotal + shippingFee);
+    // Update summary
+    document.getElementById('displaySubtotal').textContent = fmt(subtotal);
+    document.getElementById('displayWeight').textContent   = `${totalGrams.toLocaleString('id-ID')} g → ${kg} kg charged`;
+    document.getElementById('displayShipping').textContent = fmt(shippingFee);
+    document.getElementById('displayTotal').textContent    = fmt(subtotal + shippingFee);
+
+    // Update shipping calc box in customer card
+    const calcBox = document.getElementById('shippingCalcBox');
+    if (calcBox) {
+        if (pricePerKg > 0) {
+            calcBox.style.display = 'block';
+            document.getElementById('shippingFeeDisplay').textContent = fmt(shippingFee);
+            const noteEl = document.getElementById('shippingWeightNote');
+            if (noteEl) noteEl.textContent = totalGrams > 0 ? `(${totalGrams.toLocaleString('id-ID')}g → ${kg} kg)` : '';
+        } else {
+            calcBox.style.display = 'none';
+        }
+        const noteEl2 = document.getElementById('shippingKgNote');
+        if (noteEl2) noteEl2.textContent = pricePerKg > 0
+            ? `${totalGrams.toLocaleString('id-ID')}g → ${kg} kg → ${fmt(shippingFee)}`
+            : 'Select area to auto-calculate shipping fee';
+    }
+
+    // Price=0 global warning
+    const warn = document.getElementById('zeroPriceWarning');
+    if (warn) warn.style.display = hasZeroPrice ? 'block' : 'none';
 }
 
 // ── Add / remove items ───────────────────────────────────────────────
@@ -349,6 +426,9 @@ document.getElementById('addItemBtn').addEventListener('click', () => {
                 Line: <strong class="line-total">Rp 0</strong>
                 &nbsp;·&nbsp; Weight: <strong class="line-weight">0g</strong>
                 &nbsp;·&nbsp; Code: <span class="product-code text-info">—</span>
+                <span class="weight-warn text-warning ms-2" style="display:none;">
+                    <i class="bi bi-exclamation-triangle-fill"></i> Product weight is 0 — shipping may be incorrect.
+                </span>
             </div>
         </div>`;
     document.getElementById('itemsContainer').appendChild(div);
@@ -387,7 +467,7 @@ searchInput.addEventListener('input', function() {
                         const div = document.createElement('div');
                         div.className = 'cust-item';
                         div.innerHTML = `<div class="cust-name">${c.name}</div>
-                            <div class="cust-meta">${c.phone || 'No phone'} · ${c.type.replace('_',' ')}</div>`;
+                            <div class="cust-meta">${c.phone || 'No phone'} · ${c.type.replace('_',' ')}${c.address ? ' · 📍 ' + c.address : ''}</div>`;
                         div.addEventListener('click', () => selectCustomer(c));
                         resultsEl.appendChild(div);
                     });
@@ -398,13 +478,49 @@ searchInput.addEventListener('input', function() {
 });
 
 function selectCustomer(c) {
-    document.getElementById('customerId').value          = c.id;
+    document.getElementById('customerId').value = c.id;
     document.getElementById('selectedCustomerName').textContent  = c.name;
     document.getElementById('selectedCustomerPhone').textContent = c.phone || '';
     document.getElementById('selectedCustomerType').textContent  = c.type.replace('_',' ');
-    selectedCard.style.display     = 'flex';
-    searchInput.style.display      = 'none';
-    dropdown.style.display         = 'none';
+    const addrEl = document.getElementById('selectedCustomerAddr');
+    if (addrEl) addrEl.textContent = c.address ? '📍 ' + c.address : '';
+
+    // Auto-apply default shipping area if customer has one
+    if (c.default_shipping_area_id) {
+        applyShippingArea(c.default_shipping_area_id);
+    }
+
+    selectedCard.style.display = 'flex';
+    searchInput.style.display  = 'none';
+    dropdown.style.display     = 'none';
+}
+
+function applyShippingArea(areaId) {
+    const hiddenArea  = document.getElementById('shippingAreaSelect');
+    const modalSel    = document.getElementById('qcShippingArea');
+    if (hiddenArea) hiddenArea.value = areaId;
+
+    // Find the area name from the modal options
+    let areaName = '', pricePerKg = 0;
+    if (modalSel) {
+        for (const opt of modalSel.options) {
+            if (opt.value == areaId) {
+                areaName   = opt.dataset.name || opt.text.split('—')[0].trim();
+                pricePerKg = parseFloat(opt.dataset.price || 0);
+                break;
+            }
+        }
+    }
+
+    const areaEl = document.getElementById('selectedCustomerArea');
+    if (areaEl && areaName) areaEl.textContent = '🚚 ' + areaName;
+
+    const calcBox    = document.getElementById('shippingCalcBox');
+    const areaNameEl = document.getElementById('shippingAreaName');
+    if (calcBox)    calcBox.style.display = pricePerKg > 0 ? 'block' : 'none';
+    if (areaNameEl) areaNameEl.textContent = areaName;
+
+    recalc();
 }
 
 document.getElementById('clearCustomer').addEventListener('click', () => {
@@ -433,25 +549,36 @@ document.getElementById('quickAddBtn').addEventListener('click', () => {
 });
 
 document.getElementById('saveQuickCustomer').addEventListener('click', () => {
-    const name  = document.getElementById('qcName').value.trim();
-    const phone = document.getElementById('qcPhone').value.trim();
-    const type  = document.getElementById('qcType').value;
-    const errEl = document.getElementById('qcError');
-    const spin  = document.getElementById('qcSpinner');
+    const name    = document.getElementById('qcName').value.trim();
+    const phone   = document.getElementById('qcPhone').value.trim();
+    const type    = document.getElementById('qcType').value;
+    const address = document.getElementById('qcAddress').value.trim();
+    const areaSel = document.getElementById('qcShippingArea');
+    const areaId  = areaSel.value;
+    const areaOpt = areaSel.options[areaSel.selectedIndex];
+    const errEl   = document.getElementById('qcError');
+    const spin    = document.getElementById('qcSpinner');
 
-    if (!name) { errEl.textContent='Name is required.'; errEl.style.display='block'; return; }
+    // Validate required fields
+    if (!name)    { errEl.textContent='Name is required.'; errEl.style.display='block'; return; }
+    if (!phone)   { errEl.textContent='Phone is required.'; errEl.style.display='block'; return; }
+    if (!areaId)  { errEl.textContent='Shipping Area is required.'; errEl.style.display='block'; return; }
+    errEl.style.display = 'none';
 
     spin.classList.remove('d-none');
     fetch('/api/customers/quick', {
         method: 'POST',
         headers: {'Content-Type':'application/json','X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content},
-        body: JSON.stringify({name, phone, type})
+        body: JSON.stringify({name, phone, type, address, default_shipping_area_id: areaId})
     })
     .then(r => r.json())
     .then(c => {
         spin.classList.add('d-none');
         quickModal.hide();
         selectCustomer(c);
+
+        // Apply shipping area from modal to the order
+        if (areaId) applyShippingArea(areaId);
     })
     .catch(() => {
         spin.classList.add('d-none');

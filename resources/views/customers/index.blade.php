@@ -5,12 +5,13 @@
 @section('content')
 <div class="row g-2 mb-3 align-items-end">
     <div class="col">
-        <form class="d-flex gap-2">
-            <input type="text" name="search" class="form-control form-control-sm" placeholder="Search name or phone…" value="{{ request('search') }}">
+        <form class="d-flex gap-2" id="filterForm">
+            <input type="text" name="search" class="form-control form-control-sm" style="width:220px;"
+                placeholder="Search name or phone…" value="{{ request('search') }}">
             <select name="type" class="form-select form-select-sm" style="width:auto;">
                 <option value="">All types</option>
-                <option value="customer" {{ request('type')=='customer'?'selected':'' }}>Customer</option>
-                <option value="reseller" {{ request('type')=='reseller'?'selected':'' }}>Reseller</option>
+                <option value="customer"          {{ request('type')=='customer'?'selected':'' }}>Customer</option>
+                <option value="reseller"          {{ request('type')=='reseller'?'selected':'' }}>Reseller</option>
                 <option value="selected_customer" {{ request('type')=='selected_customer'?'selected':'' }}>Selected Customer</option>
             </select>
             <button class="btn btn-sm btn-outline-secondary">Filter</button>
@@ -19,25 +20,64 @@
             @endif
         </form>
     </div>
-    <div class="col-auto">
-        <a href="{{ route('customers.create') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>Add Customer</a>
+    <div class="col-auto d-flex gap-2">
+        {{-- Bulk delete dropdown --}}
+        <div class="dropdown">
+            <button class="btn btn-sm btn-outline-danger dropdown-toggle" data-bs-toggle="dropdown">
+                <i class="bi bi-trash3 me-1"></i>Delete
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li>
+                    <button class="dropdown-item" id="deleteSelectedBtn" disabled onclick="confirmBulkDelete('selected')">
+                        <i class="bi bi-check2-square me-2"></i>Delete selected
+                        <span class="badge bg-danger ms-1" id="selectedCount" style="display:none;"></span>
+                    </button>
+                </li>
+                <li>
+                    <button class="dropdown-item text-danger" onclick="confirmBulkDelete('no_orders')">
+                        <i class="bi bi-people me-2"></i>Delete all with no orders
+                    </button>
+                </li>
+            </ul>
+        </div>
+        <a href="{{ route('customers.create') }}" class="btn btn-primary btn-sm">
+            <i class="bi bi-plus-lg me-1"></i>Add Customer
+        </a>
     </div>
 </div>
+
+{{-- Bulk delete hidden form --}}
+<form method="POST" action="{{ route('customers.bulk-destroy') }}" id="bulkDeleteForm">
+    @csrf @method('DELETE')
+    <input type="hidden" name="action" id="bulkAction">
+</form>
 
 <div class="card">
     <div class="table-responsive">
         <table class="table table-hover mb-0">
             <thead class="table-light">
-                <tr><th>Name</th><th>Phone</th><th>Type</th><th>Orders</th><th></th></tr>
+                <tr>
+                    <th style="width:36px;">
+                        <input type="checkbox" id="selectAll" class="form-check-input">
+                    </th>
+                    <th>Name</th>
+                    <th>Phone</th>
+                    <th>Type</th>
+                    <th>Orders</th>
+                    <th></th>
+                </tr>
             </thead>
             <tbody>
                 @forelse($customers as $customer)
                 <tr>
+                    <td>
+                        <input type="checkbox" class="form-check-input customer-cb" value="{{ $customer->id }}">
+                    </td>
                     <td class="fw-semibold">{{ $customer->name }}</td>
-                    <td>{{ $customer->phone ?? '—' }}</td>
+                    <td class="text-muted small">{{ $customer->phone ?? '—' }}</td>
                     <td>
                         @if($customer->type === 'reseller')
-                            <span class="badge bg-purple" style="background:#7c3aed!important;">Reseller</span>
+                            <span class="badge" style="background:#7c3aed;">Reseller</span>
                         @elseif($customer->type === 'selected_customer')
                             <span class="badge bg-info text-dark">Selected</span>
                         @else
@@ -48,10 +88,15 @@
                     <td>
                         <a href="{{ route('customers.show', $customer) }}" class="btn btn-sm btn-outline-primary">View</a>
                         <a href="{{ route('customers.edit', $customer) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
+                        <form method="POST" action="{{ route('customers.destroy', $customer) }}" class="d-inline"
+                            onsubmit="return confirm('Delete {{ $customer->name }}? This also deletes all their orders.')">
+                            @csrf @method('DELETE')
+                            <button type="submit" class="btn btn-sm btn-outline-danger">×</button>
+                        </form>
                     </td>
                 </tr>
                 @empty
-                <tr><td colspan="5" class="text-center text-muted py-4">No customers found</td></tr>
+                <tr><td colspan="6" class="text-center text-muted py-4">No customers found</td></tr>
                 @endforelse
             </tbody>
         </table>
@@ -59,3 +104,61 @@
     <div class="card-footer bg-white">{{ $customers->links() }}</div>
 </div>
 @endsection
+
+@push('scripts')
+<script>
+// Select all checkbox
+const selectAll = document.getElementById('selectAll');
+const cbs       = () => document.querySelectorAll('.customer-cb');
+const deleteBtn = document.getElementById('deleteSelectedBtn');
+const countBadge = document.getElementById('selectedCount');
+
+function updateDeleteBtn() {
+    const checked = [...cbs()].filter(c => c.checked);
+    deleteBtn.disabled = checked.length === 0;
+    if (checked.length > 0) {
+        countBadge.style.display = '';
+        countBadge.textContent = checked.length;
+    } else {
+        countBadge.style.display = 'none';
+    }
+}
+
+selectAll.addEventListener('change', function () {
+    cbs().forEach(cb => cb.checked = this.checked);
+    updateDeleteBtn();
+});
+
+document.addEventListener('change', function (e) {
+    if (e.target.classList.contains('customer-cb')) updateDeleteBtn();
+});
+
+function confirmBulkDelete(action) {
+    const form   = document.getElementById('bulkDeleteForm');
+    const actionInput = document.getElementById('bulkAction');
+
+    if (action === 'selected') {
+        const checked = [...cbs()].filter(c => c.checked);
+        if (checked.length === 0) return;
+        if (!confirm(`Delete ${checked.length} selected customer(s)? This also deletes all their orders. This cannot be undone.`)) return;
+
+        // Append customer IDs to form
+        document.querySelectorAll('.bulk-id').forEach(e => e.remove());
+        checked.forEach(cb => {
+            const inp = document.createElement('input');
+            inp.type  = 'hidden';
+            inp.name  = 'customer_ids[]';
+            inp.value = cb.value;
+            inp.className = 'bulk-id';
+            form.appendChild(inp);
+        });
+        actionInput.value = 'selected';
+    } else {
+        if (!confirm('Delete ALL customers with no orders? This cannot be undone.')) return;
+        actionInput.value = 'no_orders';
+    }
+
+    form.submit();
+}
+</script>
+@endpush
