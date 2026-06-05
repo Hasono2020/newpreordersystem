@@ -28,9 +28,9 @@
                 <div class="col">
                     <label class="form-label fw-semibold">Status</label>
                     <select name="status" class="form-select">
-                        @foreach(['open','purchasing','arrived','closed'] as $s)
-                            <option value="{{ $s }}" {{ old('status', $trip->status ?? 'open') == $s ? 'selected' : '' }}>
-                                {{ ucfirst($s) }}
+                        @foreach(['open' => 'Open (accepting orders)', 'order_closed' => 'Order Closed (no new orders)', 'purchasing' => 'Purchasing', 'arrived' => 'Arrived', 'closed' => 'Closed'] as $val => $label)
+                            <option value="{{ $val }}" {{ old('status', $trip->status ?? 'open') == $val ? 'selected' : '' }}>
+                                {{ $label }}
                             </option>
                         @endforeach
                     </select>

@@ -224,8 +224,14 @@
                 </a>
             </div>
             <div class="alert alert-light border py-2 px-3 small mb-3">
-                <strong>Columns:</strong> No · Name · Phone · Area · Code · Color · Size · Price · DP · Date of DP · AN · Notes<br>
-                <span class="text-muted">Each row = one item. Rows with the same Name are grouped into one order. Products must already exist in the selected trip.</span>
+                <strong>Columns (12 total):</strong> No · Name · Phone · Area · Code · Color · Size · <strong>Qty</strong> · Price · DP · Date of DP · Notes<br>
+                <span class="text-muted mt-1 d-block">
+                    • <strong>Name, Code, Qty</strong> are required per row.<br>
+                    • <strong>Phone, Area, DP</strong> only needed on the <em>first row</em> of each customer — leave blank on subsequent rows.<br>
+                    • Rows with the same Name are grouped into one order. Customer matched by phone first, then name.<br>
+                    • Products must exist in the selected trip (matched by product code).<br>
+                    • Date format: <code>YYYY-MM-DD</code> or <code>DD/MM/YYYY</code>.
+                </span>
             </div>
             <form method="POST" action="{{ route('reports.import.orders') }}" enctype="multipart/form-data">
                 @csrf

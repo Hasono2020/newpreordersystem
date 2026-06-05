@@ -44,11 +44,12 @@ class Trip extends Model
     public function getStatusBadgeAttribute(): string
     {
         return match($this->status) {
-            'open' => '<span class="badge bg-success">Open</span>',
-            'purchasing' => '<span class="badge bg-warning text-dark">Purchasing</span>',
-            'arrived' => '<span class="badge bg-info">Arrived</span>',
-            'closed' => '<span class="badge bg-secondary">Closed</span>',
-            default => '<span class="badge bg-light text-dark">'.$this->status.'</span>',
+            'open'         => '<span class="badge bg-success">Open</span>',
+            'order_closed' => '<span class="badge bg-warning text-dark">Order Closed</span>',
+            'purchasing'   => '<span class="badge" style="background:#7c3aed">Purchasing</span>',
+            'arrived'      => '<span class="badge bg-info">Arrived</span>',
+            'closed'       => '<span class="badge bg-secondary">Closed</span>',
+            default        => '<span class="badge bg-light text-dark">'.$this->status.'</span>',
         };
     }
 }

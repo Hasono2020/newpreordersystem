@@ -149,19 +149,22 @@ class ReportController extends Controller
         });
     }
 
-    // ── Excel Order Import (matches Contoh.xlsx format) ──────────────
+    // ── Excel Order Import ───────────────────────────────────────────
 
     /**
-     * Download template Excel matching Contoh.xlsx format
-     * Columns: No | Name | Phone | Area | Code | Color | Size | Price | DP | Date of DP | AN | Notes
+     * Template columns:
+     * No | Name | Phone | Area | Code | Color | Size | Qty | Price | DP | Date of DP | Notes
      */
     public function orderImportTemplate()
     {
         $xml = $this->buildXlsx([
-            ['No', 'Name', 'Phone', 'Area', 'Code', 'Color', 'Size', 'Price', 'DP', 'Date of DP', 'AN', 'Notes'],
-            [1, 'JASMINE 7911', '08123456789', 'SURABAYA', 'NA_03', 'GREY', 'FZ', 169000, 500000, '2026-05-03', 'ORD-EXAMPLE', ''],
-            [2, 'JASMINE 7911', '', '', 'NA_03', 'BROWN', 'FZ', 169000, '', '', '', ''],
-            [3, 'JASMINE 7911', '', '', 'NA_03', 'NAVY', 'FZ', 169000, '', '', '', ''],
+            ['No', 'Name', 'Phone', 'Area', 'Code', 'Color', 'Size', 'Qty', 'Price', 'DP', 'Date of DP', 'Notes'],
+            // Example: Jasmine orders 2 GREY FZ and 1 BROWN FZ, paid DP 500,000 on 3 May
+            [1, 'JASMINE 7911', '08123456789', 'SURABAYA', 'NA_03', 'GREY', 'FZ', 2, 169000, 500000, '2026-05-03', ''],
+            [2, 'JASMINE 7911', '', '', 'NA_03', 'BROWN', 'FZ', 1, 169000, '', '', ''],
+            // Example: different customer, area only needs to be on first row
+            [3, 'SARI 0812', '08129876543', 'JAKARTA', 'NZ_01', 'BLACK', 'M', 3, 250000, '', '', 'fragile'],
+            [4, 'SARI 0812', '', '', 'NA_03', 'NAVY', 'FZ', 2, 169000, 300000, '2026-05-04', ''],
         ]);
 
         return Response::make($xml, 200, [
@@ -171,13 +174,32 @@ class ReportController extends Controller
     }
 
     /**
-     * Import orders from Excel (matching Contoh.xlsx format)
-     * Columns: No | Name | Phone | Area | Code | Color | Size | Price | DP | Date of DP | AN | Notes
+     * Import orders from Excel.
+     *
+     * COLUMNS (12 total):
+     *  0  No          – row number (ignored, just for readability)
+     *  1  Name        – customer name (required on first item row; repeat or leave blank for same customer)
+     *  2  Phone       – customer phone (only needed on first row per customer)
+     *  3  Area        – shipping area name (only needed on first row per customer)
+     *  4  Code        – product code (required; must exist in the selected trip)
+     *  5  Color       – variant color (leave blank if product has no variants)
+     *  6  Size        – variant size  (leave blank if product has no variants)
+     *  7  Qty         – quantity ordered (required; defaults to 1 if blank)
+     *  8  Price       – unit price override (leave blank to use product's price)
+     *  9  DP          – deposit paid amount (only needed on first row per customer)
+     * 10  Date of DP  – deposit date in YYYY-MM-DD or DD/MM/YYYY (optional)
+     * 11  Notes       – order notes (optional)
+     *
+     * GROUPING RULES:
+     *  - Rows are grouped into one order per customer.
+     *  - A new order starts when the Name column changes (or first row with a name).
+     *  - Subsequent rows with blank Name are added to the most recent customer's order.
+     *  - Phone, Area, DP are only read from the FIRST row of each customer.
      */
     public function importOrders(Request $request)
     {
         $request->validate([
-            'file'    => 'required|file|max:5120',
+            'file'    => 'required|file|max:10240',
             'trip_id' => 'required|exists:trips,id',
         ]);
 
@@ -185,80 +207,116 @@ class ReportController extends Controller
         $rows = $this->readXlsx($request->file('file')->getRealPath());
 
         if (empty($rows)) {
-            return back()->with('error', 'Could not read file. Make sure it is a valid .xlsx file.');
+            return back()->with('error', 'Could not read the file. Make sure it is a valid .xlsx file with data.');
         }
 
-        // Skip header row
+        // Remove header row
         array_shift($rows);
 
         $imported  = 0;
         $skipped   = 0;
-        $errors    = [];
+        $warnings  = [];
         $promoSvc  = app(\App\Services\PromoService::class);
 
-        DB::transaction(function () use ($rows, $trip, &$imported, &$skipped, &$errors, $promoSvc) {
+        DB::transaction(function () use ($rows, $trip, &$imported, &$skipped, &$warnings, $promoSvc) {
             $currentOrder    = null;
             $currentCustName = null;
 
             foreach ($rows as $rowIdx => $row) {
-                // Columns: 0=No 1=Name 2=Phone 3=Area 4=Code 5=Color 6=Size 7=Price 8=DP 9=DateDP 10=AN 11=Notes
-                $name  = trim($row[1] ?? '');
-                $phone = trim($row[2] ?? '');
-                $area  = trim($row[3] ?? '');
-                $code  = strtoupper(trim($row[4] ?? ''));
-                $color = trim($row[5] ?? '');
-                $size  = trim($row[6] ?? '');
-                $price = (float)($row[7] ?? 0);
-                $dp    = (float)($row[8] ?? 0);
-                $dpDate = trim($row[9] ?? '');
-                $notes = trim($row[11] ?? '');
+                $lineNum = $rowIdx + 2; // +2 because header was row 1
 
+                // --- Parse columns ---
+                $name    = trim($row[1] ?? '');
+                $phone   = trim($row[2] ?? '');
+                $area    = trim($row[3] ?? '');
+                $code    = strtoupper(trim($row[4] ?? ''));
+                $color   = trim($row[5] ?? '');
+                $size    = trim($row[6] ?? '');
+                $qty     = max(1, (int)($row[7] ?? 1));
+                $price   = (float)($row[8] ?? 0);
+                $dp      = (float)($row[9] ?? 0);
+                $dpDate  = trim($row[10] ?? '');
+                $notes   = trim($row[11] ?? '');
+
+                // Skip completely empty rows
                 if (empty($name) && empty($code)) continue;
 
-                // Find or create customer
+                // --- Start new order when name changes ---
                 if ($name && $name !== $currentCustName) {
-                    // Find shipping area first (needed for customer default)
+
+                    // Recalculate previous order before starting a new one
+                    if ($currentOrder) {
+                        $calc = $promoSvc->recalculate($currentOrder->fresh());
+                        $currentOrder->update([
+                            'subtotal'             => $calc['subtotal'],
+                            'discount_amount'      => $calc['discount_amount'],
+                            'shipping_fee'         => $calc['shipping_fee'],
+                            'shipping_discount'    => $calc['shipping_discount'],
+                            'shipping_weight_gram' => $calc['shipping_weight_gram'],
+                            'shipping_kg_charged'  => $calc['shipping_kg_charged'],
+                            'total_amount'         => $calc['total_amount'],
+                        ]);
+                    }
+
+                    // Resolve shipping area (match by name, case-insensitive)
                     $shippingArea = null;
                     if ($area) {
                         $shippingArea = ShippingArea::whereRaw('LOWER(name) LIKE ?', ['%'.strtolower($area).'%'])->first();
+                        if (!$shippingArea) {
+                            $warnings[] = "Row {$lineNum}: Shipping area '{$area}' not found — order created without shipping area.";
+                        }
                     }
 
-                    // Use DB directly to bypass model validation on required fields
-                    $customer = Customer::where('name', $name)->first();
+                    // Find existing customer by phone first, then name
+                    $customer = null;
+                    if ($phone) {
+                        $customer = Customer::where('phone', $phone)->first();
+                    }
+                    if (!$customer && $name) {
+                        $customer = Customer::where('name', $name)->first();
+                    }
+
+                    // Create if not found
                     if (!$customer) {
                         $customer = Customer::create([
                             'name'                     => $name,
-                            'phone'                    => $phone ?: 'imported',
+                            'phone'                    => $phone ?: 'imported-'.$lineNum,
                             'type'                     => 'customer',
                             'default_shipping_area_id' => $shippingArea?->id,
                         ]);
                     } else {
-                        // Update phone if missing
-                        if ($phone && !$customer->phone) {
-                            $customer->update(['phone' => $phone]);
-                        }
-                        // Update area if missing and we found one
-                        if ($shippingArea && !$customer->default_shipping_area_id) {
-                            $customer->update(['default_shipping_area_id' => $shippingArea->id]);
-                        }
+                        // Update missing fields
+                        $updates = [];
+                        if ($phone && !$customer->phone) $updates['phone'] = $phone;
+                        if ($shippingArea && !$customer->default_shipping_area_id) $updates['default_shipping_area_id'] = $shippingArea->id;
+                        if (!empty($updates)) $customer->update($updates);
                     }
 
-                    // Create new order for this customer
+                    // Create the order
                     $currentOrder = Order::create([
                         'trip_id'          => $trip->id,
                         'customer_id'      => $customer->id,
                         'shipping_area_id' => $shippingArea?->id,
-                        'created_by'       => Auth::id(),
                         'notes'            => $notes ?: null,
+                        'created_by'       => Auth::id(),
                     ]);
 
                     $currentCustName = $name;
+                    $imported++;
 
-                    // Record deposit if present
+                    // Record deposit payment if provided
                     if ($dp > 0) {
                         $parsedDate = now()->format('Y-m-d');
                         try {
-                            if ($dpDate) $parsedDate = \Carbon\Carbon::parse($dpDate)->format('Y-m-d');
+                            if ($dpDate) {
+                                // Support both YYYY-MM-DD and DD/MM/YYYY
+                                if (str_contains($dpDate, '/')) {
+                                    $parts = explode('/', $dpDate);
+                                    $parsedDate = "{$parts[2]}-{$parts[1]}-{$parts[0]}";
+                                } else {
+                                    $parsedDate = \Carbon\Carbon::parse($dpDate)->format('Y-m-d');
+                                }
+                            }
                         } catch (\Exception $e) {}
 
                         $currentOrder->payments()->create([
@@ -270,29 +328,31 @@ class ReportController extends Controller
                         ]);
                         $currentOrder->update(['deposit_paid' => $dp, 'payment_status' => 'partial']);
                     }
-
-                    $imported++;
                 }
 
-                // Add order item if code is present
+                // --- Add order item ---
                 if ($currentOrder && $code) {
                     $product = Product::where('product_code', $code)
                         ->where('trip_id', $trip->id)
                         ->first();
 
                     if (!$product) {
-                        $errors[] = "Row ".($rowIdx+2).": Product code '{$code}' not found in this trip — skipped.";
+                        $warnings[] = "Row {$lineNum}: Product code '{$code}' not found in trip '{$trip->name}' — skipped.";
                         $skipped++;
                         continue;
                     }
 
-                    // Find matching variant
+                    // Find variant by color+size
                     $variant = null;
                     if ($color || $size) {
-                        $variant = $product->variants()
-                            ->when($color, fn($q) => $q->whereRaw('LOWER(color) = ?', [strtolower($color)]))
-                            ->when($size,  fn($q) => $q->whereRaw('LOWER(size) = ?', [strtolower($size)]))
-                            ->first();
+                        $query = $product->variants();
+                        if ($color) $query->whereRaw('LOWER(color) = ?', [strtolower($color)]);
+                        if ($size)  $query->whereRaw('LOWER(size) = ?',  [strtolower($size)]);
+                        $variant = $query->first();
+
+                        if (!$variant && ($color || $size)) {
+                            $warnings[] = "Row {$lineNum}: Variant '{$color}/{$size}' not found for '{$code}' — item added without variant.";
+                        }
                     }
 
                     $unitPrice = $price ?: ($variant ? $variant->final_price : $product->price);
@@ -300,41 +360,38 @@ class ReportController extends Controller
                     $currentOrder->items()->create([
                         'product_id'         => $product->id,
                         'product_variant_id' => $variant?->id,
-                        'quantity'           => 1,
+                        'quantity'           => $qty,
                         'unit_price'         => $unitPrice,
-                        'line_total'         => $unitPrice,
+                        'line_total'         => $unitPrice * $qty,
                         'status'             => 'pending',
                     ]);
+                } elseif ($currentOrder === null && $code) {
+                    $warnings[] = "Row {$lineNum}: Item '{$code}' has no customer — skipped. Make sure Name is filled on the first row of each customer.";
+                    $skipped++;
                 }
+            }
 
-                // Recalc order after all items are added (done below after loop)
+            // Recalculate the last order in the file
+            if ($currentOrder) {
+                $calc = $promoSvc->recalculate($currentOrder->fresh());
+                $currentOrder->update([
+                    'subtotal'             => $calc['subtotal'],
+                    'discount_amount'      => $calc['discount_amount'],
+                    'shipping_fee'         => $calc['shipping_fee'],
+                    'shipping_discount'    => $calc['shipping_discount'],
+                    'shipping_weight_gram' => $calc['shipping_weight_gram'],
+                    'shipping_kg_charged'  => $calc['shipping_kg_charged'],
+                    'total_amount'         => $calc['total_amount'],
+                ]);
             }
         });
 
-        // Recalculate totals for all newly imported orders
-        $newOrders = Order::where('trip_id', $trip->id)
-            ->whereDate('created_at', today())
-            ->whereDoesntHave('items', fn($q) => $q->where('status', '!=', 'pending'))
-            ->get();
+        $msg = "✓ Imported {$imported} order(s).";
+        if ($skipped)          $msg .= " {$skipped} item(s) skipped.";
+        if (!empty($warnings)) $msg .= " Warnings: ".implode(' | ', array_slice($warnings, 0, 5));
 
-        foreach ($newOrders as $order) {
-            $calc = $promoSvc->recalculate($order->fresh());
-            $order->update([
-                'subtotal'             => $calc['subtotal'],
-                'discount_amount'      => $calc['discount_amount'],
-                'shipping_fee'         => $calc['shipping_fee'],
-                'shipping_discount'    => $calc['shipping_discount'],
-                'shipping_weight_gram' => $calc['shipping_weight_gram'],
-                'shipping_kg_charged'  => $calc['shipping_kg_charged'],
-                'total_amount'         => $calc['total_amount'],
-            ]);
-        }
-
-        $msg = "Imported {$imported} orders.";
-        if ($skipped) $msg .= " {$skipped} items skipped.";
-        if ($errors)  $msg .= " Warnings: " . implode('; ', array_slice($errors, 0, 3));
-
-        return redirect()->route('reports.index')->with('success', $msg);
+        $flash = empty($warnings) ? 'success' : 'warning';
+        return redirect()->route('reports.index')->with($flash, $msg);
     }
 
     public function importCustomers(Request $request)

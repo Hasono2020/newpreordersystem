@@ -69,7 +69,44 @@ class CustomerController extends Controller
             'notes'                    => 'nullable|string',
             'default_shipping_area_id' => 'required|exists:shipping_areas,id',
         ]);
+
+        $oldAreaId = $customer->default_shipping_area_id;
+        $newAreaId = $data['default_shipping_area_id'];
+
         $customer->update($data);
+
+        // If shipping area changed, apply it to all this customer's orders
+        // that currently have no shipping area set, then recalculate
+        if ($newAreaId && $newAreaId != $oldAreaId) {
+            $ordersToUpdate = $customer->orders()
+                ->whereNull('shipping_area_id')
+                ->with('items.product', 'items.variant', 'shippingArea')
+                ->get();
+
+            $promoSvc = app(\App\Services\PromoService::class);
+
+            foreach ($ordersToUpdate as $order) {
+                $order->update(['shipping_area_id' => $newAreaId]);
+                $calc = $promoSvc->recalculate($order->fresh());
+                $order->update([
+                    'subtotal'             => $calc['subtotal'],
+                    'discount_amount'      => $calc['discount_amount'],
+                    'shipping_fee'         => $calc['shipping_fee'],
+                    'shipping_discount'    => $calc['shipping_discount'],
+                    'shipping_weight_gram' => $calc['shipping_weight_gram'],
+                    'shipping_kg_charged'  => $calc['shipping_kg_charged'],
+                    'total_amount'         => $calc['total_amount'],
+                ]);
+            }
+
+            $count = $ordersToUpdate->count();
+            $msg = 'Customer updated.';
+            if ($count > 0) {
+                $msg .= " Applied shipping area to {$count} order(s) that had none, and recalculated totals.";
+            }
+            return redirect()->route('customers.show', $customer)->with('success', $msg);
+        }
+
         return redirect()->route('customers.show', $customer)->with('success', 'Customer updated.');
     }
 

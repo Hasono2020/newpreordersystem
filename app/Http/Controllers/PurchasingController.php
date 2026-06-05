@@ -16,7 +16,7 @@ class PurchasingController extends Controller
 {
     public function index(Request $request)
     {
-        $trips        = Trip::whereIn('status', ['open', 'purchasing'])->orderByDesc('id')->get();
+        $trips        = Trip::whereIn('status', ['open', 'order_closed', 'purchasing'])->orderByDesc('id')->get();
         $selectedTrip = $request->trip_id ? Trip::find($request->trip_id) : $trips->first();
 
         // Group demand by supplier for multi-supplier support
@@ -205,17 +205,20 @@ class PurchasingController extends Controller
         ]);
 
         DB::transaction(function () use ($request, $purchasing) {
+            $affectedOrderIds = [];
+
             foreach ($request->items as $itemData) {
                 $poItem = $purchasing->items()->find($itemData['id']);
                 $poItem->update(['quantity_received' => $itemData['quantity_received']]);
 
-                // Update supplier stock on variant
+                // Bug 3 fix: INCREMENT supplier_stock, don't overwrite
+                // Multiple POs may deliver to the same variant
                 if ($poItem->product_variant_id) {
                     ProductVariant::where('id', $poItem->product_variant_id)
-                        ->update(['supplier_stock' => $itemData['quantity_received']]);
+                        ->increment('supplier_stock', $itemData['quantity_received']);
                 }
 
-                // FIFO: get pending order items ordered by order creation time (oldest first)
+                // FIFO: get pending order items oldest first
                 $pendingItems = OrderItem::where(function ($q) use ($poItem) {
                         if ($poItem->product_variant_id) {
                             $q->where('product_variant_id', $poItem->product_variant_id);
@@ -235,6 +238,8 @@ class PurchasingController extends Controller
                 $remaining = (int) $itemData['quantity_received'];
 
                 foreach ($pendingItems as $orderItem) {
+                    $affectedOrderIds[] = $orderItem->order_id;
+
                     if ($remaining <= 0) {
                         $orderItem->update(['status' => 'sold_out']);
                     } elseif ($orderItem->quantity <= $remaining) {
@@ -264,7 +269,7 @@ class PurchasingController extends Controller
                     }
                 }
 
-                // Update allocated_qty = total arrived quantity for this variant/product
+                // Update allocated_qty from actual arrived items
                 if ($poItem->product_variant_id) {
                     $allocatedQty = OrderItem::where('product_variant_id', $poItem->product_variant_id)
                         ->whereHas('order', fn($q) => $q->where('trip_id', $purchasing->trip_id))
@@ -277,6 +282,24 @@ class PurchasingController extends Controller
             }
 
             $purchasing->update(['status' => 'arrived']);
+
+            // Bug 4 fix: recalculate totals for ALL affected orders after FIFO
+            $promoService = app(\App\Services\PromoService::class);
+            foreach (array_unique($affectedOrderIds) as $orderId) {
+                $affectedOrder = \App\Models\Order::find($orderId);
+                if ($affectedOrder) {
+                    $calc = $promoService->recalculate($affectedOrder->fresh());
+                    $affectedOrder->update([
+                        'subtotal'             => $calc['subtotal'],
+                        'discount_amount'      => $calc['discount_amount'],
+                        'shipping_fee'         => $calc['shipping_fee'],
+                        'shipping_discount'    => $calc['shipping_discount'],
+                        'shipping_weight_gram' => $calc['shipping_weight_gram'],
+                        'shipping_kg_charged'  => $calc['shipping_kg_charged'],
+                        'total_amount'         => $calc['total_amount'],
+                    ]);
+                }
+            }
         });
 
         return back()->with('success', 'Arrival confirmed. Stock allocated via FIFO (partial fills split automatically).');

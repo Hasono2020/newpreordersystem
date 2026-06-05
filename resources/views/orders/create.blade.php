@@ -572,12 +572,25 @@ document.getElementById('saveQuickCustomer').addEventListener('click', () => {
         body: JSON.stringify({name, phone, type, address, default_shipping_area_id: areaId})
     })
     .then(r => r.json())
-    .then(c => {
+    .then(data => {
         spin.classList.add('d-none');
+
+        // Bug 8 fix: handle duplicate phone warning
+        if (data.duplicate) {
+            if (confirm(`⚠️ ${data.message}\n\nDo you want to use this existing customer instead?`)) {
+                quickModal.hide();
+                selectCustomer(data.customer);
+                if (areaId) applyShippingArea(areaId);
+            } else {
+                errEl.textContent = 'Please use a different phone number or search for the existing customer.';
+                errEl.style.display = 'block';
+            }
+            return;
+        }
+
+        const c = data.customer ?? data;
         quickModal.hide();
         selectCustomer(c);
-
-        // Apply shipping area from modal to the order
         if (areaId) applyShippingArea(areaId);
     })
     .catch(() => {
