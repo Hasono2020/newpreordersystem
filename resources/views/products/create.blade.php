@@ -75,8 +75,14 @@
                 class="form-control font-monospace"
                 value="{{ old('product_code') }}"
                 placeholder="e.g. NA_01 or NZ_01"
-                oninput="this.value=this.value.toUpperCase(); checkZCode(this.value)">
+                oninput="this.value=this.value.toUpperCase(); checkZCode(this.value); checkCodeUnique(this.value)">
             <div class="form-text">Prefix ending in <strong>Z</strong> (NZ, MZ…) auto-excludes from promos.</div>
+            <div id="codeUniqueWarn" class="text-danger small mt-1" style="display:none;">
+                <i class="bi bi-x-circle-fill me-1"></i><span id="codeUniqueMsg"></span>
+            </div>
+            <div id="codeUniqueOk" class="text-success small mt-1" style="display:none;">
+                <i class="bi bi-check-circle-fill me-1"></i>Code is available
+            </div>
         </div>
         <div class="col-md-4">
             <label class="form-label fw-semibold">Brand</label>
@@ -385,6 +391,33 @@ function checkZCode(val) {
         document.getElementById('excludedFromPromo').checked = true;
         document.getElementById('promoExcludeBox').classList.add('active');
     }
+}
+
+/* ── Live product code uniqueness check ── */
+let codeCheckTimer = null;
+function checkCodeUnique(val) {
+    const warn = document.getElementById('codeUniqueWarn');
+    const ok   = document.getElementById('codeUniqueOk');
+    const msg  = document.getElementById('codeUniqueMsg');
+    warn.style.display = 'none';
+    ok.style.display   = 'none';
+    if (!val || val.length < 2) return;
+    clearTimeout(codeCheckTimer);
+    codeCheckTimer = setTimeout(() => {
+        fetch(`/api/products/check-code?code=${encodeURIComponent(val)}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.exists) {
+                    msg.textContent = `Already used by: ${data.product_name} (${data.trip_name})`;
+                    warn.style.display = 'block';
+                    ok.style.display   = 'none';
+                } else {
+                    ok.style.display   = 'block';
+                    warn.style.display = 'none';
+                }
+            })
+            .catch(() => {});
+    }, 400);
 }
 
 /* ── Image preview + size check ── */

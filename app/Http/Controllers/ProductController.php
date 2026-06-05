@@ -32,16 +32,18 @@ class ProductController extends Controller
             'trip_id'          => 'required|exists:trips,id',
             'name'             => 'required|string|max:255',
             'sku'              => 'nullable|string|max:100',
-            'product_code'     => 'nullable|string|max:50',
+            'product_code'     => 'nullable|string|max:50|unique:products,product_code',
             'brand'            => 'nullable|string|max:100',
             'price'            => 'required|numeric|min:0',
             'weight_gram'      => 'nullable|integer|min:0',
             'notes'            => 'nullable|string',
-            'image'            => 'nullable|image|max:512', // 512KB hard server limit
+            'image'            => 'nullable|image|max:512',
             'variants'         => 'nullable|array',
             'variants.*.color' => 'nullable|string|max:50',
             'variants.*.size'  => 'nullable|string|max:20',
             'variants.*.price_adjustment' => 'nullable|numeric',
+        ], [
+            'product_code.unique' => 'This product code is already used by another product. Each product code must be unique.',
         ]);
 
         $data['excluded_from_promo'] = $request->boolean('excluded_from_promo');
@@ -86,7 +88,7 @@ class ProductController extends Controller
             'trip_id'      => 'required|exists:trips,id',
             'name'         => 'required|string|max:255',
             'sku'          => 'nullable|string|max:100',
-            'product_code' => 'nullable|string|max:50',
+            'product_code' => 'nullable|string|max:50|unique:products,product_code,'.$product->id,
             'brand'        => 'nullable|string|max:100',
             'supplier_id'  => 'nullable|exists:suppliers,id',
             'price'        => 'required|numeric|min:0',
@@ -94,6 +96,8 @@ class ProductController extends Controller
             'notes'        => 'nullable|string',
             'status'       => 'required|in:active,closed,arrived',
             'image'        => 'nullable|image|max:512',
+        ], [
+            'product_code.unique' => 'This product code is already used by another product. Each product code must be unique.',
         ]);
 
         $data['excluded_from_promo'] = $request->boolean('excluded_from_promo');
@@ -139,6 +143,30 @@ class ProductController extends Controller
     }
 
     // Manage variants separately
+    /** AJAX: check if product code is already taken */
+    public function checkCode(Request $request)
+    {
+        $code      = strtoupper(trim($request->code ?? ''));
+        $excludeId = $request->exclude;
+
+        if (!$code) return response()->json(['exists' => false]);
+
+        $query = Product::where('product_code', $code);
+        if ($excludeId) $query->where('id', '!=', $excludeId);
+
+        $product = $query->with('trip')->first();
+
+        if ($product) {
+            return response()->json([
+                'exists'       => true,
+                'product_name' => $product->name,
+                'trip_name'    => $product->trip->name,
+            ]);
+        }
+
+        return response()->json(['exists' => false]);
+    }
+
     public function storeVariant(Request $request, Product $product)
     {
         $data = $request->validate([

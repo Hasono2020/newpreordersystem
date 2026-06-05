@@ -68,8 +68,11 @@
             <input type="text" name="product_code" id="productCodeInput"
                 class="form-control font-monospace"
                 value="{{ old('product_code', $product->product_code) }}"
-                oninput="this.value=this.value.toUpperCase(); checkZCode(this.value)">
+                oninput="this.value=this.value.toUpperCase(); checkZCode(this.value); checkCodeUnique(this.value, {{ $product->id }})">
             <div class="form-text">Prefix ending in Z → auto-excludes from promos</div>
+            <div id="codeUniqueWarn" class="text-danger small mt-1" style="display:none;">
+                <i class="bi bi-x-circle-fill me-1"></i><span id="codeUniqueMsg"></span>
+            </div>
         </div>
         <div class="col-md-4">
             <label class="form-label fw-semibold">Brand</label>
@@ -274,12 +277,23 @@ function previewImage(input) {
     reader.readAsDataURL(file);
 }
 
-function checkZCode(val) {
-    const prefix = (val.split('_')[0] || '').toUpperCase();
-    if (prefix.length >= 2 && prefix.endsWith('Z')) {
-        document.getElementById('excludedFromPromo').checked = true;
-        document.getElementById('promoExcludeBox').classList.add('active');
-    }
+let codeCheckTimer = null;
+function checkCodeUnique(val, excludeId) {
+    const warn = document.getElementById('codeUniqueWarn');
+    const msg  = document.getElementById('codeUniqueMsg');
+    warn.style.display = 'none';
+    if (!val || val.length < 2) return;
+    clearTimeout(codeCheckTimer);
+    codeCheckTimer = setTimeout(() => {
+        fetch(`/api/products/check-code?code=${encodeURIComponent(val)}&exclude=${excludeId || ''}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.exists) {
+                    msg.textContent = `Already used by: ${data.product_name} (${data.trip_name})`;
+                    warn.style.display = 'block';
+                }
+            }).catch(() => {});
+    }, 400);
 }
 
 /* ── Supplier search ── */

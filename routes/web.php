@@ -89,6 +89,7 @@ Route::middleware('auth')->group(function () {
     Route::post('api/suppliers/quick', [\App\Http\Controllers\SupplierController::class, 'quickStore'])->name('api.suppliers.quick');
 
     // AJAX APIs
+    Route::get('api/products/check-code', [ProductController::class, 'checkCode'])->name('api.products.check-code');
     Route::get('api/trips/{trip}/products', [OrderController::class, 'tripProducts'])->name('api.trip.products');
     Route::get('api/customers/search', [OrderController::class, 'searchCustomers'])->name('api.customers.search');
     Route::post('api/customers/quick', [OrderController::class, 'quickCreateCustomer'])->name('api.customers.quick');
