@@ -25,8 +25,77 @@
             @endif
         </form>
     </div>
-    <div class="col-auto">
+    <div class="col-auto d-flex gap-2">
+        <div class="dropdown">
+            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+                <i class="bi bi-arrow-down-up me-1"></i>Import / Export
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end" style="min-width:240px;">
+                <li><h6 class="dropdown-header">Export</h6></li>
+                <li>
+                    <a class="dropdown-item" href="{{ route('orders.export', request()->only('trip_id')) }}">
+                        <i class="bi bi-download me-2 text-success"></i>Export orders as Excel
+                    </a>
+                </li>
+                <li>
+                    <a class="dropdown-item" href="{{ route('orders.items.export', request()->only('trip_id')) }}">
+                        <i class="bi bi-download me-2 text-info"></i>Export order items as Excel
+                    </a>
+                </li>
+                <li><hr class="dropdown-divider"></li>
+                <li><h6 class="dropdown-header">Import</h6></li>
+                <li>
+                    <a class="dropdown-item" href="{{ route('orders.import.template') }}">
+                        <i class="bi bi-file-earmark-spreadsheet me-2 text-secondary"></i>Download template (.xlsx)
+                    </a>
+                </li>
+                <li>
+                    <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#importOrderModal">
+                        <i class="bi bi-upload me-2 text-primary"></i>Import orders from Excel
+                    </button>
+                </li>
+            </ul>
+        </div>
         <a href="{{ route('orders.create') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>New Order</a>
+    </div>
+</div>
+
+{{-- Import Order Modal --}}
+<div class="modal fade" id="importOrderModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-upload me-2"></i>Import Orders from Excel</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-light border small mb-3">
+                    <strong>Columns:</strong> No · Name · Phone · Area · Code · Color · Size · Qty · Price · DP · Date of DP · Notes<br>
+                    <span class="text-muted">Products must exist in the selected trip. <a href="{{ route('orders.import.template') }}">Download template</a></span>
+                </div>
+                <form method="POST" action="{{ route('orders.import') }}" enctype="multipart/form-data">
+                    @csrf
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Trip <span class="text-danger">*</span></label>
+                        <select name="trip_id" class="form-select" required>
+                            <option value="">Select trip…</option>
+                            @foreach(\App\Models\Trip::orderByDesc('id')->get() as $trip)
+                                <option value="{{ $trip->id }}" {{ request('trip_id') == $trip->id ? 'selected' : '' }}>
+                                    {{ $trip->name }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Excel File (.xlsx) <span class="text-danger">*</span></label>
+                        <input type="file" name="file" class="form-control" accept=".xlsx,.xls" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-upload me-1"></i>Import Orders
+                    </button>
+                </form>
+            </div>
+        </div>
     </div>
 </div>
 

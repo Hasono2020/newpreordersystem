@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Response;
 
 class ReportController extends Controller
 {
+    use \App\Traits\HandlesXlsx;
     public function index(Request $request)
     {
         $trips   = Trip::orderByDesc('id')->get();
@@ -72,18 +73,17 @@ class ReportController extends Controller
         if ($request->trip_id) $query->where('trip_id', $request->trip_id);
         $orders = $query->latest()->get();
 
-        return $this->streamCsv('orders_export.csv', function ($out) use ($orders) {
-            fputcsv($out, ['order_number','customer_name','customer_type','customer_phone',
-                'trip','shipping_area','subtotal','discount','shipping_fee',
-                'shipping_discount','total_amount','paid','balance_due','payment_status','created_at','notes']);
-            foreach ($orders as $o) {
-                fputcsv($out, [$o->order_number, $o->customer->name, $o->customer->type,
-                    $o->customer->phone, $o->trip->name, $o->shippingArea?->name ?? '',
-                    $o->subtotal, $o->discount_amount, $o->shipping_fee, $o->shipping_discount,
-                    $o->total_amount, $o->deposit_paid, $o->total_amount - $o->deposit_paid,
-                    $o->payment_status, $o->created_at->format('Y-m-d H:i'), $o->notes]);
-            }
-        });
+        $rows = [['order_number','customer_name','customer_type','customer_phone',
+            'trip','shipping_area','subtotal','discount','shipping_fee',
+            'shipping_discount','total_amount','paid','balance_due','payment_status','created_at','notes']];
+        foreach ($orders as $o) {
+            $rows[] = [$o->order_number, $o->customer->name, $o->customer->type,
+                $o->customer->phone, $o->trip->name, $o->shippingArea?->name ?? '',
+                $o->subtotal, $o->discount_amount, $o->shipping_fee, $o->shipping_discount,
+                $o->total_amount, $o->deposit_paid, $o->total_amount - $o->deposit_paid,
+                $o->payment_status, $o->created_at->format('Y-m-d H:i'), $o->notes];
+        }
+        return $this->streamXlsx('orders_export.xlsx', $rows);
     }
 
     public function exportOrderItems(Request $request)
@@ -94,17 +94,16 @@ class ReportController extends Controller
         }
         $items = $query->latest()->get();
 
-        return $this->streamCsv('order_items_export.csv', function ($out) use ($items) {
-            fputcsv($out, ['order_number','customer_name','customer_type','trip',
-                'product_name','product_code','color','size','quantity','unit_price','line_total','status','notes']);
-            foreach ($items as $i) {
-                fputcsv($out, [$i->order->order_number, $i->order->customer->name,
-                    $i->order->customer->type, $i->order->trip->name,
-                    $i->product->name, $i->product->product_code ?? '',
-                    $i->variant?->color ?? '', $i->variant?->size ?? '',
-                    $i->quantity, $i->unit_price, $i->line_total, $i->status, $i->notes]);
-            }
-        });
+        $rows = [['order_number','customer_name','customer_type','trip',
+            'product_name','product_code','color','size','quantity','unit_price','line_total','status','notes']];
+        foreach ($items as $i) {
+            $rows[] = [$i->order->order_number, $i->order->customer->name,
+                $i->order->customer->type, $i->order->trip->name,
+                $i->product->name, $i->product->product_code ?? '',
+                $i->variant?->color ?? '', $i->variant?->size ?? '',
+                $i->quantity, $i->unit_price, $i->line_total, $i->status, $i->notes];
+        }
+        return $this->streamXlsx('order_items_export.xlsx', $rows);
     }
 
     public function exportCustomers()
@@ -114,17 +113,14 @@ class ReportController extends Controller
             ->withSum('orders as total_spent', 'total_amount')
             ->orderBy('name')->get();
 
-        return $this->streamCsv('customers_export.csv', function ($out) use ($customers) {
-            fputcsv($out, ['name','phone','type','shipping_area','address','notes','total_orders','total_spent']);
-            foreach ($customers as $c) {
-                fputcsv($out, [
-                    $c->name, $c->phone, $c->type,
-                    $c->defaultShippingArea?->name ?? '',
-                    $c->address, $c->notes,
-                    $c->orders_count, $c->total_spent ?? 0,
-                ]);
-            }
-        });
+        $rows = [['name','phone','type','shipping_area','address','notes','total_orders','total_spent']];
+        foreach ($customers as $c) {
+            $rows[] = [$c->name, $c->phone, $c->type,
+                $c->defaultShippingArea?->name ?? '',
+                $c->address, $c->notes,
+                $c->orders_count, $c->total_spent ?? 0];
+        }
+        return $this->streamXlsx('customers_export.xlsx', $rows);
     }
 
     public function exportProducts(Request $request)
@@ -134,19 +130,16 @@ class ReportController extends Controller
         if ($request->trip_id) $query->where('trip_id', $request->trip_id);
         $products = $query->orderBy('name')->get();
 
-        return $this->streamCsv('products_export.csv', function ($out) use ($products) {
-            fputcsv($out, ['trip','name','product_code','sku','brand','supplier','price','weight_gram','excluded_from_promo','status','total_ordered']);
-            foreach ($products as $p) {
-                fputcsv($out, [
-                    $p->trip->name, $p->name,
-                    $p->product_code ?? '', $p->sku ?? '', $p->brand ?? '',
-                    $p->supplier?->name ?? '',
-                    $p->price, $p->weight_gram,
-                    $p->excluded_from_promo ? 'yes' : 'no',
-                    $p->status, $p->total_ordered ?? 0,
-                ]);
-            }
-        });
+        $rows = [['trip','name','product_code','sku','brand','supplier','price','weight_gram','excluded_from_promo','status','total_ordered']];
+        foreach ($products as $p) {
+            $rows[] = [$p->trip->name, $p->name,
+                $p->product_code ?? '', $p->sku ?? '', $p->brand ?? '',
+                $p->supplier?->name ?? '',
+                $p->price, $p->weight_gram,
+                $p->excluded_from_promo ? 'yes' : 'no',
+                $p->status, $p->total_ordered ?? 0];
+        }
+        return $this->streamXlsx('products_export.xlsx', $rows);
     }
 
     // ── Excel Order Import ───────────────────────────────────────────
@@ -432,208 +425,4 @@ class ReportController extends Controller
         return redirect()->route('reports.index')->with('success', "Imported {$imported} customers.");
     }
 
-    // ── Helpers ──────────────────────────────────────────────────────
-
-    private function streamCsv(string $filename, callable $callback)
-    {
-        return Response::stream(function () use ($callback) {
-            $out = fopen('php://output', 'w');
-            fputs($out, "\xEF\xBB\xBF"); // UTF-8 BOM for Excel
-            $callback($out);
-            fclose($out);
-        }, 200, [
-            'Content-Type'        => 'text/csv; charset=UTF-8',
-            'Content-Disposition' => "attachment; filename=\"{$filename}\"",
-        ]);
-    }
-
-    /**
-     * Read xlsx file using native ZipArchive + SimpleXML (no package needed)
-     * Returns array of rows (each row is array of cell values)
-     */
-    private function readXlsx(string $path): array
-    {
-        $rows = [];
-        try {
-            $zip = new \ZipArchive();
-            if ($zip->open($path) !== true) return [];
-
-            // Read shared strings
-            $sharedStrings = [];
-            $ssXml = $zip->getFromName('xl/sharedStrings.xml');
-            if ($ssXml) {
-                $ss = simplexml_load_string($ssXml);
-                foreach ($ss->si as $si) {
-                    if (isset($si->t)) {
-                        $sharedStrings[] = (string)$si->t;
-                    } elseif (isset($si->r)) {
-                        $val = '';
-                        foreach ($si->r as $r) $val .= (string)($r->t ?? '');
-                        $sharedStrings[] = $val;
-                    } else {
-                        $sharedStrings[] = '';
-                    }
-                }
-            }
-
-            // Read sheet1
-            $sheetXml = $zip->getFromName('xl/worksheets/sheet1.xml');
-            $zip->close();
-            if (!$sheetXml) return [];
-
-            $sheet = simplexml_load_string($sheetXml);
-            $maxCol = 0;
-
-            foreach ($sheet->sheetData->row as $row) {
-                $rowData = [];
-                $rowIdx  = (int)$row['r'] - 1;
-                foreach ($row->c as $cell) {
-                    // Parse column letter to index
-                    preg_match('/^([A-Z]+)(\d+)$/', (string)$cell['r'], $m);
-                    $colIdx = $this->colLetterToIndex($m[1]);
-                    $maxCol = max($maxCol, $colIdx);
-
-                    $type = (string)($cell['t'] ?? '');
-                    $v    = (string)($cell->v ?? '');
-
-                    if ($type === 's') {
-                        $rowData[$colIdx] = $sharedStrings[(int)$v] ?? '';
-                    } elseif ($type === 'str' || $type === 'inlineStr') {
-                        $rowData[$colIdx] = $v;
-                    } else {
-                        // Number or date — return as-is
-                        $rowData[$colIdx] = is_numeric($v) ? (strpos($v, '.') !== false ? (float)$v : (int)$v) : $v;
-                    }
-                }
-                // Fill missing columns with empty string
-                for ($i = 0; $i <= $maxCol; $i++) {
-                    if (!array_key_exists($i, $rowData)) $rowData[$i] = '';
-                }
-                ksort($rowData);
-                $rows[$rowIdx] = array_values($rowData);
-            }
-            ksort($rows);
-            return array_values($rows);
-        } catch (\Exception $e) {
-            return [];
-        }
-    }
-
-    private function colLetterToIndex(string $col): int
-    {
-        $col = strtoupper($col);
-        $idx = 0;
-        for ($i = 0; $i < strlen($col); $i++) {
-            $idx = $idx * 26 + (ord($col[$i]) - ord('A') + 1);
-        }
-        return $idx - 1;
-    }
-
-    /**
-     * Build a minimal valid .xlsx file from a 2D array
-     */
-    private function buildXlsx(array $data): string
-    {
-        $sharedStrings = [];
-        $ssIndex = [];
-
-        // Collect all unique strings
-        foreach ($data as $row) {
-            foreach ($row as $cell) {
-                $s = (string)$cell;
-                if (!is_numeric($cell) && $s !== '' && !isset($ssIndex[$s])) {
-                    $ssIndex[$s] = count($sharedStrings);
-                    $sharedStrings[] = $s;
-                }
-            }
-        }
-
-        // Build sheet XML
-        $sheetRows = '';
-        foreach ($data as $ri => $row) {
-            $rowNum = $ri + 1;
-            $cells  = '';
-            foreach ($row as $ci => $cell) {
-                $col  = $this->indexToColLetter($ci);
-                $ref  = $col . $rowNum;
-                $s    = (string)$cell;
-                if ($s === '') {
-                    $cells .= "<c r=\"{$ref}\"/>";
-                } elseif (is_numeric($cell) && $s !== '') {
-                    $cells .= "<c r=\"{$ref}\"><v>{$cell}</v></c>";
-                } else {
-                    $idx   = $ssIndex[$s];
-                    $cells .= "<c r=\"{$ref}\" t=\"s\"><v>{$idx}</v></c>";
-                }
-            }
-            $sheetRows .= "<row r=\"{$rowNum}\">{$cells}</row>";
-        }
-
-        $sheetXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<sheetData>' . $sheetRows . '</sheetData></worksheet>';
-
-        // Build sharedStrings XML
-        $ssEntries = '';
-        foreach ($sharedStrings as $str) {
-            $escaped  = htmlspecialchars($str, ENT_XML1, 'UTF-8');
-            $ssEntries .= "<si><t>{$escaped}</t></si>";
-        }
-        $ssCount   = count($sharedStrings);
-        $ssXml     = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="'.$ssCount.'" uniqueCount="'.$ssCount.'">'.$ssEntries.'</sst>';
-
-        $workbookXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
- xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-<sheets><sheet name="Orders" sheetId="1" r:id="rId1"/></sheets></workbook>';
-
-        $workbookRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
-<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>
-</Relationships>';
-
-        $contentTypes = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-<Default Extension="xml"  ContentType="application/xml"/>
-<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
-<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
-<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>
-</Types>';
-
-        $dotRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
-</Relationships>';
-
-        // Write to temp zip
-        $tmp = tempnam(sys_get_temp_dir(), 'xlsx_');
-        $zip = new \ZipArchive();
-        $zip->open($tmp, \ZipArchive::CREATE | \ZipArchive::OVERWRITE);
-        $zip->addFromString('[Content_Types].xml',          $contentTypes);
-        $zip->addFromString('_rels/.rels',                   $dotRels);
-        $zip->addFromString('xl/workbook.xml',               $workbookXml);
-        $zip->addFromString('xl/_rels/workbook.xml.rels',    $workbookRels);
-        $zip->addFromString('xl/worksheets/sheet1.xml',      $sheetXml);
-        $zip->addFromString('xl/sharedStrings.xml',          $ssXml);
-        $zip->close();
-
-        $content = file_get_contents($tmp);
-        unlink($tmp);
-        return $content;
-    }
-
-    private function indexToColLetter(int $idx): string
-    {
-        $letter = '';
-        $idx++;
-        while ($idx > 0) {
-            $idx--;
-            $letter = chr(65 + ($idx % 26)) . $letter;
-            $idx    = intval($idx / 26);
-        }
-        return $letter;
-    }
 }

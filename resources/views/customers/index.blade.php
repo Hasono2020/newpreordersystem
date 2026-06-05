@@ -21,6 +21,27 @@
         </form>
     </div>
     <div class="col-auto d-flex gap-2">
+        {{-- Import/Export dropdown --}}
+        <div class="dropdown">
+            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+                <i class="bi bi-arrow-down-up me-1"></i>Import / Export
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end" style="min-width:220px;">
+                <li><h6 class="dropdown-header">Export</h6></li>
+                <li>
+                    <a class="dropdown-item" href="{{ route('customers.export') }}">
+                        <i class="bi bi-download me-2 text-success"></i>Export all as Excel
+                    </a>
+                </li>
+                <li><hr class="dropdown-divider"></li>
+                <li><h6 class="dropdown-header">Import</h6></li>
+                <li>
+                    <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#importModal">
+                        <i class="bi bi-upload me-2 text-primary"></i>Import from Excel
+                    </button>
+                </li>
+            </ul>
+        </div>
         {{-- Bulk delete dropdown --}}
         <div class="dropdown">
             <button class="btn btn-sm btn-outline-danger dropdown-toggle" data-bs-toggle="dropdown">
@@ -43,6 +64,34 @@
         <a href="{{ route('customers.create') }}" class="btn btn-primary btn-sm">
             <i class="bi bi-plus-lg me-1"></i>Add Customer
         </a>
+    </div>
+</div>
+
+{{-- Import Modal --}}
+<div class="modal fade" id="importModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-upload me-2"></i>Import Customers from Excel</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-light border small mb-3">
+                    <strong>Excel columns:</strong> name · phone · type · shipping_area · address · notes<br>
+                    <span class="text-muted">First row must be the header. Duplicates (same phone) are skipped.</span><br>
+                    <a href="{{ route('customers.export') }}" class="small">
+                        <i class="bi bi-download me-1"></i>Export existing customers as reference
+                    </a>
+                </div>
+                <form method="POST" action="{{ route('customers.import') }}" enctype="multipart/form-data">
+                    @csrf
+                    <input type="file" name="file" class="form-control mb-3" accept=".xlsx" required>
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-upload me-1"></i>Import
+                    </button>
+                </form>
+            </div>
+        </div>
     </div>
 </div>
 

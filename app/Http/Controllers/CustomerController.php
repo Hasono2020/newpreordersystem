@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\DB;
 
 class CustomerController extends Controller
 {
+    use \App\Traits\HandlesXlsx;
+
     public function index(Request $request)
     {
         $query = Customer::withCount('orders');
@@ -121,6 +123,69 @@ class CustomerController extends Controller
             $customer->delete();
         });
         return redirect()->route('customers.index')->with('success', 'Customer deleted.');
+    }
+
+    public function export()
+    {
+        $customers = Customer::with('defaultShippingArea')
+            ->withCount('orders')
+            ->withSum('orders as total_spent', 'total_amount')
+            ->orderBy('name')->get();
+
+        $rows = [['name','phone','type','shipping_area','address','notes','total_orders','total_spent']];
+        foreach ($customers as $c) {
+            $rows[] = [$c->name, $c->phone, $c->type,
+                $c->defaultShippingArea?->name ?? '',
+                $c->address, $c->notes,
+                $c->orders_count, $c->total_spent ?? 0];
+        }
+        return $this->streamXlsx('customers_export.xlsx', $rows);
+    }
+
+    public function importCsv(Request $request)
+    {
+        $request->validate(['file' => 'required|file|max:5120']);
+
+        $rows = $this->readXlsx($request->file('file')->getRealPath());
+        if (empty($rows)) {
+            return back()->with('error', 'Could not read the file. Make sure it is a valid .xlsx file.');
+        }
+
+        array_shift($rows); // skip header
+        $imported = 0;
+        $skipped  = 0;
+
+        foreach ($rows as $row) {
+            $name     = trim($row[0] ?? '');
+            $phone    = trim($row[1] ?? '');
+            $type     = trim($row[2] ?? 'customer');
+            $areaName = trim($row[3] ?? '');
+            $address  = trim($row[4] ?? '');
+            $notes    = trim($row[5] ?? '');
+
+            if (empty($name)) continue;
+
+            if ($phone && Customer::where('phone', $phone)->exists()) { $skipped++; continue; }
+            if (!$phone && Customer::where('name', $name)->exists())  { $skipped++; continue; }
+
+            $shippingArea = $areaName
+                ? \App\Models\ShippingArea::whereRaw('LOWER(name) LIKE ?', ['%'.strtolower($areaName).'%'])->first()
+                : null;
+
+            Customer::create([
+                'name'                     => $name,
+                'phone'                    => $phone ?: 'imported-'.(Customer::count()+1),
+                'type'                     => in_array($type, ['customer','reseller','selected_customer']) ? $type : 'customer',
+                'default_shipping_area_id' => $shippingArea?->id,
+                'address'                  => $address,
+                'notes'                    => $notes,
+            ]);
+            $imported++;
+        }
+
+        $msg = "Imported {$imported} customer(s).";
+        if ($skipped) $msg .= " {$skipped} skipped (duplicate phone or name).";
+        return redirect()->route('customers.index')->with('success', $msg);
     }
 
     public function bulkDestroy(Request $request)

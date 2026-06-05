@@ -46,7 +46,7 @@
             <i class="bi bi-speedometer2"></i> Dashboard
         </a>
         <a href="{{ route('reports.index') }}" class="nav-link {{ request()->routeIs('reports.*') ? 'active' : '' }}">
-            <i class="bi bi-bar-chart-line"></i> Reports & Export
+            <i class="bi bi-bar-chart-line"></i> Reports
         </a>
 
         <div class="nav-section">Orders</div>

@@ -16,19 +16,31 @@
         </form>
     </div>
     <div class="col-auto d-flex gap-2">
-        {{-- Import --}}
-        <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#importModal">
-            <i class="bi bi-upload me-1"></i>Import CSV
-        </button>
-        {{-- Export --}}
-        <a href="{{ route('shipping.export') }}" class="btn btn-sm btn-outline-info">
-            <i class="bi bi-download me-1"></i>Export CSV
-        </a>
-        {{-- Template --}}
-        <a href="{{ route('shipping.template') }}" class="btn btn-sm btn-outline-secondary">
-            <i class="bi bi-file-earmark-spreadsheet me-1"></i>Template
-        </a>
-        {{-- Add --}}
+        <div class="dropdown">
+            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+                <i class="bi bi-arrow-down-up me-1"></i>Import / Export
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end" style="min-width:240px;">
+                <li><h6 class="dropdown-header">Export</h6></li>
+                <li>
+                    <a class="dropdown-item" href="{{ route('shipping.export') }}">
+                        <i class="bi bi-download me-2 text-success"></i>Export all as Excel
+                    </a>
+                </li>
+                <li><hr class="dropdown-divider"></li>
+                <li><h6 class="dropdown-header">Import</h6></li>
+                <li>
+                    <a class="dropdown-item" href="{{ route('shipping.template') }}">
+                        <i class="bi bi-file-earmark-spreadsheet me-2 text-secondary"></i>Download template (.xlsx)
+                    </a>
+                </li>
+                <li>
+                    <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#importModal">
+                        <i class="bi bi-upload me-2 text-primary"></i>Import from Excel
+                    </button>
+                </li>
+            </ul>
+        </div>
         <a href="{{ route('shipping.create') }}" class="btn btn-sm btn-primary">
             <i class="bi bi-plus-lg me-1"></i>Add Area
         </a>
@@ -87,7 +99,7 @@
                 <tr>
                     <td colspan="8" class="text-center text-muted py-4">
                         No shipping areas yet.
-                        <a href="{{ route('shipping.template') }}">Download template</a> to import in bulk.
+                        <a href="{{ route('shipping.template') }}">Download template (.xlsx)</a> to import in bulk.
                     </td>
                 </tr>
                 @endforelse
@@ -108,17 +120,16 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="small text-muted">
-                        Upload a CSV file with columns: <code>name, province, price_per_kg, is_active, notes</code>.<br>
-                        Existing areas (matched by name) will be updated. New areas will be created.
-                    </p>
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">CSV File</label>
-                        <input type="file" name="file" class="form-control" accept=".csv,.txt" required>
+                    <div class="alert alert-light border small mb-3">
+                        <strong>Excel columns:</strong> name · province · price_per_kg · is_active · notes<br>
+                        <span class="text-muted">Existing areas (matched by name) will be updated. New areas will be created.</span><br>
+                        <a href="{{ route('shipping.template') }}" class="small mt-1 d-inline-block">
+                            <i class="bi bi-download me-1"></i>Download template (.xlsx)
+                        </a>
                     </div>
-                    <a href="{{ route('shipping.template') }}" class="small text-decoration-none">
-                        <i class="bi bi-file-earmark-spreadsheet me-1"></i>Download template first
-                    </a>
+                    <div class="mb-3">
+                        <input type="file" name="file" class="form-control" accept=".xlsx" required>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>

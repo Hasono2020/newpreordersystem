@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Response;
 
 class ShippingAreaController extends Controller
 {
+    use \App\Traits\HandlesXlsx;
     public function index(Request $request)
     {
         $query = ShippingArea::query();
@@ -70,78 +71,50 @@ class ShippingAreaController extends Controller
      */
     public function template()
     {
-        $headers = [
-            'Content-Type'        => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="shipping_areas_template.csv"',
-        ];
-        $callback = function () {
-            $out = fopen('php://output', 'w');
-            fputcsv($out, ['name', 'province', 'price_per_kg', 'is_active', 'notes']);
-            fputcsv($out, ['Batam', 'Kepulauan Riau', '25000', '1', '']);
-            fputcsv($out, ['Jakarta Pusat', 'DKI Jakarta', '30000', '1', '']);
-            fclose($out);
-        };
-        return Response::stream($callback, 200, $headers);
+        return $this->streamXlsx('shipping_areas_template.xlsx', [
+            ['name', 'province', 'price_per_kg', 'is_active', 'notes'],
+            ['Batam', 'Kepulauan Riau', 25000, 1, ''],
+            ['Jakarta Pusat', 'DKI Jakarta', 30000, 1, ''],
+            ['Surabaya', 'Jawa Timur', 35000, 1, ''],
+        ]);
     }
 
-    /**
-     * Export all shipping areas as CSV
-     */
     public function export()
     {
         $areas = ShippingArea::orderBy('name')->get();
-        $headers = [
-            'Content-Type'        => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="shipping_areas_export.csv"',
-        ];
-        $callback = function () use ($areas) {
-            $out = fopen('php://output', 'w');
-            fputcsv($out, ['name', 'province', 'price_per_kg', 'is_active', 'notes']);
-            foreach ($areas as $area) {
-                fputcsv($out, [
-                    $area->name,
-                    $area->province,
-                    $area->price_per_kg,
-                    $area->is_active ? '1' : '0',
-                    $area->notes,
-                ]);
-            }
-            fclose($out);
-        };
-        return Response::stream($callback, 200, $headers);
+        $rows  = [['name', 'province', 'price_per_kg', 'is_active', 'notes']];
+        foreach ($areas as $area) {
+            $rows[] = [$area->name, $area->province, $area->price_per_kg, $area->is_active ? 1 : 0, $area->notes];
+        }
+        return $this->streamXlsx('shipping_areas_export.xlsx', $rows);
     }
 
-    /**
-     * Import from CSV file
-     */
     public function import(Request $request)
     {
-        $request->validate([
-            'file' => 'required|file|mimes:csv,txt|max:2048',
-        ]);
+        $request->validate(['file' => 'required|file|max:5120']);
 
-        $file    = $request->file('file');
-        $handle  = fopen($file->getRealPath(), 'r');
-        $header  = fgetcsv($handle); // skip header row
+        $rows = $this->readXlsx($request->file('file')->getRealPath());
+        if (empty($rows)) {
+            return back()->with('error', 'Could not read file. Make sure it is a valid .xlsx file.');
+        }
 
+        array_shift($rows); // skip header
         $imported = 0;
         $errors   = [];
 
-        while (($row = fgetcsv($handle)) !== false) {
-            if (count($row) < 3) continue;
-            [$name, $province, $price_per_kg, $is_active, $notes] = array_pad($row, 5, null);
+        foreach ($rows as $row) {
+            $name      = trim($row[0] ?? '');
+            $province  = trim($row[1] ?? '');
+            $price     = (float) str_replace(',', '', $row[2] ?? 0);
+            $isActive  = in_array(strtolower((string)($row[3] ?? '1')), ['1','true','yes','active']);
+            $notes     = trim($row[4] ?? '');
 
-            if (empty(trim($name ?? ''))) continue;
+            if (empty($name)) continue;
 
             try {
                 ShippingArea::updateOrCreate(
-                    ['name' => trim($name)],
-                    [
-                        'province'     => trim($province ?? ''),
-                        'price_per_kg' => (float) str_replace(',', '', $price_per_kg ?? 0),
-                        'is_active'    => in_array(trim($is_active ?? '1'), ['1', 'true', 'yes', 'active']),
-                        'notes'        => trim($notes ?? ''),
-                    ]
+                    ['name' => $name],
+                    ['province' => $province, 'price_per_kg' => $price, 'is_active' => $isActive, 'notes' => $notes]
                 );
                 $imported++;
             } catch (\Exception $e) {
@@ -149,11 +122,8 @@ class ShippingAreaController extends Controller
             }
         }
 
-        fclose($handle);
-
-        $msg = "Imported {$imported} areas.";
+        $msg = "Imported {$imported} area(s).";
         if ($errors) $msg .= ' Errors: ' . implode('; ', array_slice($errors, 0, 3));
-
         return redirect()->route('shipping.index')->with('success', $msg);
     }
 

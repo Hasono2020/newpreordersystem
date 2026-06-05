@@ -10,9 +10,10 @@ use Illuminate\Support\Facades\Storage;
 
 class ProductController extends Controller
 {
+    use \App\Traits\HandlesXlsx;
     public function index(Request $request)
     {
-        $query = Product::with('trip')->withCount('orderItems');
+        $query = Product::with('trip', 'supplier')->withCount('orderItems');
         if ($request->trip_id) $query->where('trip_id', $request->trip_id);
         $products = $query->latest()->paginate(20)->withQueryString();
         $trips = Trip::orderByDesc('id')->get();
@@ -143,6 +144,100 @@ class ProductController extends Controller
     }
 
     // Manage variants separately
+    public function importTemplate()
+    {
+        return $this->streamXlsx('product_import_template.xlsx', [
+            ['trip','name','product_code','sku','brand','supplier','price','weight_gram','excluded_from_promo','notes'],
+            ['China June 2026','Kemeja Floral','NA_05','','Brand X','Supplier A',120000,330,'no','Cotton material'],
+            ['China June 2026','Celana Jeans','NZ_05','','','Supplier B',250000,500,'yes',''],
+        ]);
+    }
+
+    public function importCsv(Request $request)
+    {
+        $request->validate(['file' => 'required|file|max:5120']);
+
+        $rows = $this->readXlsx($request->file('file')->getRealPath());
+        if (empty($rows)) {
+            return back()->with('error', 'Could not read the file. Make sure it is a valid .xlsx file.');
+        }
+
+        array_shift($rows); // skip header
+        $imported = 0;
+        $skipped  = 0;
+        $errors   = [];
+
+        foreach ($rows as $rowIdx => $row) {
+            $tripName     = trim($row[0] ?? '');
+            $name         = trim($row[1] ?? '');
+            $code         = strtoupper(trim($row[2] ?? ''));
+            $sku          = trim($row[3] ?? '');
+            $brand        = trim($row[4] ?? '');
+            $supplierName = trim($row[5] ?? '');
+            $price        = (float)($row[6] ?? 0);
+            $weight       = (int)($row[7] ?? 0);
+            $excluded     = strtolower(trim($row[8] ?? '')) === 'yes';
+            $notes        = trim($row[9] ?? '');
+
+            if (empty($name)) continue;
+
+            $trip = \App\Models\Trip::where('name', 'like', '%'.$tripName.'%')->first();
+            if (!$trip) { $errors[] = "Trip '{$tripName}' not found — skipped ({$name})."; $skipped++; continue; }
+
+            if ($code && \App\Models\Product::where('product_code', $code)->exists()) {
+                $errors[] = "Code '{$code}' already exists — skipped ({$name})."; $skipped++; continue;
+            }
+
+            $supplierId = null;
+            if ($supplierName) {
+                $supplier   = \App\Models\Supplier::whereRaw('LOWER(name) LIKE ?', ['%'.strtolower($supplierName).'%'])->first();
+                $supplierId = $supplier?->id;
+            }
+
+            \App\Models\Product::create([
+                'trip_id'             => $trip->id,
+                'name'                => $name,
+                'product_code'        => $code ?: null,
+                'sku'                 => $sku ?: null,
+                'brand'               => $brand ?: null,
+                'supplier_id'         => $supplierId,
+                'price'               => $price,
+                'weight_gram'         => $weight,
+                'excluded_from_promo' => $excluded,
+                'notes'               => $notes ?: null,
+                'status'              => 'active',
+            ]);
+            $imported++;
+        }
+
+        $msg = "✓ Imported {$imported} product(s).";
+        if ($skipped) $msg .= " {$skipped} skipped.";
+        if ($errors)  $msg .= " Issues: ".implode(' | ', array_slice($errors, 0, 3));
+        return redirect()->route('products.index')->with($errors ? 'warning' : 'success', $msg);
+    }
+
+    public function export(Request $request)
+    {
+        $query = Product::with('trip', 'supplier')
+            ->withSum(['orderItems as total_ordered' =>
+                fn($q) => $q->whereNotIn('status', ['cancelled','sold_out'])], 'quantity');
+        if ($request->trip_id) $query->where('trip_id', $request->trip_id);
+        $products = $query->orderBy('name')->get();
+
+        $rows = [['trip','name','product_code','sku','brand','supplier','price','weight_gram','excluded_from_promo','status']];
+        foreach ($products as $p) {
+            $rows[] = [$p->trip->name, $p->name,
+                $p->product_code ?? '', $p->sku ?? '', $p->brand ?? '',
+                $p->supplier?->name ?? '',
+                $p->price, $p->weight_gram,
+                $p->excluded_from_promo ? 'yes' : 'no',
+                $p->status];
+        }
+        return $this->streamXlsx('products_export.xlsx', $rows);
+    }
+
+    private function streamCsv(string $filename, callable $callback) {} // kept for safety, unused
+
     /** AJAX: check if product code is already taken */
     public function checkCode(Request $request)
     {

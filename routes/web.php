@@ -26,6 +26,9 @@ Route::middleware('auth')->group(function () {
     Route::resource('trips', TripController::class);
 
     // Products
+    Route::get('products-export', [ProductController::class, 'export'])->name('products.export');
+    Route::get('products-import-template', [ProductController::class, 'importTemplate'])->name('products.import.template');
+    Route::post('products-import', [ProductController::class, 'importCsv'])->name('products.import');
     Route::resource('products', ProductController::class);
     Route::post('products/{product}/variants', [ProductController::class, 'storeVariant'])->name('products.variants.store');
     Route::patch('products/{product}/variants/{variant}', [ProductController::class, 'updateVariant'])->name('products.variants.update');
@@ -34,8 +37,14 @@ Route::middleware('auth')->group(function () {
     // Customers
     Route::resource('customers', CustomerController::class);
     Route::delete('customers-bulk', [CustomerController::class, 'bulkDestroy'])->name('customers.bulk-destroy');
+    Route::get('customers-export', [CustomerController::class, 'export'])->name('customers.export');
+    Route::post('customers-import', [CustomerController::class, 'importCsv'])->name('customers.import');
 
     // Orders
+    Route::get('orders-export', [ReportController::class, 'exportOrders'])->name('orders.export');
+    Route::get('orders-items-export', [ReportController::class, 'exportOrderItems'])->name('orders.items.export');
+    Route::get('orders-import-template', [ReportController::class, 'orderImportTemplate'])->name('orders.import.template');
+    Route::post('orders-import', [ReportController::class, 'importOrders'])->name('orders.import');
     Route::resource('orders', OrderController::class);
     Route::post('orders/{order}/items', [OrderController::class, 'addItem'])->name('orders.items.add');
     Route::patch('orders/{order}/items/{item}', [OrderController::class, 'updateItem'])->name('orders.items.update');
