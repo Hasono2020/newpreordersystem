@@ -3,6 +3,17 @@
 @section('page-title', 'Products')
 
 @section('content')
+
+@if(session('import_errors'))
+<div class="alert alert-danger mb-3">
+    <div class="fw-semibold mb-2"><i class="bi bi-x-circle-fill me-1"></i>Import blocked — fix these issues and try again:</div>
+    <ul class="mb-0 ps-3">
+        @foreach(session('import_errors') as $err)
+            <li class="small">{{ $err }}</li>
+        @endforeach
+    </ul>
+</div>
+@endif
 <div class="row g-2 mb-3 align-items-end">
     <div class="col">
         <form class="d-flex gap-2">

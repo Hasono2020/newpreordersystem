@@ -1,6 +1,6 @@
 @extends('layouts.app')
-@section('title', 'Edit Product')
-@section('page-title', 'Edit: {{ $product->name }}')
+@section('title', 'Edit: ' . $product->name)
+@section('page-title', 'Edit: ' . $product->name)
 
 @push('styles')
 <style>
@@ -85,8 +85,8 @@
                 value="{{ old('sku', $product->sku) }}">
         </div>
         <div class="col-md-4">
-            <label class="form-label fw-semibold">Supplier</label>
-            <input type="hidden" name="supplier_id" id="supplierId" value="{{ old('supplier_id', $product->supplier_id) }}">
+            <label class="form-label fw-semibold">Supplier <span class="text-danger">*</span></label>
+            <input type="hidden" name="supplier_id" id="supplierId" value="{{ old('supplier_id', $product->supplier_id) }}" required>
 
             {{-- Selected supplier card --}}
             <div id="selectedSupplierCard"
@@ -108,7 +108,10 @@
                     </div>
                 </div>
             </div>
-            <div class="form-text"><a href="{{ route('suppliers.index') }}" target="_blank">Manage all suppliers</a></div>
+            <div id="supplierRequiredMsg" class="text-danger small mt-1" style="display:none;">
+        <i class="bi bi-exclamation-circle-fill me-1"></i>Supplier is required before saving.
+    </div>
+    <div class="form-text"><a href="{{ route('suppliers.index') }}" target="_blank">Manage all suppliers</a></div>
         </div>
     </div>
 </div>
@@ -239,6 +242,16 @@
 
 @push('scripts')
 <script>
+document.querySelector('form').addEventListener('submit', function(e) {
+    const supplierId = document.getElementById('supplierId').value;
+    const msg = document.getElementById('supplierRequiredMsg');
+    if (!supplierId) {
+        e.preventDefault();
+        msg.style.display = 'block';
+        document.getElementById('supplierId').closest('.col-md-4').scrollIntoView({behavior:'smooth'});
+    }
+});
+
 function checkZCode(val) {
     const prefix = (val.split('_')[0] || '').toUpperCase();
     if (prefix.length >= 2 && prefix.endsWith('Z')) {

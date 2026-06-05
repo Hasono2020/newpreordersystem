@@ -95,8 +95,8 @@
                 value="{{ old('sku') }}" placeholder="Internal SKU">
         </div>
         <div class="col-md-4">
-            <label class="form-label fw-semibold">Supplier</label>
-            <input type="hidden" name="supplier_id" id="supplierId">
+            <label class="form-label fw-semibold">Supplier <span class="text-danger">*</span></label>
+            <input type="hidden" name="supplier_id" id="supplierId" required>
             <div class="position-relative">
                 <input type="text" id="supplierSearch" class="form-control"
                     placeholder="Type to search supplier…" autocomplete="off">
@@ -114,7 +114,10 @@
                 </div>
                 <button type="button" class="btn btn-xs btn-outline-secondary btn-sm py-0 px-2" id="clearSupplier">×</button>
             </div>
-            <div class="form-text">Links to purchasing. <a href="{{ route('suppliers.index') }}" target="_blank">Manage suppliers</a></div>
+            <div id="supplierRequiredMsg" class="text-danger small mt-1" style="display:none;">
+                <i class="bi bi-exclamation-circle-fill me-1"></i>Supplier is required before saving.
+            </div>
+            <div class="form-text">Type or pick existing. <a href="{{ route('suppliers.index') }}" target="_blank">Manage suppliers</a></div>
         </div>
     </div>
 </div>
@@ -301,6 +304,16 @@
 @push('scripts')
 <script>
 let variantIndex = 1;
+
+document.getElementById('productForm').addEventListener('submit', function(e) {
+    const supplierId = document.getElementById('supplierId').value;
+    const msg = document.getElementById('supplierRequiredMsg');
+    if (!supplierId) {
+        e.preventDefault();
+        msg.style.display = 'block';
+        document.getElementById('supplierId').closest('.col-md-4').scrollIntoView({behavior:'smooth'});
+    }
+});
 
 /* ── Supplier search ── */
 let supplierTimeout = null;

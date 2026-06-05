@@ -48,6 +48,16 @@
             </div>
         </div>
 
+        {{-- Warning: no shipping area --}}
+        @if(!$order->shipping_area_id)
+        <div class="alert alert-warning py-2 small mb-3">
+            <i class="bi bi-exclamation-triangle-fill me-1"></i>
+            <strong>No shipping area set.</strong>
+            Shipping fee is Rp 0 and promo shipping discounts cannot be applied.
+            Use <strong>Shipping & Recalculate</strong> on the right to set an area and recalculate.
+        </div>
+        @endif
+
         {{-- Order Items --}}
         <div class="card mb-3">
             <div class="card-header bg-white py-3">

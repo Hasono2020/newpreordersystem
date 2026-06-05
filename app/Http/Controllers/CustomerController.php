@@ -151,11 +151,41 @@ class CustomerController extends Controller
             return back()->with('error', 'Could not read the file. Make sure it is a valid .xlsx file.');
         }
 
-        array_shift($rows); // skip header
+        $header = array_shift($rows); // remove header row
+
+        // ── Validation pass first ──────────────────────────────────────
+        $validationErrors = [];
+        foreach ($rows as $rowIdx => $row) {
+            $lineNum  = $rowIdx + 2; // +2: 1=header, rowIdx starts at 0
+            $name     = trim($row[0] ?? '');
+            $phone    = trim($row[1] ?? '');
+            $areaName = trim($row[3] ?? '');
+
+            if (empty($name)) continue; // skip blank rows silently
+
+            $issues = [];
+            if (empty($phone))    $issues[] = 'Phone is required';
+            if (empty($areaName)) $issues[] = 'Shipping Area is required';
+
+            if (!empty($issues)) {
+                $validationErrors[] = "Row {$lineNum} ({$name}): " . implode(', ', $issues) . '.';
+            }
+        }
+
+        // If any validation errors found, stop and show them all
+        if (!empty($validationErrors)) {
+            $errorList = implode("\n", $validationErrors);
+            return back()->with('import_errors', $validationErrors)
+                         ->with('error', 'Import blocked — please fix the following issues in your Excel file before importing:');
+        }
+
+        // ── All rows valid — proceed with import ───────────────────────
         $imported = 0;
         $skipped  = 0;
+        $skipReasons = [];
 
-        foreach ($rows as $row) {
+        foreach ($rows as $rowIdx => $row) {
+            $lineNum  = $rowIdx + 2;
             $name     = trim($row[0] ?? '');
             $phone    = trim($row[1] ?? '');
             $type     = trim($row[2] ?? 'customer');
@@ -165,16 +195,31 @@ class CustomerController extends Controller
 
             if (empty($name)) continue;
 
-            if ($phone && Customer::where('phone', $phone)->exists()) { $skipped++; continue; }
-            if (!$phone && Customer::where('name', $name)->exists())  { $skipped++; continue; }
+            // Check duplicates
+            if ($phone && Customer::where('phone', $phone)->exists()) {
+                $skipped++;
+                $skipReasons[] = "Row {$lineNum} ({$name}): phone {$phone} already exists.";
+                continue;
+            }
+            if (!$phone && Customer::where('name', $name)->exists()) {
+                $skipped++;
+                $skipReasons[] = "Row {$lineNum} ({$name}): name already exists.";
+                continue;
+            }
 
             $shippingArea = $areaName
                 ? \App\Models\ShippingArea::whereRaw('LOWER(name) LIKE ?', ['%'.strtolower($areaName).'%'])->first()
                 : null;
 
+            if ($areaName && !$shippingArea) {
+                $skipped++;
+                $skipReasons[] = "Row {$lineNum} ({$name}): shipping area '{$areaName}' not found in system.";
+                continue;
+            }
+
             Customer::create([
                 'name'                     => $name,
-                'phone'                    => $phone ?: 'imported-'.(Customer::count()+1),
+                'phone'                    => $phone,
                 'type'                     => in_array($type, ['customer','reseller','selected_customer']) ? $type : 'customer',
                 'default_shipping_area_id' => $shippingArea?->id,
                 'address'                  => $address,
@@ -183,8 +228,8 @@ class CustomerController extends Controller
             $imported++;
         }
 
-        $msg = "Imported {$imported} customer(s).";
-        if ($skipped) $msg .= " {$skipped} skipped (duplicate phone or name).";
+        $msg = "Imported {$imported} customer(s) successfully.";
+        if ($skipped) $msg .= " {$skipped} skipped: " . implode(' | ', $skipReasons);
         return redirect()->route('customers.index')->with('success', $msg);
     }
 

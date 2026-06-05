@@ -263,7 +263,7 @@ function populateProductSelect(sel) {
         const label = p.product_code ? `[${p.product_code}] ${p.name}` : p.name;
         sel.innerHTML += `<option value="${p.id}"
             data-price="${p.price}"
-            data-weight="${p.weight_gram || 0}"
+            data-weight="${p.weight || 0}"
             data-code="${p.product_code || ''}"
             data-variants='${JSON.stringify(p.variants || [])}'>${label} — Rp ${parseInt(p.price).toLocaleString('id-ID')}</option>`;
     });
@@ -297,20 +297,94 @@ document.addEventListener('change', function(e) {
 
         varSel.innerHTML = '<option value="">No variant</option>';
         variants.forEach(v => {
-            const lbl = [v.color, v.size].filter(Boolean).join(' / ') || 'Default';
-            varSel.innerHTML += `<option value="${v.id}" data-price="${price + parseFloat(v.price_adjustment||0)}">${lbl} — Rp ${Math.round(price+parseFloat(v.price_adjustment||0)).toLocaleString('id-ID')}</option>`;
+            const lbl = v.label || 'Default';
+            const finalPrice = parseFloat(v.price) || price;
+            varSel.innerHTML += `<option value="${v.id}" data-price="${finalPrice}">${lbl} — Rp ${Math.round(finalPrice).toLocaleString('id-ID')}</option>`;
         });
+
+        checkDuplicate(row);
         recalc();
     }
     if (e.target.classList.contains('variant-select')) {
         const row = e.target.closest('.item-row');
         const opt = e.target.options[e.target.selectedIndex];
         if (opt.dataset.price) row.querySelector('.item-price').value = opt.dataset.price;
+        checkDuplicate(row);
         recalc();
     }
     if (e.target.classList.contains('item-qty') || e.target.classList.contains('item-price')) recalc();
     if (e.target.id === 'shippingAreaSelect') recalc();
 });
+
+/**
+ * Check if current row has the same product+variant as another row.
+ * If yes, show warning with option to merge quantities.
+ */
+function checkDuplicate(row) {
+    const prodSel = row.querySelector('.product-select');
+    const varSel  = row.querySelector('.variant-select');
+    const prodId  = prodSel?.value;
+    const varId   = varSel?.value || '';
+
+    // Clear previous warning
+    let warn = row.querySelector('.duplicate-warn');
+    if (warn) warn.remove();
+
+    if (!prodId) return;
+
+    // Find any other row with same product + variant
+    let dupRow = null;
+    document.querySelectorAll('.item-row').forEach(otherRow => {
+        if (otherRow === row) return;
+        const oProd = otherRow.querySelector('.product-select')?.value;
+        const oVar  = otherRow.querySelector('.variant-select')?.value || '';
+        if (oProd === prodId && oVar === varId) dupRow = otherRow;
+    });
+
+    if (!dupRow) return;
+
+    // Show warning under the current row
+    const prodName = prodSel.options[prodSel.selectedIndex]?.text?.split('—')[0]?.trim() || 'this product';
+    const varName  = varSel.options[varSel.selectedIndex]?.text?.split('—')[0]?.trim() || '';
+    const label    = varName && varName !== 'No variant' ? `${prodName} (${varName})` : prodName;
+
+    const warnDiv = document.createElement('div');
+    warnDiv.className = 'duplicate-warn alert alert-warning py-2 px-3 mt-2 small';
+    warnDiv.innerHTML = `
+        <i class="bi bi-exclamation-triangle-fill me-1"></i>
+        <strong>${label}</strong> is already in another row.
+        <button type="button" class="btn btn-sm btn-warning py-0 px-2 ms-2" onclick="mergeRow(this)">
+            Merge quantities into one row
+        </button>
+    `;
+    row.appendChild(warnDiv);
+}
+
+/**
+ * Merge current row into the duplicate row by summing quantities, then remove this row.
+ */
+function mergeRow(btn) {
+    const row    = btn.closest('.item-row');
+    const prodId = row.querySelector('.product-select')?.value;
+    const varId  = row.querySelector('.variant-select')?.value || '';
+    const qty    = parseInt(row.querySelector('.item-qty')?.value) || 1;
+
+    let dupRow = null;
+    document.querySelectorAll('.item-row').forEach(otherRow => {
+        if (otherRow === row) return;
+        const oProd = otherRow.querySelector('.product-select')?.value;
+        const oVar  = otherRow.querySelector('.variant-select')?.value || '';
+        if (oProd === prodId && oVar === varId) dupRow = otherRow;
+    });
+
+    if (dupRow) {
+        const dupQtyInput = dupRow.querySelector('.item-qty');
+        dupQtyInput.value = parseInt(dupQtyInput.value || 1) + qty;
+    }
+
+    row.remove();
+    recalc();
+}
 
 function recalc() {
     let subtotal = 0, totalGrams = 0;

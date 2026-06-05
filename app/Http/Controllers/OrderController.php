@@ -43,23 +43,99 @@ class OrderController extends Controller
 
     public function store(Request $request)
     {
-        $data = $request->validate([
+        $request->validate([
             'trip_id'          => 'required|exists:trips,id',
             'customer_id'      => 'required|exists:customers,id',
             'shipping_area_id' => 'nullable|exists:shipping_areas,id',
             'notes'            => 'nullable|string',
+            'items'                          => 'required|array|min:1',
+            'items.*.product_id'             => 'required|exists:products,id',
+            'items.*.product_variant_id'     => 'nullable|exists:product_variants,id',
+            'items.*.quantity'               => 'required|integer|min:1',
+            'items.*.unit_price'             => 'required|numeric|min:0',
         ]);
 
         // Block new orders if trip is order_closed or beyond
-        $trip = Trip::findOrFail($data['trip_id']);
+        $trip = Trip::findOrFail($request->trip_id);
         if (!in_array($trip->status, ['open'])) {
-            return back()->with('error', "Orders are closed for this trip (status: {$trip->status}). Change trip status to 'open' to accept orders.");
+            return back()->with('error', "Orders are closed for this trip (status: {$trip->status}).");
         }
 
-        $data['created_by'] = Auth::id();
-        $order = Order::create($data);
+        $order = \DB::transaction(function () use ($request) {
+            $shippingAreaId = $request->shipping_area_id ?: null;
 
-        return redirect()->route('orders.edit', $order)->with('success', 'Order created. Add items below.');
+            // Fallback: use customer's default shipping area if none set on order
+            if (!$shippingAreaId) {
+                $customer       = \App\Models\Customer::find($request->customer_id);
+                $shippingAreaId = $customer?->default_shipping_area_id;
+            }
+
+            $order = Order::create([
+                'trip_id'          => $request->trip_id,
+                'customer_id'      => $request->customer_id,
+                'shipping_area_id' => $shippingAreaId,
+                'notes'            => $request->notes,
+                'created_by'       => Auth::id(),
+            ]);
+
+            // Merge duplicate product+variant combinations before saving
+            $mergedItems = [];
+            foreach ($request->items as $itemData) {
+                if (empty($itemData['product_id'])) continue;
+
+                // Validate variant belongs to product
+                $variantId = $itemData['product_variant_id'] ?? null;
+                if ($variantId) {
+                    $variant = \App\Models\ProductVariant::find($variantId);
+                    if (!$variant || $variant->product_id != $itemData['product_id']) {
+                        $variantId = null;
+                    }
+                }
+
+                $key = $itemData['product_id'] . '_' . ($variantId ?? '0');
+                if (isset($mergedItems[$key])) {
+                    // Same product+variant already added — merge quantities
+                    $mergedItems[$key]['quantity'] += max(1, (int)$itemData['quantity']);
+                } else {
+                    $mergedItems[$key] = [
+                        'product_id'         => $itemData['product_id'],
+                        'product_variant_id' => $variantId,
+                        'quantity'           => max(1, (int)$itemData['quantity']),
+                        'unit_price'         => (float)$itemData['unit_price'],
+                    ];
+                }
+            }
+
+            // Save merged items
+            foreach ($mergedItems as $item) {
+                $price = $item['unit_price'];
+                $qty   = $item['quantity'];
+                $order->items()->create([
+                    'product_id'         => $item['product_id'],
+                    'product_variant_id' => $item['product_variant_id'],
+                    'quantity'           => $qty,
+                    'unit_price'         => $price,
+                    'line_total'         => $price * $qty,
+                    'status'             => 'pending',
+                ]);
+            }
+
+            // Recalculate totals with promo + shipping
+            $calc = $this->promoService->recalculate($order->fresh());
+            $order->update([
+                'subtotal'             => $calc['subtotal'],
+                'discount_amount'      => $calc['discount_amount'],
+                'shipping_fee'         => $calc['shipping_fee'],
+                'shipping_discount'    => $calc['shipping_discount'],
+                'shipping_weight_gram' => $calc['shipping_weight_gram'],
+                'shipping_kg_charged'  => $calc['shipping_kg_charged'],
+                'total_amount'         => $calc['total_amount'],
+            ]);
+
+            return $order;
+        });
+
+        return redirect()->route('orders.show', $order)->with('success', 'Order created successfully.');
     }
 
     public function show(Order $order)
@@ -83,8 +159,13 @@ class OrderController extends Controller
             'notes'            => 'nullable|string',
         ]);
 
+        $shippingAreaId = $request->shipping_area_id ?: null;
+        if (!$shippingAreaId) {
+            $shippingAreaId = $order->customer->default_shipping_area_id;
+        }
+
         $order->update([
-            'shipping_area_id' => $request->shipping_area_id ?: null,
+            'shipping_area_id' => $shippingAreaId,
             'notes'            => $request->notes,
         ]);
 
@@ -149,14 +230,29 @@ class OrderController extends Controller
             );
         }
 
-        $order->items()->create([
-            'product_id'         => $request->product_id,
-            'product_variant_id' => $request->product_variant_id,
-            'quantity'           => $request->quantity,
-            'unit_price'         => $request->unit_price,
-            'line_total'         => $request->unit_price * $request->quantity,
-            'status'             => 'pending',
-        ]);
+        // Check if same product+variant already exists in this order
+        $existing = $order->items()
+            ->where('product_id', $request->product_id)
+            ->where('product_variant_id', $request->product_variant_id ?: null)
+            ->whereNotIn('status', ['cancelled', 'sold_out'])
+            ->first();
+
+        if ($existing) {
+            $newQty = $existing->quantity + $request->quantity;
+            $existing->update([
+                'quantity'   => $newQty,
+                'line_total' => $existing->unit_price * $newQty,
+            ]);
+        } else {
+            $order->items()->create([
+                'product_id'         => $request->product_id,
+                'product_variant_id' => $request->product_variant_id,
+                'quantity'           => $request->quantity,
+                'unit_price'         => $request->unit_price,
+                'line_total'         => $request->unit_price * $request->quantity,
+                'status'             => 'pending',
+            ]);
+        }
 
         $this->_recalcAndSave($order);
         return back()->with('success', 'Item added.');

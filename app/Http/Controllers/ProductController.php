@@ -91,7 +91,7 @@ class ProductController extends Controller
             'sku'          => 'nullable|string|max:100',
             'product_code' => 'nullable|string|max:50|unique:products,product_code,'.$product->id,
             'brand'        => 'nullable|string|max:100',
-            'supplier_id'  => 'nullable|exists:suppliers,id',
+            'supplier_id'  => 'required|exists:suppliers,id',
             'price'        => 'required|numeric|min:0',
             'weight_gram'  => 'nullable|integer|min:0',
             'notes'        => 'nullable|string',
@@ -163,11 +163,43 @@ class ProductController extends Controller
         }
 
         array_shift($rows); // skip header
+
+        // ── Validation pass first ──────────────────────────────────────
+        $validationErrors = [];
+        foreach ($rows as $rowIdx => $row) {
+            $lineNum  = $rowIdx + 2;
+            $tripName = trim($row[0] ?? '');
+            $name     = trim($row[1] ?? '');
+            $code     = strtoupper(trim($row[2] ?? ''));
+
+            if (empty($name) && empty($tripName)) continue;
+
+            $issues = [];
+            if (empty($tripName)) $issues[] = 'Trip is required';
+            if (empty($name))     $issues[] = 'Product name is required';
+
+            if ($code && \App\Models\Product::where('product_code', $code)->exists()) {
+                $issues[] = "Product code '{$code}' already exists";
+            }
+
+            if (!empty($issues)) {
+                $label = $name ?: "(row {$lineNum})";
+                $validationErrors[] = "Row {$lineNum} ({$label}): " . implode(', ', $issues) . '.';
+            }
+        }
+
+        if (!empty($validationErrors)) {
+            return back()->with('import_errors', $validationErrors)
+                         ->with('error', 'Import blocked — please fix the following issues before importing:');
+        }
+
+        // ── All valid — proceed ────────────────────────────────────────
         $imported = 0;
         $skipped  = 0;
         $errors   = [];
 
         foreach ($rows as $rowIdx => $row) {
+            $lineNum      = $rowIdx + 2;
             $tripName     = trim($row[0] ?? '');
             $name         = trim($row[1] ?? '');
             $code         = strtoupper(trim($row[2] ?? ''));
@@ -182,11 +214,7 @@ class ProductController extends Controller
             if (empty($name)) continue;
 
             $trip = \App\Models\Trip::where('name', 'like', '%'.$tripName.'%')->first();
-            if (!$trip) { $errors[] = "Trip '{$tripName}' not found — skipped ({$name})."; $skipped++; continue; }
-
-            if ($code && \App\Models\Product::where('product_code', $code)->exists()) {
-                $errors[] = "Code '{$code}' already exists — skipped ({$name})."; $skipped++; continue;
-            }
+            if (!$trip) { $errors[] = "Row {$lineNum} ({$name}): trip '{$tripName}' not found."; $skipped++; continue; }
 
             $supplierId = null;
             if ($supplierName) {

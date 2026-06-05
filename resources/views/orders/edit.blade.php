@@ -60,39 +60,44 @@
             {{-- Add item panel --}}
             <div class="collapse" id="addItemPanel">
                 <div class="card-body border-bottom bg-light">
-                    <form method="POST" action="{{ route('orders.items.add', $order) }}">
+                    <form method="POST" action="{{ route('orders.items.add', $order) }}" id="addItemForm">
                         @csrf
                         <div class="row g-2 align-items-end">
                             <div class="col-md-4">
-                                <label class="form-label small">Product</label>
-                                <select name="product_id" class="form-select form-select-sm" required>
+                                <label class="form-label small fw-semibold">Product</label>
+                                <select name="product_id" id="aiProduct" class="form-select form-select-sm" required onchange="fillVariantsAndPrice()">
                                     <option value="">Select…</option>
                                     @foreach($order->trip->products as $p)
-                                        <option value="{{ $p->id }}">{{ $p->name }}</option>
+                                        <option value="{{ $p->id }}"
+                                            data-price="{{ $p->price }}"
+                                            data-weight="{{ $p->weight_gram }}"
+                                            data-variants="{{ json_encode($p->variants->map(fn($v) => ['id'=>$v->id,'label'=>$v->label,'price'=>$v->final_price])) }}">
+                                            {{ $p->name }}
+                                            @if($p->product_code) [{{ $p->product_code }}] @endif
+                                        </option>
                                     @endforeach
                                 </select>
                             </div>
                             <div class="col-md-3">
-                                <label class="form-label small">Variant</label>
-                                <select name="product_variant_id" class="form-select form-select-sm">
+                                <label class="form-label small fw-semibold">Variant</label>
+                                <select name="product_variant_id" id="aiVariant" class="form-select form-select-sm" onchange="updateVariantPrice()">
                                     <option value="">No variant</option>
-                                    @foreach($order->trip->products as $p)
-                                        @foreach($p->variants as $v)
-                                            <option value="{{ $v->id }}">[{{ $p->name }}] {{ $v->label }}</option>
-                                        @endforeach
-                                    @endforeach
                                 </select>
                             </div>
-                            <div class="col-md-2">
-                                <label class="form-label small">Qty</label>
-                                <input type="number" name="quantity" class="form-control form-control-sm" value="1" min="1">
+                            <div class="col-md-1">
+                                <label class="form-label small fw-semibold">Qty</label>
+                                <input type="number" name="quantity" id="aiQty" class="form-control form-control-sm" value="1" min="1" oninput="updateLineTotal()">
                             </div>
                             <div class="col-md-2">
-                                <label class="form-label small">Price (Rp)</label>
-                                <input type="number" name="unit_price" class="form-control form-control-sm" value="0" step="1000">
+                                <label class="form-label small fw-semibold">Price (Rp)</label>
+                                <input type="number" name="unit_price" id="aiPrice" class="form-control form-control-sm" value="0" step="1000" oninput="updateLineTotal()">
                             </div>
                             <div class="col-md-1">
-                                <button type="submit" class="btn btn-sm btn-primary w-100">Add</button>
+                                <label class="form-label small fw-semibold">Total</label>
+                                <div class="form-control form-control-sm bg-white text-muted small" id="aiLineTotal">Rp 0</div>
+                            </div>
+                            <div class="col-md-1">
+                                <button type="submit" class="btn btn-sm btn-primary w-100 mt-3">Add</button>
                             </div>
                         </div>
                     </form>
@@ -271,4 +276,44 @@
         </div>
     </div>
 </div>
+@push('scripts')
+<script>
+function fillVariantsAndPrice() {
+    const sel      = document.getElementById('aiProduct');
+    const opt      = sel.options[sel.selectedIndex];
+    const varSel   = document.getElementById('aiVariant');
+    const priceIn  = document.getElementById('aiPrice');
+
+    if (!opt.value) { varSel.innerHTML = '<option value="">No variant</option>'; return; }
+
+    const price    = parseFloat(opt.dataset.price) || 0;
+    const variants = JSON.parse(opt.dataset.variants || '[]');
+
+    priceIn.value = price;
+
+    varSel.innerHTML = '<option value="">No variant</option>';
+    variants.forEach(v => {
+        const finalPrice = parseFloat(v.price) || price;
+        varSel.innerHTML += `<option value="${v.id}" data-price="${finalPrice}">
+            ${v.label} — Rp ${Math.round(finalPrice).toLocaleString('id-ID')}</option>`;
+    });
+
+    updateLineTotal();
+}
+
+function updateVariantPrice() {
+    const opt = document.getElementById('aiVariant').options[document.getElementById('aiVariant').selectedIndex];
+    if (opt && opt.dataset.price) {
+        document.getElementById('aiPrice').value = opt.dataset.price;
+    }
+    updateLineTotal();
+}
+
+function updateLineTotal() {
+    const qty   = parseInt(document.getElementById('aiQty').value) || 0;
+    const price = parseFloat(document.getElementById('aiPrice').value) || 0;
+    document.getElementById('aiLineTotal').textContent = 'Rp ' + Math.round(qty * price).toLocaleString('id-ID');
+}
+</script>
+@endpush
 @endsection

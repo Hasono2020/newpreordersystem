@@ -3,6 +3,25 @@
 @section('page-title', 'Customers')
 
 @section('content')
+
+{{-- Import validation errors --}}
+@if(session('import_errors'))
+<div class="alert alert-danger mb-3">
+    <div class="fw-semibold mb-2">
+        <i class="bi bi-x-circle-fill me-1"></i>
+        Import blocked — fix these issues in your Excel file and try again:
+    </div>
+    <ul class="mb-0 ps-3">
+        @foreach(session('import_errors') as $err)
+            <li class="small">{{ $err }}</li>
+        @endforeach
+    </ul>
+    <div class="mt-2 small text-muted">
+        <strong>Required columns:</strong> name · phone · type · <strong>shipping_area</strong> · address · notes<br>
+        Make sure every customer row has a name, phone, and shipping area filled in.
+    </div>
+</div>
+@endif
 <div class="row g-2 mb-3 align-items-end">
     <div class="col">
         <form class="d-flex gap-2" id="filterForm">

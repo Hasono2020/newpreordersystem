@@ -3,9 +3,17 @@
 @section('page-title', $product->name)
 
 @section('content')
-<div class="d-flex gap-2 mb-3">
-    <a href="{{ route('products.edit', $product) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil me-1"></i>Edit</a>
-    <span class="badge {{ $product->status === 'active' ? 'bg-success' : 'bg-secondary' }} align-self-center">{{ ucfirst($product->status) }}</span>
+<div class="d-flex gap-2 align-items-center mb-3">
+    <a href="{{ route('products.index') }}" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-arrow-left me-1"></i>Back
+    </a>
+    <a href="{{ route('products.edit', $product) }}" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-pencil me-1"></i>Edit
+    </a>
+    <span class="badge {{ $product->status === 'active' ? 'bg-success' : 'bg-secondary' }} align-self-center">
+        {{ ucfirst($product->status) }}
+    </span>
+    <h5 class="mb-0 ms-2 fw-bold">{{ $product->name }}</h5>
 </div>
 
 <div class="row g-3">
