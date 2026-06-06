@@ -16,11 +16,13 @@ class TripController extends Controller
 
     public function create()
     {
+        $this->adminOnly('create trips');
         return view('trips.create');
     }
 
     public function store(Request $request)
     {
+        $this->adminOnly('create trips');
         $data = $request->validate([
             'name'           => 'required|string|max:255',
             'destination'    => 'nullable|string|max:255',
@@ -49,11 +51,13 @@ class TripController extends Controller
 
     public function edit(Trip $trip)
     {
+        $this->adminOnly('edit trips');
         return view('trips.edit', compact('trip'));
     }
 
     public function update(Request $request, Trip $trip)
     {
+        $this->adminOnly('edit trips');
         $data = $request->validate([
             'name'           => 'required|string|max:255',
             'destination'    => 'nullable|string|max:255',
@@ -69,6 +73,7 @@ class TripController extends Controller
 
     public function destroy(Trip $trip)
     {
+        $this->adminOnly('delete trips');
         // Bug 7 fix: block deletion if trip has orders
         $orderCount = $trip->orders()->count();
         if ($orderCount > 0) {

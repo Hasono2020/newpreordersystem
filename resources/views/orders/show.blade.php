@@ -9,10 +9,12 @@
     <a href="{{ route('orders.invoice', $order) }}" class="btn btn-sm btn-outline-primary" target="_blank">
         <i class="bi bi-printer me-1"></i>Print Invoice
     </a>
+    @if(auth()->user()->isAdmin())
     <form method="POST" action="{{ route('orders.destroy', $order) }}" onsubmit="return confirm('Delete this order?')">
         @csrf @method('DELETE')
         <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
     </form>
+    @endif
 </div>
 
 <div class="row g-3">
@@ -96,10 +98,12 @@
                                             @endforeach
                                         </select>
                                     </form>
+                                    @if(auth()->user()->isAdmin())
                                     <form method="POST" action="{{ route('orders.items.remove', [$order, $item]) }}" onsubmit="return confirm('Remove item?')">
                                         @csrf @method('DELETE')
                                         <button type="submit" class="btn btn-sm btn-outline-danger">×</button>
                                     </form>
+                                    @endif
                                 </div>
                             </td>
                         </tr>

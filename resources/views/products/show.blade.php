@@ -98,7 +98,7 @@
                             </td>
                             <td>
                                 @php $hasOrders = $variant->orderItems()->exists(); @endphp
-                                @if(!$hasOrders && $variant->allocated_qty == 0)
+                                @if(!$hasOrders && $variant->allocated_qty == 0 && auth()->user()->isAdmin())
                                     <form method="POST" action="{{ route('products.variants.destroy', [$product, $variant]) }}"
                                         onsubmit="return confirm('Delete this variant? This cannot be undone.')">
                                         @csrf @method('DELETE')

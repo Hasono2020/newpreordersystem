@@ -133,6 +133,7 @@ class ProductController extends Controller
 
     public function destroy(Product $product)
     {
+        $this->adminOnly('delete products');
         // Must delete in order: purchase_order_items → order_items → variants → product
         // to avoid foreign key constraint violations
         \DB::transaction(function () use ($product) {

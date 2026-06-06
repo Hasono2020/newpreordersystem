@@ -198,6 +198,7 @@ class OrderController extends Controller
 
     public function destroy(Order $order)
     {
+        $this->adminOnly('delete orders');
         $order->delete();
         return redirect()->route('orders.index')->with('success', 'Order deleted.');
     }
@@ -284,7 +285,7 @@ class OrderController extends Controller
 
     public function removeItem(Order $order, OrderItem $item)
     {
-        // Bug 2 fix: ensure item belongs to this order
+        $this->adminOnly('remove order items');
         abort_if($item->order_id !== $order->id, 404, 'Item does not belong to this order.');
 
         $item->delete();
@@ -386,14 +387,15 @@ class OrderController extends Controller
             'default_shipping_area_id' => 'nullable|exists:shipping_areas,id',
         ]);
 
-        // Bug 8 fix: warn if phone already exists
+        // Normalize and check phone duplicate
         if (!empty($data['phone'])) {
-            $existing = Customer::where('phone', $data['phone'])->first();
+            $normalized = Customer::normalizePhone($data['phone']);
+            $existing = Customer::where('phone', $normalized)->first();
             if ($existing) {
                 return response()->json([
                     'duplicate' => true,
                     'customer'  => $existing,
-                    'message'   => "Phone {$data['phone']} already belongs to customer: {$existing->name}",
+                    'message'   => "Phone {$normalized} already belongs to customer: {$existing->name}",
                 ]);
             }
         }

@@ -4,7 +4,14 @@
 
 @section('content')
 <div class="d-flex gap-2 mb-3">
+    @if(auth()->user()->isAdmin())
     <a href="{{ route('trips.edit', $trip) }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-pencil me-1"></i>Edit</a>
+    <form method="POST" action="{{ route('trips.destroy', $trip) }}"
+        onsubmit="return confirm('Delete trip \'{{ $trip->name }}\'? This cannot be undone.')">
+        @csrf @method('DELETE')
+        <button type="submit" class="btn btn-outline-danger btn-sm"><i class="bi bi-trash3 me-1"></i>Delete</button>
+    </form>
+    @endif
     <a href="{{ route('orders.create', ['trip_id' => $trip->id]) }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>New Order</a>
     <a href="{{ route('products.create', ['trip_id' => $trip->id]) }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-tags me-1"></i>Add Product</a>
     <a href="{{ route('purchasing.index', ['trip_id' => $trip->id]) }}" class="btn btn-outline-info btn-sm"><i class="bi bi-box-seam me-1"></i>Purchasing</a>

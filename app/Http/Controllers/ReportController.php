@@ -326,14 +326,15 @@ class ReportController extends Controller
                         ? ShippingArea::whereRaw('LOWER(name) LIKE ?', ['%'.strtolower($area).'%'])->first()
                         : null;
 
-                    // Find or create customer
+                    // Find or create customer — normalize phone first
+                    $normalizedPhone = Customer::normalizePhone($phone);
                     $customer = null;
-                    if ($phone) $customer = Customer::where('phone', $phone)->first();
+                    if ($normalizedPhone) $customer = Customer::where('phone', $normalizedPhone)->first();
                     if (!$customer) $customer = Customer::where('name', $name)->first();
                     if (!$customer) {
                         $customer = Customer::create([
                             'name'                     => $name,
-                            'phone'                    => $phone ?: null,
+                            'phone'                    => $normalizedPhone,
                             'type'                     => $type,
                             'default_shipping_area_id' => $shippingArea?->id,
                         ]);

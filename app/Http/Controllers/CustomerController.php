@@ -118,6 +118,7 @@ class CustomerController extends Controller
 
     public function destroy(Customer $customer)
     {
+        $this->adminOnly('delete customers');
         DB::transaction(function () use ($customer) {
             foreach ($customer->orders as $order) {
                 $order->payments()->delete();
@@ -199,13 +200,16 @@ class CustomerController extends Controller
 
             if (empty($name)) continue;
 
+            // Normalize phone before duplicate check
+            $normalizedPhone = \App\Models\Customer::normalizePhone($phone);
+
             // Check duplicates
-            if ($phone && Customer::where('phone', $phone)->exists()) {
+            if ($normalizedPhone && Customer::where('phone', $normalizedPhone)->exists()) {
                 $skipped++;
-                $skipReasons[] = "Row {$lineNum} ({$name}): phone {$phone} already exists.";
+                $skipReasons[] = "Row {$lineNum} ({$name}): phone {$normalizedPhone} already exists.";
                 continue;
             }
-            if (!$phone && Customer::where('name', $name)->exists()) {
+            if (!$normalizedPhone && Customer::where('name', $name)->exists()) {
                 $skipped++;
                 $skipReasons[] = "Row {$lineNum} ({$name}): name already exists.";
                 continue;
@@ -239,6 +243,7 @@ class CustomerController extends Controller
 
     public function bulkDestroy(Request $request)
     {
+        $this->adminOnly('bulk delete customers');
         $request->validate([
             'action'       => 'required|in:selected,no_orders',
             'customer_ids' => 'required_if:action,selected|array',

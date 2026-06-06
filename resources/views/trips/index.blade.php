@@ -5,7 +5,9 @@
 @section('content')
 <div class="d-flex justify-content-between mb-3">
     <div></div>
+    @if(auth()->user()->isAdmin())
     <a href="{{ route('trips.create') }}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>New Trip</a>
+    @endif
 </div>
 
 <div class="card">
@@ -26,7 +28,9 @@
                     <td>{{ $trip->products_count }}</td>
                     <td>
                         <a href="{{ route('trips.show', $trip) }}" class="btn btn-sm btn-outline-primary">View</a>
+                        @if(auth()->user()->isAdmin())
                         <a href="{{ route('trips.edit', $trip) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
+                        @endif
                     </td>
                 </tr>
                 @empty
