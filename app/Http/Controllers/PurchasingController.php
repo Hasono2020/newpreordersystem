@@ -23,30 +23,31 @@ class PurchasingController extends Controller
         $demandBySupplier = [];
         if ($selectedTrip) {
             $allItems = OrderItem::whereHas('order', fn($q) => $q->where('trip_id', $selectedTrip->id))
-                ->whereNotIn('status', ['cancelled', 'sold_out'])
+                ->whereIn('status', ['pending', 'confirmed'])
                 ->with('product.supplier', 'variant')
                 ->get();
 
-            // Get supplier IDs that already have a PO for this trip (exclude cancelled)
-            $supplierIdsWithPO = PurchaseOrder::where('trip_id', $selectedTrip->id)
-                ->whereNotIn('status', ['cancelled'])
+            // Get supplier IDs that already have an ACTIVE (not yet arrived) PO for this trip
+            // If a PO is already 'arrived', the supplier can show again for new pending demand
+            $supplierIdsWithActivePO = PurchaseOrder::where('trip_id', $selectedTrip->id)
+                ->whereNotIn('status', ['cancelled', 'arrived'])
                 ->whereNotNull('supplier_id')
                 ->pluck('supplier_id')
                 ->unique()
                 ->toArray();
 
-            // Check if a no-supplier PO already exists
-            $hasNoSupplierPO = PurchaseOrder::where('trip_id', $selectedTrip->id)
-                ->whereNotIn('status', ['cancelled'])
+            // Check if a no-supplier active PO exists
+            $hasNoSupplierActivePO = PurchaseOrder::where('trip_id', $selectedTrip->id)
+                ->whereNotIn('status', ['cancelled', 'arrived'])
                 ->whereNull('supplier_id')
                 ->exists();
 
             $bySupplier = $allItems->groupBy(fn($item) => $item->product->supplier_id ?? 'no_supplier');
 
             foreach ($bySupplier as $supplierId => $supplierItems) {
-                // Skip if PO already exists for this supplier
-                if ($supplierId === 'no_supplier' && $hasNoSupplierPO) continue;
-                if ($supplierId !== 'no_supplier' && in_array($supplierId, $supplierIdsWithPO)) continue;
+                // Skip if supplier has an active (draft/submitted/confirmed) PO already
+                if ($supplierId === 'no_supplier' && $hasNoSupplierActivePO) continue;
+                if ($supplierId !== 'no_supplier' && in_array($supplierId, $supplierIdsWithActivePO)) continue;
 
                 $firstProduct = $supplierItems->first()->product;
                 $supplierObj  = $firstProduct->supplier;

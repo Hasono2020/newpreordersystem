@@ -2,8 +2,6 @@
 
 namespace App\Traits;
 
-use Illuminate\Support\Facades\Response;
-
 trait HandlesXlsx
 {
     /**
@@ -172,15 +170,24 @@ trait HandlesXlsx
     }
 
     /**
-     * Return an xlsx file download response directly.
+     * Return an xlsx file download response.
+     * Uses a temp file + response()->download() to avoid output buffer corruption.
      */
     protected function streamXlsx(string $filename, array $data)
     {
         $content = $this->buildXlsx($data);
-        return Response::make($content, 200, [
+
+        // Write to a temp file so Laravel can stream it cleanly
+        $tmp = tempnam(sys_get_temp_dir(), 'xlsx_dl_');
+        file_put_contents($tmp, $content);
+
+        return response()->download($tmp, $filename, [
             'Content-Type'        => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'Content-Disposition' => "attachment; filename=\"{$filename}\"",
-        ]);
+            'Content-Length'      => strlen($content),
+            'Cache-Control'       => 'no-cache, no-store, must-revalidate',
+            'Pragma'              => 'no-cache',
+        ])->deleteFileAfterSend(true);
     }
 
     private function xlsxColToIndex(string $col): int

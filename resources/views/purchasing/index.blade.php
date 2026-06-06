@@ -76,9 +76,9 @@
         </div>
         @empty
         <div class="card p-4 text-center text-muted">
-            @if($purchaseOrders->count() > 0)
+            @if($purchaseOrders->where('status', '!=', 'arrived')->count() > 0)
                 <i class="bi bi-check2-circle fs-1 mb-2 d-block text-success"></i>
-                <div class="fw-semibold">All suppliers have Purchase Orders for this trip.</div>
+                <div class="fw-semibold">All suppliers have active Purchase Orders for this trip.</div>
                 <div class="mt-1 small">View and manage them in the Purchase Orders list →</div>
             @else
                 <i class="bi bi-inbox fs-1 mb-2 d-block"></i>

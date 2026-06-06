@@ -14,9 +14,20 @@ class ProductController extends Controller
     public function index(Request $request)
     {
         $query = Product::with('trip', 'supplier')->withCount('orderItems');
-        if ($request->trip_id) $query->where('trip_id', $request->trip_id);
-        $products = $query->latest()->paginate(20)->withQueryString();
-        $trips = Trip::orderByDesc('id')->get();
+
+        if ($request->trip_id) {
+            $query->where('trip_id', $request->trip_id);
+        }
+        if ($request->search) {
+            $query->where(function ($q) use ($request) {
+                $q->where('name', 'like', '%'.$request->search.'%')
+                  ->orWhere('product_code', 'like', '%'.$request->search.'%')
+                  ->orWhere('brand', 'like', '%'.$request->search.'%');
+            });
+        }
+
+        $products = $query->orderBy('name')->paginate(20)->withQueryString();
+        $trips    = Trip::orderByDesc('id')->get();
         return view('products.index', compact('products', 'trips'));
     }
 
@@ -33,7 +44,10 @@ class ProductController extends Controller
             'trip_id'          => 'required|exists:trips,id',
             'name'             => 'required|string|max:255',
             'sku'              => 'nullable|string|max:100',
-            'product_code'     => 'nullable|string|max:50|unique:products,product_code',
+            'product_code' => [
+                'nullable', 'string', 'max:50',
+                \Illuminate\Validation\Rule::unique('products')->where('trip_id', $request->trip_id),
+            ],
             'brand'            => 'nullable|string|max:100',
             'price'            => 'required|numeric|min:0',
             'weight_gram'      => 'nullable|integer|min:0',
@@ -89,7 +103,12 @@ class ProductController extends Controller
             'trip_id'      => 'required|exists:trips,id',
             'name'         => 'required|string|max:255',
             'sku'          => 'nullable|string|max:100',
-            'product_code' => 'nullable|string|max:50|unique:products,product_code,'.$product->id,
+            'product_code' => [
+                'nullable', 'string', 'max:50',
+                \Illuminate\Validation\Rule::unique('products')
+                    ->where('trip_id', $request->trip_id)
+                    ->ignore($product->id),
+            ],
             'brand'        => 'nullable|string|max:100',
             'supplier_id'  => 'required|exists:suppliers,id',
             'price'        => 'required|numeric|min:0',
@@ -164,7 +183,31 @@ class ProductController extends Controller
             return back()->with('error', 'Could not read the file. Make sure it is a valid .xlsx file.');
         }
 
-        array_shift($rows); // skip header
+        // ── Header validation: reject wrong file format ────────────────
+        $header = array_map('strtolower', array_map('trim', array_map('strval', $rows[0])));
+
+        // Order import file signals: has "no","phone","area","qty","dp" columns
+        $orderSignals = ['no', 'phone', 'area', 'qty', 'dp'];
+        $matched = count(array_intersect($orderSignals, $header));
+        if ($matched >= 2) {
+            return back()->with('error',
+                '❌ Wrong file — this looks like an ORDER import file, not a product file. '.
+                'Please use the product import template instead.'
+            );
+        }
+
+        // Must have core product columns
+        foreach (['trip', 'name', 'supplier'] as $required) {
+            if (!in_array($required, $header)) {
+                return back()->with('error',
+                    "❌ Wrong file format — missing required column \"{$required}\". ".
+                    "Please download and use the product import template."
+                );
+            }
+        }
+
+        // Trip names must be at least 3 characters to prevent partial digit matches
+        array_shift($rows); // skip header now that it's validated
 
         // ── Validation pass first ──────────────────────────────────────
         $validationErrors = [];
@@ -181,13 +224,16 @@ class ProductController extends Controller
             if (empty($name) && empty($tripName) && empty($code)) continue;
 
             $issues = [];
-            if (empty($tripName))     $issues[] = 'Trip is required';
-            if (empty($name))         $issues[] = 'Product name is required';
+            if (empty($tripName))           $issues[] = 'Trip is required';
+            elseif (strlen($tripName) < 3)  $issues[] = "Trip name '{$tripName}' is too short — use the full trip name (e.g. 'China June 2026')";
+            if (empty($name))               $issues[] = 'Product name is required';
             if (empty(trim($row[5] ?? ''))) $issues[] = 'Supplier is required';
 
             // Duplicate code in DB
-            if ($code && \App\Models\Product::where('product_code', $code)->exists()) {
-                $issues[] = "Product code '{$code}' already exists in the system";
+            if ($code && \App\Models\Product::where('product_code', $code)->where('trip_id', function($q) use ($tripName) {
+                $q->select('id')->from('trips')->where('name', 'like', '%'.$tripName.'%')->limit(1);
+            })->exists()) {
+                $issues[] = "Product code '{$code}' already exists in trip '{$tripName}'";
             }
             // Duplicate code within this import file
             if ($code && isset($seenCodes[$code])) {
@@ -350,15 +396,17 @@ class ProductController extends Controller
         return $this->streamXlsx('products_export.xlsx', $rows);
     }
 
-    /** AJAX: check if product code is already taken */
+    /** AJAX: check if product code is already taken within a trip */
     public function checkCode(Request $request)
     {
         $code      = strtoupper(trim($request->code ?? ''));
         $excludeId = $request->exclude;
+        $tripId    = $request->trip_id;
 
         if (!$code) return response()->json(['exists' => false]);
 
         $query = Product::where('product_code', $code);
+        if ($tripId)    $query->where('trip_id', $tripId);
         if ($excludeId) $query->where('id', '!=', $excludeId);
 
         $product = $query->with('trip')->first();

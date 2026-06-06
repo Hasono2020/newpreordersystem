@@ -3,6 +3,20 @@
 @section('page-title', 'Orders')
 
 @section('content')
+
+@if(session('import_errors'))
+<div class="alert alert-danger mb-3">
+    <div class="fw-semibold mb-2"><i class="bi bi-x-circle-fill me-1"></i>Import blocked — fix these issues in your Excel file and try again:</div>
+    <ul class="mb-0 ps-3">
+        @foreach(session('import_errors') as $err)
+            <li class="small">{{ $err }}</li>
+        @endforeach
+    </ul>
+    <div class="mt-2 small text-muted">
+        <strong>Tips:</strong> Product codes must exist in the selected trip. Color and Size must exactly match the variant names in the system.
+    </div>
+</div>
+@endif
 <div class="row g-2 mb-3 align-items-end">
     <div class="col">
         <form class="d-flex gap-2 flex-wrap">
@@ -70,8 +84,16 @@
             </div>
             <div class="modal-body">
                 <div class="alert alert-light border small mb-3">
-                    <strong>Columns:</strong> No · Name · Phone · Area · Code · Color · Size · Qty · Price · DP · Date of DP · Notes<br>
-                    <span class="text-muted">Products must exist in the selected trip. <a href="{{ route('orders.import.template') }}">Download template</a></span>
+                    <strong>Columns (13):</strong> No · Name · Phone · <strong>Type</strong> · Area · Code · Color · Size · Qty · Price · DP · Date of DP · Notes<br>
+                    <span class="text-muted d-block mt-1">
+                        • <strong>Type</strong>: <code>customer</code> / <code>reseller</code> / <code>selected_customer</code> — leave blank for default (customer).<br>
+                        • <strong>Each row = 1 item line</strong> with its own Qty.<br>
+                        • Repeat customer name each row, or leave blank to continue same customer.<br>
+                        • Products must exist in the selected trip. Color/Size must match exactly.
+                    </span>
+                    <a href="{{ route('orders.import.template') }}" class="small mt-1 d-inline-block">
+                        <i class="bi bi-download me-1"></i>Download template (.xlsx)
+                    </a>
                 </div>
                 <form method="POST" action="{{ route('orders.import') }}" enctype="multipart/form-data">
                     @csrf
@@ -85,6 +107,7 @@
                                 </option>
                             @endforeach
                         </select>
+                        <div class="form-text text-muted">Products must exist in this trip. Color/Size must match exactly.</div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Excel File (.xlsx) <span class="text-danger">*</span></label>

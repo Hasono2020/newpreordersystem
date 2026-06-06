@@ -16,14 +16,22 @@
 @endif
 <div class="row g-2 mb-3 align-items-end">
     <div class="col">
-        <form class="d-flex gap-2">
+        <form class="d-flex gap-2" method="GET" action="{{ route('products.index') }}">
+            <input type="text" name="search" class="form-control form-control-sm"
+                placeholder="Search name or code…"
+                value="{{ request('search') }}" style="width:200px;">
             <select name="trip_id" class="form-select form-select-sm" style="width:auto;">
                 <option value="">All Trips</option>
                 @foreach($trips as $trip)
                     <option value="{{ $trip->id }}" {{ request('trip_id') == $trip->id ? 'selected' : '' }}>{{ $trip->name }}</option>
                 @endforeach
             </select>
-            <button class="btn btn-sm btn-outline-secondary">Filter</button>
+            <button class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-search me-1"></i>Filter
+            </button>
+            @if(request('search') || request('trip_id'))
+                <a href="{{ route('products.index') }}" class="btn btn-sm btn-outline-secondary">✕ Clear</a>
+            @endif
         </form>
     </div>
     <div class="col-auto d-flex gap-2">

@@ -417,7 +417,7 @@ function checkCodeUnique(val) {
     if (!val || val.length < 2) return;
     clearTimeout(codeCheckTimer);
     codeCheckTimer = setTimeout(() => {
-        fetch(`/api/products/check-code?code=${encodeURIComponent(val)}`)
+        fetch(`/api/products/check-code?code=${encodeURIComponent(val)}&trip_id=${document.querySelector('[name=trip_id]')?.value || ''}`)
             .then(r => r.json())
             .then(data => {
                 if (data.exists) {

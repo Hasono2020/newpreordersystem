@@ -298,7 +298,7 @@ function checkCodeUnique(val, excludeId) {
     if (!val || val.length < 2) return;
     clearTimeout(codeCheckTimer);
     codeCheckTimer = setTimeout(() => {
-        fetch(`/api/products/check-code?code=${encodeURIComponent(val)}&exclude=${excludeId || ''}`)
+        fetch(`/api/products/check-code?code=${encodeURIComponent(val)}&trip_id={{ $product->trip_id }}&exclude=${excludeId || ''}`)
             .then(r => r.json())
             .then(data => {
                 if (data.exists) {

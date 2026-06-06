@@ -37,11 +37,13 @@ class CustomerController extends Controller
     {
         $data = $request->validate([
             'name'                     => 'required|string|max:255',
-            'phone'                    => 'required|string|max:50',
+            'phone'                    => 'required|string|max:50|unique:customers,phone',
             'address'                  => 'nullable|string',
             'type'                     => 'required|in:customer,reseller,selected_customer',
             'notes'                    => 'nullable|string',
             'default_shipping_area_id' => 'required|exists:shipping_areas,id',
+        ], [
+            'phone.unique' => 'This phone number is already registered to another customer.',
         ]);
 
         $customer = Customer::create($data);
@@ -65,11 +67,13 @@ class CustomerController extends Controller
     {
         $data = $request->validate([
             'name'                     => 'required|string|max:255',
-            'phone'                    => 'required|string|max:50',
+            'phone'                    => 'required|string|max:50|unique:customers,phone,'.$customer->id,
             'address'                  => 'nullable|string',
             'type'                     => 'required|in:customer,reseller,selected_customer',
             'notes'                    => 'nullable|string',
             'default_shipping_area_id' => 'required|exists:shipping_areas,id',
+        ], [
+            'phone.unique' => 'This phone number is already registered to another customer.',
         ]);
 
         $oldAreaId = $customer->default_shipping_area_id;
