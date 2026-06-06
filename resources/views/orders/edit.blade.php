@@ -75,8 +75,7 @@
                                             {{ $p->name }}
                                             @if($p->product_code) [{{ $p->product_code }}] @endif
                                         </option>
-                                    @endforeach
-                                </select>
+                                    @endforeach                                </select>
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label small fw-semibold">Variant</label>

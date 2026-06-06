@@ -147,9 +147,11 @@ class ProductController extends Controller
     public function importTemplate()
     {
         return $this->streamXlsx('product_import_template.xlsx', [
-            ['trip','name','product_code','sku','brand','supplier','price','weight_gram','excluded_from_promo','notes'],
-            ['China June 2026','Kemeja Floral','NA_05','','Brand X','Supplier A',120000,330,'no','Cotton material'],
-            ['China June 2026','Celana Jeans','NZ_05','','','Supplier B',250000,500,'yes',''],
+            ['trip','name','product_code','sku','brand','supplier','price','weight_gram','excluded_from_promo','status','color','size','price_adjustment','supplier_stock'],
+            ['China June 2026','Baju','NA_01','','Brand X','Shein',250000,330,'no','active','Black','S',0,25],
+            ['','','NA_01','','','','','','','','White','M',0,20],
+            ['','','NA_01','','','','','','','','Navy','L',5000,15],
+            ['China June 2026','Celana Chino','NZ_01','','','Uniqlo',500000,400,'yes','active','','','',''],
         ]);
     }
 
@@ -166,20 +168,32 @@ class ProductController extends Controller
 
         // ── Validation pass first ──────────────────────────────────────
         $validationErrors = [];
+        $seenCodes        = []; // track codes we're about to create in this import
+
         foreach ($rows as $rowIdx => $row) {
             $lineNum  = $rowIdx + 2;
             $tripName = trim($row[0] ?? '');
             $name     = trim($row[1] ?? '');
             $code     = strtoupper(trim($row[2] ?? ''));
 
-            if (empty($name) && empty($tripName)) continue;
+            // Rows with only variant data (blank name/trip continuing a previous product)
+            if (empty($name) && empty($tripName) && !empty($code)) continue;
+            if (empty($name) && empty($tripName) && empty($code)) continue;
 
             $issues = [];
-            if (empty($tripName)) $issues[] = 'Trip is required';
-            if (empty($name))     $issues[] = 'Product name is required';
+            if (empty($tripName))     $issues[] = 'Trip is required';
+            if (empty($name))         $issues[] = 'Product name is required';
+            if (empty(trim($row[5] ?? ''))) $issues[] = 'Supplier is required';
 
+            // Duplicate code in DB
             if ($code && \App\Models\Product::where('product_code', $code)->exists()) {
-                $issues[] = "Product code '{$code}' already exists";
+                $issues[] = "Product code '{$code}' already exists in the system";
+            }
+            // Duplicate code within this import file
+            if ($code && isset($seenCodes[$code])) {
+                // It's the same product continued — not an error, it's adding variants
+            } elseif ($code) {
+                $seenCodes[$code] = true;
             }
 
             if (!empty($issues)) {
@@ -193,10 +207,13 @@ class ProductController extends Controller
                          ->with('error', 'Import blocked — please fix the following issues before importing:');
         }
 
-        // ── All valid — proceed ────────────────────────────────────────
-        $imported = 0;
-        $skipped  = 0;
-        $errors   = [];
+        // ── Import pass ────────────────────────────────────────────────
+        $imported     = 0;
+        $variantCount = 0;
+        $newSuppliers = 0;
+        $skipped      = 0;
+        $errors       = [];
+        $productMap   = [];
 
         foreach ($rows as $rowIdx => $row) {
             $lineNum      = $rowIdx + 2;
@@ -209,36 +226,80 @@ class ProductController extends Controller
             $price        = (float)($row[6] ?? 0);
             $weight       = (int)($row[7] ?? 0);
             $excluded     = strtolower(trim($row[8] ?? '')) === 'yes';
-            $notes        = trim($row[9] ?? '');
+            $status       = trim($row[9] ?? 'active');
+            $color        = trim($row[10] ?? '');
+            $size         = trim($row[11] ?? '');
+            $priceAdj     = (float)($row[12] ?? 0);
+            $suppStock    = (int)($row[13] ?? 0);
+
+            // Continuation row (same product, new variant)
+            if (empty($name) && empty($tripName) && !empty($code)) {
+                $product = $productMap[$code] ?? null;
+                if ($product && ($color || $size)) {
+                    $product->variants()->create([
+                        'color'          => $color ?: null,
+                        'size'           => $size  ?: null,
+                        'price_adjustment'=> $priceAdj,
+                        'supplier_stock' => $suppStock,
+                        'allocated_qty'  => 0,
+                    ]);
+                    $variantCount++;
+                }
+                continue;
+            }
 
             if (empty($name)) continue;
 
+            // Find trip
             $trip = \App\Models\Trip::where('name', 'like', '%'.$tripName.'%')->first();
-            if (!$trip) { $errors[] = "Row {$lineNum} ({$name}): trip '{$tripName}' not found."; $skipped++; continue; }
-
-            $supplierId = null;
-            if ($supplierName) {
-                $supplier   = \App\Models\Supplier::whereRaw('LOWER(name) LIKE ?', ['%'.strtolower($supplierName).'%'])->first();
-                $supplierId = $supplier?->id;
+            if (!$trip) {
+                $errors[] = "Row {$lineNum} ({$name}): trip '{$tripName}' not found.";
+                $skipped++; continue;
             }
 
-            \App\Models\Product::create([
+            // Find supplier — auto-create if not found
+            $supplierId = null;
+            if ($supplierName) {
+                $supplier = \App\Models\Supplier::whereRaw('LOWER(name) LIKE ?', ['%'.strtolower($supplierName).'%'])->first();
+                if (!$supplier) {
+                    $supplier = \App\Models\Supplier::create(['name' => $supplierName, 'is_active' => true]);
+                    $newSuppliers++;
+                }
+                $supplierId = $supplier->id;
+            }
+
+            $product = \App\Models\Product::create([
                 'trip_id'             => $trip->id,
                 'name'                => $name,
                 'product_code'        => $code ?: null,
-                'sku'                 => $sku ?: null,
+                'sku'                 => $sku   ?: null,
                 'brand'               => $brand ?: null,
                 'supplier_id'         => $supplierId,
                 'price'               => $price,
                 'weight_gram'         => $weight,
                 'excluded_from_promo' => $excluded,
-                'notes'               => $notes ?: null,
-                'status'              => 'active',
+                'notes'               => null,
+                'status'              => in_array($status, ['active','closed','arrived']) ? $status : 'active',
             ]);
+
             $imported++;
+            if ($code) $productMap[$code] = $product;
+
+            // Create variant from this first row if color/size provided
+            if ($color || $size) {
+                $product->variants()->create([
+                    'color'           => $color ?: null,
+                    'size'            => $size  ?: null,
+                    'price_adjustment'=> $priceAdj,
+                    'supplier_stock'  => $suppStock,
+                    'allocated_qty'   => 0,
+                ]);
+                $variantCount++;
+            }
         }
 
-        $msg = "✓ Imported {$imported} product(s).";
+        $msg = "✓ Imported {$imported} product(s) with {$variantCount} variant(s).";
+        if ($newSuppliers) $msg .= " {$newSuppliers} new supplier(s) auto-created.";
         if ($skipped) $msg .= " {$skipped} skipped.";
         if ($errors)  $msg .= " Issues: ".implode(' | ', array_slice($errors, 0, 3));
         return redirect()->route('products.index')->with($errors ? 'warning' : 'success', $msg);
@@ -246,25 +307,48 @@ class ProductController extends Controller
 
     public function export(Request $request)
     {
-        $query = Product::with('trip', 'supplier')
-            ->withSum(['orderItems as total_ordered' =>
-                fn($q) => $q->whereNotIn('status', ['cancelled','sold_out'])], 'quantity');
+        $query = Product::with('trip', 'supplier', 'variants');
         if ($request->trip_id) $query->where('trip_id', $request->trip_id);
         $products = $query->orderBy('name')->get();
 
-        $rows = [['trip','name','product_code','sku','brand','supplier','price','weight_gram','excluded_from_promo','status']];
+        $header = ['trip','name','product_code','sku','brand','supplier','price','weight_gram','excluded_from_promo','status','color','size','price_adjustment','supplier_stock'];
+        $rows   = [$header];
+
         foreach ($products as $p) {
-            $rows[] = [$p->trip->name, $p->name,
-                $p->product_code ?? '', $p->sku ?? '', $p->brand ?? '',
+            $base = [
+                $p->trip->name,
+                $p->name,
+                $p->product_code ?? '',
+                $p->sku ?? '',
+                $p->brand ?? '',
                 $p->supplier?->name ?? '',
-                $p->price, $p->weight_gram,
+                $p->price,
+                $p->weight_gram,
                 $p->excluded_from_promo ? 'yes' : 'no',
-                $p->status];
+                $p->status,
+            ];
+
+            if ($p->variants->isEmpty()) {
+                // No variants — one row, blank variant columns
+                $rows[] = array_merge($base, ['', '', 0, 0]);
+            } else {
+                foreach ($p->variants as $i => $v) {
+                    if ($i === 0) {
+                        // First variant row has full product info
+                        $rows[] = array_merge($base, [$v->color ?? '', $v->size ?? '', $v->price_adjustment, $v->supplier_stock]);
+                    } else {
+                        // Subsequent variant rows — only code + variant columns, rest blank
+                        $rows[] = [
+                            '', '', $p->product_code ?? '', '', '', '', '', '', '', '',
+                            $v->color ?? '', $v->size ?? '', $v->price_adjustment, $v->supplier_stock,
+                        ];
+                    }
+                }
+            }
         }
+
         return $this->streamXlsx('products_export.xlsx', $rows);
     }
-
-    private function streamCsv(string $filename, callable $callback) {} // kept for safety, unused
 
     /** AJAX: check if product code is already taken */
     public function checkCode(Request $request)

@@ -47,7 +47,10 @@ class Order extends Model
         parent::boot();
         static::creating(function ($order) {
             if (!$order->order_number) {
-                $order->order_number = 'ORD-' . strtoupper(uniqid());
+                do {
+                    $number = 'ORD-' . strtoupper(substr(md5(uniqid(mt_rand(), true)), 0, 10));
+                } while (static::where('order_number', $number)->exists());
+                $order->order_number = $number;
             }
         });
     }

@@ -53,6 +53,11 @@ class OrderController extends Controller
             'items.*.product_variant_id'     => 'nullable|exists:product_variants,id',
             'items.*.quantity'               => 'required|integer|min:1',
             'items.*.unit_price'             => 'required|numeric|min:0',
+        ], [
+            'items.required'              => 'Please add at least one product before creating the order.',
+            'items.min'                   => 'Please add at least one product before creating the order.',
+            'items.*.product_id.required' => 'Each item row must have a product selected.',
+            'items.*.quantity.min'        => 'Quantity must be at least 1.',
         ]);
 
         // Block new orders if trip is order_closed or beyond
@@ -147,7 +152,15 @@ class OrderController extends Controller
 
     public function edit(Order $order)
     {
-        $order->load(['customer', 'trip.products.variants', 'shippingArea', 'items.product', 'items.variant', 'payments', 'createdBy']);
+        $order->load([
+            'customer',
+            'trip.products.variants',
+            'shippingArea',
+            'items.product',
+            'items.variant',
+            'payments',
+            'createdBy',
+        ]);
         $shippingAreas = ShippingArea::where('is_active', true)->orderBy('name')->get();
         return view('orders.edit', compact('order', 'shippingAreas'));
     }
@@ -307,7 +320,20 @@ class OrderController extends Controller
             : ($paid >= $order->total_amount ? 'paid' : 'partial');
         $order->update(['deposit_paid' => max(0, $paid), 'payment_status' => $status]);
 
-        return back()->with('success', 'Payment recorded.');
+        // Auto-advance: when fully paid, move all 'pending' items → 'confirmed'
+        $autoConfirmed = 0;
+        if ($status === 'paid') {
+            $autoConfirmed = $order->items()
+                ->where('status', 'pending')
+                ->update(['status' => 'confirmed']);
+        }
+
+        $msg = 'Payment recorded.';
+        if ($status === 'paid')    $msg .= ' ✓ Order is now fully paid.';
+        if ($autoConfirmed > 0)    $msg .= " {$autoConfirmed} pending item(s) automatically confirmed.";
+        if ($status === 'partial') $msg .= ' Balance remaining: Rp ' . number_format($order->total_amount - $paid, 0, ',', '.');
+
+        return back()->with('success', $msg);
     }
 
     public function invoice(Order $order)

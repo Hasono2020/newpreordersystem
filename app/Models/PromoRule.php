@@ -62,8 +62,14 @@ class PromoRule extends Model
 
     public function calculateDiscount(int $itemCount): array
     {
+        // A rule uses EITHER flat discount OR per-item discount, not both simultaneously.
+        // Per-item discount takes priority if set; otherwise use flat.
+        $discount = $this->discount_per_item > 0
+            ? $this->discount_per_item * $itemCount
+            : ($this->discount_flat ?? 0);
+
         return [
-            'discount'             => $this->discount_flat + ($this->discount_per_item * $itemCount),
+            'discount'             => $discount,
             'max_shipping_subsidy' => $this->max_shipping_subsidy,
         ];
     }

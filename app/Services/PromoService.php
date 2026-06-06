@@ -75,7 +75,7 @@ class PromoService
         $chargeableKg  = ShippingArea::calcChargeableKg($totalGrams);
         $shippingFee   = $order->shippingArea
             ? $order->shippingArea->calcShippingFee($totalGrams)
-            : ($order->shipping_fee ?? 0);
+            : 0;
 
         // Promo
         $promo              = $this->getBestPromo($order->customer->type, $order->trip_id, $activeItems);

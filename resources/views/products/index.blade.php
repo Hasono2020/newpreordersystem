@@ -66,13 +66,12 @@
             </div>
             <div class="modal-body">
                 <div class="alert alert-light border small mb-3">
-                    <strong>Excel columns:</strong> trip · name · product_code · sku · brand · supplier · price · weight_gram · excluded_from_promo · notes<br>
-                    <span class="text-muted">
-                        • <strong>Trip</strong> must match an existing trip name.<br>
-                        • <strong>product_code</strong> must be unique — duplicates are skipped.<br>
-                        • <strong>excluded_from_promo</strong>: use <code>yes</code> or <code>no</code>.<br>
-                        • <strong>Supplier</strong> matched by name from your suppliers list.
-                    </span><br>
+                    <strong>Columns (14):</strong> trip · name · product_code · sku · brand · <strong>supplier*</strong> · price · weight_gram · excluded · status · color · size · price_adjustment · supplier_stock<br>
+                    <span class="text-muted mt-1 d-block">
+                        • <strong>Supplier is required</strong> — import is blocked if any row is missing it.<br>
+                        • If supplier name doesn't exist, it will be <strong>auto-created</strong> and linked.<br>
+                        • One row per variant. Repeat product_code on extra rows for additional variants.
+                    </span>
                     <a href="{{ route('products.import.template') }}" class="small mt-1 d-inline-block">
                         <i class="bi bi-download me-1"></i>Download template (.xlsx)
                     </a>
