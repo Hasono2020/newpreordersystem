@@ -95,11 +95,13 @@
             </div>
             <div class="modal-body">
                 <div class="alert alert-light border small mb-3">
-                    <strong>Columns (14):</strong> trip · name · product_code · sku · brand · <strong>supplier*</strong> · price · weight_gram · excluded · status · color · size · price_adjustment · supplier_stock<br>
+                    <strong>Columns (14) — Product Import format:</strong><br>
+                    <code class="small">Trip · Name · Code · SKU · Brand · Supplier · Price · Weight (gram) · Excluded from Promo · Status · Color · Size · Price Adjustment · Supplier Stock</code>
                     <span class="text-muted mt-1 d-block">
-                        • <strong>Supplier is required</strong> — import is blocked if any row is missing it.<br>
-                        • If supplier name doesn't exist, it will be <strong>auto-created</strong> and linked.<br>
-                        • One row per variant. Repeat product_code on extra rows for additional variants.
+                        • <strong>One row per variant.</strong> Repeat the same Code on each row for different variants.<br>
+                        • All rows must have Trip, Name, and Code — any missing value blocks the entire import.<br>
+                        • Supplier is auto-created if it doesn't exist yet.<br>
+                        • <strong>Excluded from Promo:</strong> yes / no &nbsp;|&nbsp; <strong>Status:</strong> active / closed
                     </span>
                     <a href="{{ route('products.import.template') }}" class="small mt-1 d-inline-block">
                         <i class="bi bi-download me-1"></i>Download template (.xlsx)

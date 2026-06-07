@@ -39,6 +39,7 @@ Route::middleware('auth')->group(function () {
     Route::resource('customers', CustomerController::class);
     Route::delete('customers-bulk', [CustomerController::class, 'bulkDestroy'])->name('customers.bulk-destroy');
     Route::get('customers-export', [CustomerController::class, 'export'])->name('customers.export');
+    Route::get('customers-import-template', [CustomerController::class, 'importTemplate'])->name('customers.import.template');
     Route::post('customers-import', [CustomerController::class, 'importCsv'])->name('customers.import');
 
     // Orders
@@ -46,6 +47,7 @@ Route::middleware('auth')->group(function () {
     Route::get('orders-items-export', [ReportController::class, 'exportOrderItems'])->name('orders.items.export');
     Route::get('orders-import-template', [ReportController::class, 'orderImportTemplate'])->name('orders.import.template');
     Route::post('orders-import', [ReportController::class, 'importOrders'])->name('orders.import');
+    Route::post('orders/bulk-destroy', [OrderController::class, 'bulkDestroy'])->name('orders.bulk-destroy');
     Route::resource('orders', OrderController::class);
     Route::post('orders/{order}/items', [OrderController::class, 'addItem'])->name('orders.items.add');
     Route::patch('orders/{order}/items/{item}', [OrderController::class, 'updateItem'])->name('orders.items.update');

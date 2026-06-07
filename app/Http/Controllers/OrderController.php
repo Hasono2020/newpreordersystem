@@ -20,17 +20,18 @@ class OrderController extends Controller
 
     public function index(Request $request)
     {
-        $query = Order::with('customer', 'trip')->latest();
-        if ($request->trip_id)          $query->where('trip_id', $request->trip_id);
-        if ($request->payment_status)   $query->where('payment_status', $request->payment_status);
+        $perPage = in_array((int)$request->per_page, [20, 50, 100, 200]) ? (int)$request->per_page : 20;
+        $query   = Order::with('customer', 'trip')->latest();
+        if ($request->trip_id)        $query->where('trip_id', $request->trip_id);
+        if ($request->payment_status) $query->where('payment_status', $request->payment_status);
         if ($request->search) {
             $query->whereHas('customer', fn($q) => $q->where('name', 'like', '%'.$request->search.'%')
                                                        ->orWhere('phone', 'like', '%'.$request->search.'%'));
         }
-        $orders        = $query->paginate(20)->withQueryString();
-        $trips         = Trip::orderByDesc('id')->get();
-        $selectedTrip  = $request->trip_id ? Trip::find($request->trip_id) : null;
-        return view('orders.index', compact('orders', 'trips', 'selectedTrip'));
+        $orders       = $query->paginate($perPage)->withQueryString();
+        $trips        = Trip::orderByDesc('id')->get();
+        $selectedTrip = $request->trip_id ? Trip::find($request->trip_id) : null;
+        return view('orders.index', compact('orders', 'trips', 'selectedTrip', 'perPage'));
     }
 
     public function create(Request $request)
@@ -147,7 +148,17 @@ class OrderController extends Controller
     {
         $order->load(['customer', 'trip', 'shippingArea', 'items.product', 'items.variant', 'payments', 'createdBy']);
         $shippingAreas = ShippingArea::where('is_active', true)->orderBy('name')->get();
-        return view('orders.show', compact('order', 'shippingAreas'));
+
+        // Determine which promo applies (for display only — no DB writes)
+        $promoSvc   = app(\App\Services\PromoService::class);
+        $activeItems = $order->items->whereNotIn('status', ['cancelled', 'sold_out']);
+        $appliedPromo = $promoSvc->getBestPromo(
+            $order->customer->type,
+            $order->trip_id,
+            $activeItems
+        );
+
+        return view('orders.show', compact('order', 'shippingAreas', 'appliedPromo'));
     }
 
     public function edit(Order $order)
@@ -196,6 +207,41 @@ class OrderController extends Controller
         ]);
 
         return redirect()->route('orders.show', $order)->with('success', 'Order updated.');
+    }
+
+    public function bulkDestroy(Request $request)
+    {
+        $this->adminOnly('bulk delete orders');
+        $request->validate([
+            'action'    => 'required|in:selected,unpaid,trip',
+            'order_ids' => 'required_if:action,selected|array',
+        ]);
+
+        $query = Order::query();
+        if ($request->action === 'selected') {
+            $query->whereIn('id', $request->order_ids ?? []);
+        } elseif ($request->action === 'unpaid') {
+            $query->where('payment_status', 'unpaid');
+            if ($request->trip_id) $query->where('trip_id', $request->trip_id);
+        } elseif ($request->action === 'trip' && $request->trip_id) {
+            $query->where('trip_id', $request->trip_id);
+        }
+
+        $deleted = 0;
+        \DB::transaction(function () use ($query, &$deleted) {
+            $orderIds = $query->pluck('id');
+            if ($orderIds->isEmpty()) return;
+
+            // Delete in correct FK order: payments → order_items → orders
+            // (purchase_order_items has no FK to order_items)
+            \DB::table('payments')->whereIn('order_id', $orderIds)->delete();
+            \DB::table('order_items')->whereIn('order_id', $orderIds)->delete();
+            \DB::table('orders')->whereIn('id', $orderIds)->delete();
+            $deleted = $orderIds->count();
+        });
+
+        return redirect()->route('orders.index', request()->only('trip_id', 'payment_status', 'search'))
+            ->with('success', "Deleted {$deleted} order(s).");
     }
 
     public function destroy(Order $order)
@@ -361,7 +407,7 @@ class OrderController extends Controller
         if ($tripId)            $query->where('trip_id', $tripId);
         if (!empty($orderIds))  $query->whereIn('id', $orderIds);
 
-        $orders = $query->orderBy('created_at')->get();
+        $orders = $query->orderBy('ordered_at')->get();
 
         if ($orders->isEmpty()) {
             return back()->with('error', 'No orders found for this customer.');
@@ -369,7 +415,37 @@ class OrderController extends Controller
 
         $customer->load('defaultShippingArea');
 
-        return view('orders.combined-invoice', compact('customer', 'orders', 'tripId'));
+        // ── Combined promo & shipping calculation ────────────────────────
+        // Collect all active items across all orders
+        $allActiveItems = $orders->flatMap(fn($o) =>
+            $o->items->whereNotIn('status', ['cancelled', 'sold_out'])
+        );
+
+        // Use first available shipping area across all orders (or customer default)
+        $shippingArea = $orders->first(fn($o) => $o->shippingArea)?->shippingArea
+            ?? $customer->defaultShippingArea;
+
+        // Combined weight and shipping
+        $totalWeightGram  = $allActiveItems->sum(fn($i) => ($i->product->weight_gram ?? 0) * $i->quantity);
+        $combinedShipping = $shippingArea ? $shippingArea->calcShippingFee($totalWeightGram) : 0;
+        $chargeableKg     = \App\Models\ShippingArea::calcChargeableKg($totalWeightGram);
+
+        // Combined promo based on all items together
+        $promoSvc     = app(\App\Services\PromoService::class);
+        $combinedPromo = $tripId
+            ? $promoSvc->getBestPromo($customer->type, $tripId, $allActiveItems)
+            : null;
+
+        $combinedDiscount        = $combinedPromo ? $combinedPromo['discount'] : 0;
+        $combinedShipSubsidy     = $combinedPromo ? $combinedPromo['max_shipping_subsidy'] : 0;
+        $combinedShipDiscount    = min($combinedShipping, $combinedShipSubsidy);
+
+        return view('orders.combined-invoice', compact(
+            'customer', 'orders', 'tripId',
+            'shippingArea', 'totalWeightGram', 'chargeableKg',
+            'combinedShipping', 'combinedDiscount', 'combinedShipDiscount',
+            'combinedPromo', 'allActiveItems'
+        ));
     }
 
     // ── AJAX: trip products ──────────────────────────────────────────

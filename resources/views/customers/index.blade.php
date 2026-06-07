@@ -98,11 +98,22 @@
             </div>
             <div class="modal-body">
                 <div class="alert alert-light border small mb-3">
-                    <strong>Excel columns:</strong> name · phone · type · shipping_area · address · notes<br>
-                    <span class="text-muted">First row must be the header. Duplicates (same phone) are skipped.</span><br>
-                    <a href="{{ route('customers.export') }}" class="small">
-                        <i class="bi bi-download me-1"></i>Export existing customers as reference
-                    </a>
+                    <strong>Columns (6) — Customer Import format:</strong><br>
+                    <code class="small">Name · Phone · Type · Shipping Area · Address · Notes</code>
+                    <span class="text-muted d-block mt-1">
+                        • <strong>Type:</strong> customer / reseller / selected_customer (blank = customer).<br>
+                        • <strong>Phone:</strong> Indonesian format e.g. 081234567890.<br>
+                        • <strong>Shipping Area:</strong> must match an area name in the system.<br>
+                        • Duplicates (same phone or name) are skipped automatically.
+                    </span>
+                    <div class="mt-2 d-flex gap-3">
+                        <a href="{{ route('customers.import.template') }}" class="small">
+                            <i class="bi bi-download me-1"></i>Download template (.xlsx)
+                        </a>
+                        <a href="{{ route('customers.export') }}" class="small">
+                            <i class="bi bi-download me-1"></i>Export existing customers
+                        </a>
+                    </div>
                 </div>
                 <form method="POST" action="{{ route('customers.import') }}" enctype="multipart/form-data">
                     @csrf

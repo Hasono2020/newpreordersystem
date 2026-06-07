@@ -13,7 +13,7 @@
         @endforeach
     </ul>
     <div class="mt-2 small text-muted">
-        <strong>Tips:</strong> Product codes must exist in the selected trip. Color and Size must exactly match the variant names in the system.
+        <strong>Tips:</strong> Product codes must exist in the selected trip. Color and Size must exactly match the variant names in the system. Fix all errors listed above, then re-import the file.
     </div>
 </div>
 @endif
@@ -40,6 +40,32 @@
         </form>
     </div>
     <div class="col-auto d-flex gap-2">
+        @if(auth()->user()->isAdmin())
+        <div class="dropdown">
+            <button class="btn btn-sm btn-outline-danger dropdown-toggle" data-bs-toggle="dropdown">
+                <i class="bi bi-trash3 me-1"></i>Delete
+            </button>
+            <ul class="dropdown-menu">
+                <li>
+                    <button class="dropdown-item" id="deleteSelectedBtn" disabled onclick="confirmBulkDelete('selected')">
+                        <i class="bi bi-check2-square me-2"></i>Delete selected
+                        <span class="badge bg-danger ms-1" id="selectedCount" style="display:none;"></span>
+                    </button>
+                </li>
+                <li>
+                    <button class="dropdown-item text-danger" onclick="confirmBulkDelete('unpaid')">
+                        <i class="bi bi-x-circle me-2"></i>Delete all unpaid{{ request('trip_id') ? ' (this trip)' : '' }}
+                    </button>
+                </li>
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                    <button class="dropdown-item text-danger" onclick="confirmBulkDelete('trip')">
+                        <i class="bi bi-collection me-2"></i>Delete ALL orders in this trip
+                    </button>
+                </li>
+            </ul>
+        </div>
+        @endif
         <div class="dropdown">
             <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
                 <i class="bi bi-arrow-down-up me-1"></i>Import / Export
@@ -90,13 +116,14 @@
                     <strong>If importing multiple files: import earliest orders first, latest orders last.</strong>
                 </div>
                 <div class="alert alert-light border small mb-3">
-                    <strong>Columns (13) — LIST ORDERAN CUSTOMER format:</strong><br>
-                    <code>KET · NO · NAMA · IG/WA · KOTA · KODE · WARNA · SIZE · HARGA SATUAN · DP · TGL DP · AN · KET</code>
+                    <strong>Columns (13) — Order Import format:</strong><br>
+                    <code class="small">Notes · No · Name · Phone · Shipping Area · Code · Color · Size · Unit Price · Deposit · Deposit Date · Recipient Name · Notes</code>
                     <span class="text-muted d-block mt-1">
                         • <strong>Each row = 1 order + 1 item.</strong> Row order = FIFO priority (row 1 gets stock first).<br>
-                        • <strong>KODE</strong> must exist in the selected trip. <strong>WARNA/SIZE</strong> must match exactly.<br>
-                        • Leave <strong>HARGA SATUAN</strong> blank to use system product price.<br>
-                        • <strong>AN</strong> = Atas Nama / order notes.
+                        • <strong>Code</strong> must exist in the selected trip. <strong>Color/Size</strong> must match exactly.<br>
+                        • Leave <strong>Unit Price</strong> blank to use system product price.<br>
+                        • <strong>Recipient Name</strong> = Atas Nama / order notes.<br>
+                        • All rows are validated before import — any error blocks the entire file.
                     </span>
                     <a href="{{ route('orders.import.template') }}" class="small mt-1 d-inline-block">
                         <i class="bi bi-download me-1"></i>Download template (.xlsx)
@@ -129,15 +156,29 @@
     </div>
 </div>
 
+<form method="POST" action="{{ route('orders.bulk-destroy') }}" id="bulkDeleteForm">
+    @csrf
+    <input type="hidden" name="action" id="bulkAction">
+    <input type="hidden" name="trip_id" value="{{ request('trip_id') }}">
+</form>
+
 <div class="card">
     <div class="table-responsive">
         <table class="table table-hover mb-0">
             <thead class="table-light">
-                <tr><th>Order #</th><th>Customer</th><th>Trip</th><th>Subtotal</th><th>Discount</th><th>Total</th><th>Paid</th><th>Balance</th><th>Status</th><th></th></tr>
+                <tr>
+                    @if(auth()->user()->isAdmin())
+                    <th style="width:36px;"><input type="checkbox" id="selectAll" class="form-check-input"></th>
+                    @endif
+                    <th>Order #</th><th>Customer</th><th>Trip</th><th>Subtotal</th><th>Discount</th><th>Total</th><th>Paid</th><th>Balance</th><th>Status</th><th></th>
+                </tr>
             </thead>
             <tbody>
                 @forelse($orders as $order)
                 <tr>
+                    @if(auth()->user()->isAdmin())
+                    <td><input type="checkbox" name="order_ids[]" value="{{ $order->id }}" class="form-check-input order-checkbox" form="bulkDeleteForm"></td>
+                    @endif
                     <td class="font-monospace small">{{ $order->order_number }}</td>
                     <td>
                         <div class="fw-semibold">{{ $order->customer->name }}</div>
@@ -157,13 +198,64 @@
                     <td><a href="{{ route('orders.show', $order) }}" class="btn btn-sm btn-outline-primary">View</a></td>
                 </tr>
                 @empty
-                <tr><td colspan="10" class="text-center text-muted py-4">No orders found</td></tr>
+                <tr><td colspan="{{ auth()->user()->isAdmin() ? 11 : 10 }}" class="text-center text-muted py-4">No orders found</td></tr>
                 @endforelse
             </tbody>
         </table>
     </div>
-    <div class="card-footer bg-white">{{ $orders->links() }}</div>
+    <div class="card-footer bg-white d-flex justify-content-between align-items-center py-2">
+        <div class="d-flex align-items-center gap-2">
+            <span class="small text-muted">{{ $orders->total() }} order(s)</span>
+            <form method="GET" action="{{ route('orders.index') }}" class="d-flex align-items-center gap-1 ms-2">
+                @foreach(request()->except('per_page','page') as $k => $v)
+                    <input type="hidden" name="{{ $k }}" value="{{ $v }}">
+                @endforeach
+                <label class="small text-muted mb-0">Show:</label>
+                <select name="per_page" class="form-select form-select-sm" style="width:70px;" onchange="this.form.submit()">
+                    @foreach([20,50,100,200] as $n)
+                        <option value="{{ $n }}" {{ $perPage==$n?'selected':'' }}>{{ $n }}</option>
+                    @endforeach
+                </select>
+            </form>
+        </div>
+        <div>{{ $orders->links() }}</div>
+    </div>
 </div>
+
+@if(auth()->user()->isAdmin())
+<script>
+const selectAll   = document.getElementById('selectAll');
+const countBadge  = document.getElementById('selectedCount');
+const deleteBtn   = document.getElementById('deleteSelectedBtn');
+
+function updateCount() {
+    const checked = document.querySelectorAll('.order-checkbox:checked').length;
+    if (deleteBtn) { deleteBtn.disabled = checked === 0; }
+    if (countBadge) { countBadge.style.display = checked > 0 ? 'inline-block' : 'none'; countBadge.textContent = checked; }
+}
+
+selectAll?.addEventListener('change', () => {
+    document.querySelectorAll('.order-checkbox').forEach(c => c.checked = selectAll.checked);
+    updateCount();
+});
+document.querySelectorAll('.order-checkbox').forEach(c => c.addEventListener('change', updateCount));
+
+function confirmBulkDelete(action) {
+    const form = document.getElementById('bulkDeleteForm');
+    document.getElementById('bulkAction').value = action;
+    const tripId = '{{ request("trip_id") }}';
+    const msgs = {
+        selected: `Delete ${document.querySelectorAll('.order-checkbox:checked').length} selected order(s)? This cannot be undone.`,
+        unpaid:   'Delete ALL unpaid orders{{ request("trip_id") ? " for this trip" : "" }}? This cannot be undone.',
+        trip:     tripId
+            ? 'Delete ALL orders in this trip? This cannot be undone.'
+            : 'No trip selected. Please filter by a trip first, then use this option.',
+    };
+    if (action === 'trip' && !tripId) { alert(msgs.trip); return; }
+    if (confirm(msgs[action] || 'Delete?')) form.submit();
+}
+</script>
+@endif
 @endsection
 
 @push('scripts')

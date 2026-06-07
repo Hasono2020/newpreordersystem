@@ -148,6 +148,19 @@ class CustomerController extends Controller
         return $this->streamXlsx('customers_export.xlsx', $rows);
     }
 
+    public function importTemplate()
+    {
+        return $this->streamXlsx('customer_import_template.xlsx', [
+            ['Name', 'Phone', 'Type', 'Shipping Area', 'Address', 'Notes'],
+            // Type: customer | reseller | selected_customer
+            // Phone: Indonesian format (e.g. 081234567890)
+            // Shipping Area: must match area name in the system
+            ['JASMINE 7911', '081234567890', 'customer', 'SURABAYA', '', ''],
+            ['SARI 0812',    '081298765432', 'reseller', 'JAKARTA',  '', 'VIP reseller'],
+            ['TONO 5566',    '085612345678', 'customer', 'BANDUNG',  'Jl. Merdeka 10', ''],
+        ]);
+    }
+
     public function importCsv(Request $request)
     {
         $request->validate(['file' => 'required|file|max:10240']);

@@ -149,19 +149,19 @@ class ProductController extends Controller
             $query->whereDoesntHave('orderItems');
         }
 
-        $products = $query->with('variants')->get();
-        $deleted  = 0;
+        $products   = $query->with('variants')->get();
+        $productIds = $products->pluck('id');
+        $variantIds = $products->flatMap(fn($p) => $p->variants->pluck('id'));
+        $deleted    = $products->count();
 
-        \DB::transaction(function () use ($products, &$deleted) {
-            foreach ($products as $product) {
-                $variantIds = $product->variants->pluck('id');
-                \App\Models\PurchaseOrderItem::whereIn('product_variant_id', $variantIds)
-                    ->orWhere('product_id', $product->id)->delete();
-                $product->items()->delete();
-                $product->variants()->delete();
-                $product->delete();
-                $deleted++;
+        \DB::transaction(function () use ($productIds, $variantIds, $deleted) {
+            if ($variantIds->isNotEmpty()) {
+                \App\Models\PurchaseOrderItem::whereIn('product_variant_id', $variantIds)->delete();
             }
+            \App\Models\PurchaseOrderItem::whereIn('product_id', $productIds)->delete();
+            \DB::table('order_items')->whereIn('product_id', $productIds)->delete();
+            \DB::table('product_variants')->whereIn('product_id', $productIds)->delete();
+            \DB::table('products')->whereIn('id', $productIds)->delete();
         });
 
         return redirect()->route('products.index', request()->only('trip_id', 'search'))
@@ -204,179 +204,152 @@ class ProductController extends Controller
     public function importTemplate()
     {
         return $this->streamXlsx('product_import_template.xlsx', [
-            ['trip','name','product_code','sku','brand','supplier','price','weight_gram','excluded_from_promo','status','color','size','price_adjustment','supplier_stock'],
-            ['China June 2026','Baju','NA_01','','Brand X','Shein',250000,330,'no','active','Black','S',0,25],
-            ['','','NA_01','','','','','','','','White','M',0,20],
-            ['','','NA_01','','','','','','','','Navy','L',5000,15],
-            ['China June 2026','Celana Chino','NZ_01','','','Uniqlo',500000,400,'yes','active','','','',''],
+            ['Trip', 'Name', 'Code', 'SKU', 'Brand', 'Supplier', 'Price', 'Weight (gram)', 'Excluded from Promo', 'Status', 'Color', 'Size', 'Price Adjustment', 'Supplier Stock'],
+            // One row per variant. Same Code on multiple rows = same product, different variants.
+            // Excluded from Promo: yes / no    Status: active / closed
+            ['Testing Trip', 'Baju', 'NA_01', '', 'Brand X', 'Shein', 250000, 30000, 'no', 'active', 'BLACK', 'L',  0, 25],
+            ['Testing Trip', 'Baju', 'NA_01', '', 'Brand X', 'Shein', 250000, 30000, 'no', 'active', 'BLACK', 'XL', 0, 20],
+            ['Testing Trip', 'Baju', 'NA_01', '', 'Brand X', 'Shein', 250000, 30000, 'no', 'active', 'BLACK', 'S',  0, 15],
+            ['Testing Trip', 'Baju', 'NA_01', '', 'Brand X', 'Shein', 250000, 30000, 'no', 'active', 'WHITE', 'S',  0, 20],
+            ['Testing Trip', 'Baju', 'NA_01', '', 'Brand X', 'Shein', 250000, 30000, 'no', 'active', 'WHITE', 'M',  0, 18],
+            ['Testing Trip', 'Celana Chino', 'NZ_01', '', 'Brand Y', 'Uniqlo', 500000, 40000, 'no', 'active', '', '', 0, 0],
         ]);
     }
 
     public function importCsv(Request $request)
     {
-        $request->validate(['file' => 'required|file|max:5120']);
+        $request->validate(['file' => 'required|file|max:10240']);
 
         $rows = $this->readXlsx($request->file('file')->getRealPath());
         if (empty($rows)) {
             return back()->with('error', 'Could not read the file. Make sure it is a valid .xlsx file.');
         }
 
-        // ── Header validation: reject wrong file format ────────────────
-        $header = array_map('strtolower', array_map('trim', array_map('strval', $rows[0])));
+        array_shift($rows); // remove header
 
-        // Order import file signals: has "no","phone","area","qty","dp" columns
-        $orderSignals = ['no', 'phone', 'area', 'qty', 'dp'];
-        $matched = count(array_intersect($orderSignals, $header));
-        if ($matched >= 2) {
-            return back()->with('error',
-                '❌ Wrong file — this looks like an ORDER import file, not a product file. '.
-                'Please use the product import template instead.'
-            );
+        // Remove completely blank rows
+        $rows = array_values(array_filter($rows, fn($r) =>
+            !empty(trim((string)($r[1] ?? ''))) || !empty(trim((string)($r[2] ?? '')))
+        ));
+
+        if (empty($rows)) {
+            return back()->with('error', 'The file has no data rows.');
         }
 
-        // Must have core product columns
-        foreach (['trip', 'name', 'supplier'] as $required) {
-            if (!in_array($required, $header)) {
-                return back()->with('error',
-                    "❌ Wrong file format — missing required column \"{$required}\". ".
-                    "Please download and use the product import template."
-                );
-            }
-        }
+        // ── Pre-load trips and suppliers into memory ──────────────────────
+        $trips = \App\Models\Trip::all()->mapWithKeys(fn($t) => [strtolower(trim($t->name)) => $t]);
+        $suppliers = \App\Models\Supplier::all()->mapWithKeys(fn($s) => [strtolower(trim($s->name)) => $s]);
 
-        // Trip names must be at least 3 characters to prevent partial digit matches
-        array_shift($rows); // skip header now that it's validated
+        // ── Full validation pass — ALL rows checked before any insert ─────
+        $errors    = [];
+        $seenCodes = []; // code → first row's trip (to detect cross-trip duplicates in file)
 
-        // ── Validation pass first ──────────────────────────────────────
-        $validationErrors = [];
-        $seenCodes        = []; // track codes we're about to create in this import
+        foreach ($rows as $i => $row) {
+            $lineNum  = $i + 2;
+            $tripName = trim((string)($row[0] ?? ''));
+            $name     = trim((string)($row[1] ?? ''));
+            $code     = strtoupper(trim((string)($row[2] ?? '')));
 
-        foreach ($rows as $rowIdx => $row) {
-            $lineNum  = $rowIdx + 2;
-            $tripName = trim($row[0] ?? '');
-            $name     = trim($row[1] ?? '');
-            $code     = strtoupper(trim($row[2] ?? ''));
+            if (empty($tripName)) { $errors[] = "Row {$lineNum}: Trip is required."; continue; }
+            if (empty($name))     { $errors[] = "Row {$lineNum}: Name is required."; continue; }
+            if (empty($code))     { $errors[] = "Row {$lineNum} ({$name}): Product Code is required."; continue; }
 
-            // Rows with only variant data (blank name/trip continuing a previous product)
-            if (empty($name) && empty($tripName) && !empty($code)) continue;
-            if (empty($name) && empty($tripName) && empty($code)) continue;
-
-            $issues = [];
-            if (empty($tripName))           $issues[] = 'Trip is required';
-            elseif (strlen($tripName) < 3)  $issues[] = "Trip name '{$tripName}' is too short — use the full trip name (e.g. 'China June 2026')";
-            if (empty($name))               $issues[] = 'Product name is required';
-            if (empty(trim($row[5] ?? ''))) $issues[] = 'Supplier is required';
-
-            // Duplicate code in DB
-            if ($code && \App\Models\Product::where('product_code', $code)->where('trip_id', function($q) use ($tripName) {
-                $q->select('id')->from('trips')->where('name', 'like', '%'.$tripName.'%')->limit(1);
-            })->exists()) {
-                $issues[] = "Product code '{$code}' already exists in trip '{$tripName}'";
-            }
-            // Duplicate code within this import file
-            if ($code && isset($seenCodes[$code])) {
-                // It's the same product continued — not an error, it's adding variants
-            } elseif ($code) {
-                $seenCodes[$code] = true;
-            }
-
-            if (!empty($issues)) {
-                $label = $name ?: "(row {$lineNum})";
-                $validationErrors[] = "Row {$lineNum} ({$label}): " . implode(', ', $issues) . '.';
-            }
-        }
-
-        if (!empty($validationErrors)) {
-            return back()->with('import_errors', $validationErrors)
-                         ->with('error', 'Import blocked — please fix the following issues before importing:');
-        }
-
-        // ── Import pass ────────────────────────────────────────────────
-        $imported     = 0;
-        $variantCount = 0;
-        $newSuppliers = 0;
-        $skipped      = 0;
-        $errors       = [];
-        $productMap   = [];
-
-        foreach ($rows as $rowIdx => $row) {
-            $lineNum      = $rowIdx + 2;
-            $tripName     = trim($row[0] ?? '');
-            $name         = trim($row[1] ?? '');
-            $code         = strtoupper(trim($row[2] ?? ''));
-            $sku          = trim($row[3] ?? '');
-            $brand        = trim($row[4] ?? '');
-            $supplierName = trim($row[5] ?? '');
-            $price        = (float)($row[6] ?? 0);
-            $weight       = (int)($row[7] ?? 0);
-            $excluded     = strtolower(trim($row[8] ?? '')) === 'yes';
-            $status       = trim($row[9] ?? 'active');
-            $color        = trim($row[10] ?? '');
-            $size         = trim($row[11] ?? '');
-            $priceAdj     = (float)($row[12] ?? 0);
-            $suppStock    = (int)($row[13] ?? 0);
-
-            // Continuation row (same product, new variant)
-            if (empty($name) && empty($tripName) && !empty($code)) {
-                $product = $productMap[$code] ?? null;
-                if ($product && ($color || $size)) {
-                    $product->variants()->create([
-                        'color'          => $color ?: null,
-                        'size'           => $size  ?: null,
-                        'price_adjustment'=> $priceAdj,
-                        'supplier_stock' => $suppStock,
-                        'allocated_qty'  => 0,
-                    ]);
-                    $variantCount++;
-                }
+            // Trip must exist
+            $tripKey = strtolower($tripName);
+            $trip = $trips->get($tripKey) ?? $trips->first(fn($t) => str_contains(strtolower($t->name), $tripKey) || str_contains($tripKey, strtolower($t->name)));
+            if (!$trip) {
+                $errors[] = "Row {$lineNum} ({$name}): Trip '{$tripName}' not found.";
                 continue;
             }
 
-            if (empty($name)) continue;
-
-            // Find trip
-            $trip = \App\Models\Trip::where('name', 'like', '%'.$tripName.'%')->first();
-            if (!$trip) {
-                $errors[] = "Row {$lineNum} ({$name}): trip '{$tripName}' not found.";
-                $skipped++; continue;
+            // If same code seen before in this file, it must be same trip
+            if (isset($seenCodes[$code])) {
+                if ($seenCodes[$code] !== $trip->id) {
+                    $errors[] = "Row {$lineNum} ({$name}): Code '{$code}' used in multiple trips — each code must belong to one trip.";
+                }
+                continue; // same code = same product, adding a variant — no further checks needed
             }
+            $seenCodes[$code] = $trip->id;
 
-            // Find supplier — auto-create if not found
+            // Code must not already exist in this trip in the DB
+            if (\App\Models\Product::where('product_code', $code)->where('trip_id', $trip->id)->exists()) {
+                $errors[] = "Row {$lineNum} ({$name}): Code '{$code}' already exists in trip '{$trip->name}'.";
+            }
+        }
+
+        if (!empty($errors)) {
+            return back()->with('import_errors', $errors)
+                         ->with('error', count($errors) . ' error(s) found — fix all issues before importing:');
+        }
+
+        // ── Import pass ────────────────────────────────────────────────────
+        $imported     = 0;
+        $variantCount = 0;
+        $newSuppliers = 0;
+        $productMap   = []; // code => Product model (created in this import)
+
+        foreach ($rows as $rowIdx => $row) {
+            $tripName  = trim((string)($row[0] ?? ''));
+            $name      = trim((string)($row[1] ?? ''));
+            $code      = strtoupper(trim((string)($row[2] ?? '')));
+            $sku       = trim((string)($row[3] ?? ''));
+            $brand     = trim((string)($row[4] ?? ''));
+            $suppName  = trim((string)($row[5] ?? ''));
+            $price     = (float)($row[6] ?? 0);
+            $weight    = (int)($row[7] ?? 0);
+            $excluded  = strtolower(trim((string)($row[8] ?? ''))) === 'yes';
+            $status    = trim((string)($row[9] ?? 'active'));
+            $color     = trim((string)($row[10] ?? ''));
+            $size      = trim((string)($row[11] ?? ''));
+            $priceAdj  = (float)($row[12] ?? 0);
+            $suppStock = (int)($row[13] ?? 0);
+
+            if (empty($name) || empty($code)) continue;
+
+            $tripKey = strtolower($tripName);
+            $trip = $trips->get($tripKey) ?? $trips->first(fn($t) => str_contains(strtolower($t->name), $tripKey));
+
+            // Resolve supplier (auto-create if new)
             $supplierId = null;
-            if ($supplierName) {
-                $supplier = \App\Models\Supplier::whereRaw('LOWER(name) LIKE ?', ['%'.strtolower($supplierName).'%'])->first();
+            if ($suppName) {
+                $suppKey = strtolower($suppName);
+                $supplier = $suppliers->get($suppKey) ?? $suppliers->first(fn($s) => str_contains(strtolower($s->name), $suppKey));
                 if (!$supplier) {
-                    $supplier = \App\Models\Supplier::create(['name' => $supplierName, 'is_active' => true]);
+                    $supplier = \App\Models\Supplier::create(['name' => $suppName, 'is_active' => true]);
+                    $suppliers->put($suppKey, $supplier);
                     $newSuppliers++;
                 }
                 $supplierId = $supplier->id;
             }
 
-            $product = \App\Models\Product::create([
-                'trip_id'             => $trip->id,
-                'name'                => $name,
-                'product_code'        => $code ?: null,
-                'sku'                 => $sku   ?: null,
-                'brand'               => $brand ?: null,
-                'supplier_id'         => $supplierId,
-                'price'               => $price,
-                'weight_gram'         => $weight,
-                'excluded_from_promo' => $excluded,
-                'notes'               => null,
-                'status'              => in_array($status, ['active','closed','arrived']) ? $status : 'active',
-            ]);
+            // If code already seen in this import, just add variant
+            if (isset($productMap[$code])) {
+                $product = $productMap[$code];
+            } else {
+                $product = \App\Models\Product::create([
+                    'trip_id'             => $trip->id,
+                    'name'                => $name,
+                    'product_code'        => $code,
+                    'sku'                 => $sku   ?: null,
+                    'brand'               => $brand ?: null,
+                    'supplier_id'         => $supplierId,
+                    'price'               => $price,
+                    'weight_gram'         => $weight,
+                    'excluded_from_promo' => $excluded,
+                    'status'              => in_array($status, ['active','closed','arrived']) ? $status : 'active',
+                ]);
+                $productMap[$code] = $product;
+                $imported++;
+            }
 
-            $imported++;
-            if ($code) $productMap[$code] = $product;
-
-            // Create variant from this first row if color/size provided
+            // Add variant if color or size is present
             if ($color || $size) {
                 $product->variants()->create([
-                    'color'           => $color ?: null,
-                    'size'            => $size  ?: null,
-                    'price_adjustment'=> $priceAdj,
-                    'supplier_stock'  => $suppStock,
-                    'allocated_qty'   => 0,
+                    'color'            => $color    ?: null,
+                    'size'             => $size     ?: null,
+                    'price_adjustment' => $priceAdj,
+                    'supplier_stock'   => $suppStock,
+                    'allocated_qty'    => 0,
                 ]);
                 $variantCount++;
             }
@@ -384,11 +357,8 @@ class ProductController extends Controller
 
         $msg = "✓ Imported {$imported} product(s) with {$variantCount} variant(s).";
         if ($newSuppliers) $msg .= " {$newSuppliers} new supplier(s) auto-created.";
-        if ($skipped) $msg .= " {$skipped} skipped.";
-        if ($errors)  $msg .= " Issues: ".implode(' | ', array_slice($errors, 0, 3));
-        return redirect()->route('products.index')->with($errors ? 'warning' : 'success', $msg);
+        return redirect()->route('products.index')->with('success', $msg);
     }
-
     public function export(Request $request)
     {
         $query = Product::with('trip', 'supplier', 'variants');

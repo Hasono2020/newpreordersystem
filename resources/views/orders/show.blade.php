@@ -201,9 +201,49 @@
         <div class="card mb-3">
             <div class="card-header bg-white py-3 fw-semibold">Order Summary</div>
             <div class="card-body">
+                {{-- Promo status banner --}}
+                @if($appliedPromo)
+                    <div class="alert alert-success py-2 px-3 mb-3 small">
+                        <i class="bi bi-tag-fill me-1"></i>
+                        <strong>Promo applied:</strong> {{ $appliedPromo['rule']->name }}
+                        @if($appliedPromo['discount'] > 0)
+                            — <span class="text-success">-Rp {{ number_format($appliedPromo['discount'], 0, ',', '.') }} discount</span>
+                        @endif
+                        @if($appliedPromo['max_shipping_subsidy'] > 0)
+                            @if($order->shipping_discount >= $order->shipping_fee && $order->shipping_fee > 0)
+                                — <span class="text-success">FREE shipping</span>
+                            @else
+                                — <span class="text-success">up to Rp {{ number_format($appliedPromo['max_shipping_subsidy'], 0, ',', '.') }} shipping subsidy</span>
+                            @endif
+                        @endif
+                    </div>
+                @else
+                    <div class="alert alert-light border py-2 px-3 mb-3 small text-muted">
+                        <i class="bi bi-tag me-1"></i>No promo applied
+                        @php
+                            $itemCount = $order->items->whereNotIn('status',['cancelled','sold_out'])->sum('quantity');
+                            $nextRule  = \App\Models\PromoRule::where('is_active', true)
+                                ->where(fn($q) => $q->where('trip_id', $order->trip_id)->orWhereNull('trip_id'))
+                                ->where('min_items', '>', $itemCount)
+                                ->orderBy('min_items')->first();
+                        @endphp
+                        @if($nextRule)
+                            — needs {{ $nextRule->min_items - $itemCount }} more item(s) for <strong>{{ $nextRule->name }}</strong>
+                        @endif
+                    </div>
+                @endif
+
                 <table class="table table-sm mb-0">
                     <tr><td class="text-muted">Subtotal</td><td class="text-end">Rp {{ number_format($order->subtotal, 0, ',', '.') }}</td></tr>
-                    <tr><td class="text-muted">Discount</td><td class="text-end text-success">-Rp {{ number_format($order->discount_amount, 0, ',', '.') }}</td></tr>
+                    <tr>
+                        <td class="text-muted">
+                            Discount
+                            @if($order->discount_amount > 0 && $appliedPromo)
+                                <div class="small text-success">{{ $appliedPromo['rule']->name }}</div>
+                            @endif
+                        </td>
+                        <td class="text-end text-success">-Rp {{ number_format($order->discount_amount, 0, ',', '.') }}</td>
+                    </tr>
                     <tr>
                         <td class="text-muted">
                             Shipping
@@ -214,7 +254,15 @@
                         </td>
                         <td class="text-end">Rp {{ number_format($order->shipping_fee, 0, ',', '.') }}</td>
                     </tr>
-                    <tr><td class="text-muted">Shipping Discount</td><td class="text-end text-success">-Rp {{ number_format($order->shipping_discount, 0, ',', '.') }}</td></tr>
+                    <tr>
+                        <td class="text-muted">
+                            Shipping Discount
+                            @if($order->shipping_discount > 0 && $order->shipping_discount >= $order->shipping_fee)
+                                <span class="badge bg-success ms-1" style="font-size:.65rem;">FREE</span>
+                            @endif
+                        </td>
+                        <td class="text-end text-success">-Rp {{ number_format($order->shipping_discount, 0, ',', '.') }}</td>
+                    </tr>
                     <tr class="fw-bold border-top"><td>Total</td><td class="text-end fs-5">Rp {{ number_format($order->total_amount, 0, ',', '.') }}</td></tr>
                     <tr class="text-success"><td>Paid</td><td class="text-end">Rp {{ number_format($order->deposit_paid, 0, ',', '.') }}</td></tr>
                     <tr class="{{ $order->remaining_balance > 0 ? 'text-danger' : 'text-success' }} fw-bold">

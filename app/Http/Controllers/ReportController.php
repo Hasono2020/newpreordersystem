@@ -156,9 +156,9 @@ class ReportController extends Controller
     public function orderImportTemplate()
     {
         return $this->streamXlsx('order_import_template.xlsx', [
-            ['KET', 'NO', 'NAMA', 'IG/WA', 'KOTA', 'KODE', 'WARNA', 'SIZE', 'HARGA SATUAN', 'DP', 'TGL DP', 'AN', 'KET'],
+            ['Notes', 'No', 'Name', 'Phone', 'Shipping Area', 'Code', 'Color', 'Size', 'Unit Price', 'Deposit', 'Deposit Date', 'Recipient Name', 'Notes'],
             // Each row = 1 order with 1 item. Row order = FIFO priority (top = first).
-            // Leave HARGA SATUAN blank to use system product price.
+            // Leave Unit Price blank to use system product price.
             ['', 1, 'JASMINE 7911', '08123456789', 'SURABAYA', 'NA_03', 'GREY',  'FZ', '', 500000, '2026-05-03', 'JASMINE',  ''],
             ['', 2, 'JASMINE 7911', '',            '',         'NA_03', 'BROWN', 'FZ', '', '',     '',           '',         ''],
             ['', 3, 'JASMINE 7911', '',            '',         'NA_03', 'GREY',  'FZ', '', '',     '',           '',         ''],
@@ -225,7 +225,7 @@ class ReportController extends Controller
     public function importOrders(Request $request)
     {
         $request->validate([
-            'file'    => 'required|file|max:51200', // 50MB
+            'file'    => 'required|file|max:51200',
             'trip_id' => 'required|exists:trips,id',
         ]);
 
@@ -237,31 +237,16 @@ class ReportController extends Controller
 
         array_shift($rows); // remove header
 
-        // Remove blank rows
+        // Remove completely blank rows
         $rows = array_values(array_filter($rows, fn($r) =>
             !empty(trim((string)($r[2] ?? ''))) || !empty(trim((string)($r[5] ?? '')))
         ));
 
-        // ── Validation pass ─────────────────────────────────────────────
-        $errors = [];
-        foreach (array_slice($rows, 0, 100) as $i => $row) { // validate first 100 rows
-            $lineNum = $i + 2;
-            $name    = trim((string)($row[2] ?? ''));
-            $code    = strtoupper(trim((string)($row[5] ?? '')));
-            if (empty($name) || empty($code)) continue;
-
-            $exists = Product::where('product_code', $code)->where('trip_id', $trip->id)->exists();
-            if (!$exists) {
-                $errors[] = "Row {$lineNum} ({$name}): Code '{$code}' not found in trip '{$trip->name}'.";
-                if (count($errors) >= 5) { $errors[] = '... (showing first 5 errors only)'; break; }
-            }
-        }
-        if (!empty($errors)) {
-            return back()->with('import_errors', $errors)
-                         ->with('error', 'Import blocked — fix these issues:');
+        if (empty($rows)) {
+            return back()->with('error', 'The file has no data rows.');
         }
 
-        // ── Pre-load reference data into memory ──────────────────────────
+        // ── Pre-load ALL products for this trip into memory (for fast validation) ──
         $products = Product::where('trip_id', $trip->id)
             ->with('variants')
             ->get()
@@ -270,12 +255,67 @@ class ReportController extends Controller
         $shippingAreas = \App\Models\ShippingArea::all()
             ->keyBy(fn($a) => strtolower(trim($a->name)));
 
+        $shippingAreasById = $shippingAreas->keyBy('id'); // for fast lookup by ID during import
+
+        // ── Full validation pass — check EVERY row before importing anything ──
+        $errors = [];
+        foreach ($rows as $i => $row) {
+            $lineNum = $i + 2;
+            $name    = trim((string)($row[2] ?? ''));
+            $code    = strtoupper(trim((string)($row[5] ?? '')));
+            $color   = trim((string)($row[6] ?? ''));
+            $size    = trim((string)($row[7] ?? ''));
+
+            if (empty($name) && empty($code)) continue; // skip truly blank rows
+
+            if (empty($name)) {
+                $errors[] = "Row {$lineNum}: Name is required.";
+                continue;
+            }
+            if (empty($code)) {
+                $errors[] = "Row {$lineNum} ({$name}): Product Code is required.";
+                continue;
+            }
+
+            $product = $products->get($code);
+            if (!$product) {
+                $errors[] = "Row {$lineNum} ({$name}): Code '{$code}' not found in trip '{$trip->name}'.";
+                continue;
+            }
+
+            if ($color || $size) {
+                $variantFound = $product->variants->first(function ($v) use ($color, $size) {
+                    $colorMatch = !$color || strtolower($v->color ?? '') === strtolower($color);
+                    $sizeMatch  = !$size  || strtolower($v->size  ?? '') === strtolower($size);
+                    return $colorMatch && $sizeMatch;
+                });
+                if (!$variantFound) {
+                    $errors[] = "Row {$lineNum} ({$name}): Variant '{$color}/{$size}' not found for code '{$code}'.";
+                }
+            }
+        }
+
+        if (!empty($errors)) {
+            return back()->with('import_errors', $errors)
+                         ->with('error', count($errors) . ' error(s) found — fix all issues before importing:');
+        }
+
+        // ── Pre-load customer data into memory ──────────────────────────────
         $existingPhones = DB::table('customers')->whereNotNull('phone')
             ->pluck('id', 'phone')
             ->mapWithKeys(fn($id, $p) => [strtolower(trim($p)) => $id])->toArray();
 
         $existingNames = DB::table('customers')->pluck('id', 'name')
             ->mapWithKeys(fn($id, $n) => [strtolower(trim($n)) => $id])->toArray();
+
+        // Pre-load customer types for promo calculation
+        $customerTypes = DB::table('customers')->pluck('type', 'id')->toArray();
+
+        // Pre-load promo rules for this trip (in memory — no DB calls per order)
+        $promoRules = \App\Models\PromoRule::where('is_active', true)
+            ->where(fn($q) => $q->where('trip_id', $trip->id)->orWhereNull('trip_id'))
+            ->orderByDesc('min_items')
+            ->get();
 
         // ── Import pass — fast batch inserts ─────────────────────────────
         $imported  = 0;
@@ -361,28 +401,56 @@ class ReportController extends Controller
                 }
             }
 
+            // ── Inline promo + shipping calculation (no DB queries) ────────
+            $customerType = $customerTypes[$customerId] ?? 'customer';
+            $weightGram   = $product->weight_gram ?? 0;
+
+            // Shipping fee
+            $shippingArea   = $areaId ? $shippingAreasById->get($areaId) : null;
+            $shippingFee    = $shippingArea ? $shippingArea->calcShippingFee($weightGram) : 0;
+            $chargeableKg   = \App\Models\ShippingArea::calcChargeableKg($weightGram);
+
+            // Promo — check all pre-loaded rules (pure PHP, no DB)
+            $isExcluded   = $product->excluded_from_promo ?? false;
+            $eligibleQty  = $isExcluded ? 0 : 1;
+            $bestDiscount = 0;
+            $bestSubsidy  = 0;
+
+            foreach ($promoRules as $rule) {
+                if (!$rule->appliesTo($customerType, $eligibleQty)) continue;
+                $calc    = $rule->calculateDiscount($eligibleQty);
+                $benefit = $calc['discount'] + $calc['max_shipping_subsidy'];
+                if ($benefit > $bestDiscount + $bestSubsidy) {
+                    $bestDiscount = $calc['discount'];
+                    $bestSubsidy  = $calc['max_shipping_subsidy'];
+                }
+            }
+            $shippingDiscount = min($shippingFee, $bestSubsidy);
+            $totalAmount      = max(0, $unitPrice - $bestDiscount + $shippingFee - $shippingDiscount);
+            // ──────────────────────────────────────────────────────────────
+
             // FIFO timestamp based on row position
             $orderedAt = $baseTime->copy()->addSeconds($rowIdx)->toDateTimeString();
             $notes     = implode(' | ', array_filter([$an, $ketPost])) ?: null;
 
             $ordersBatch[] = [
-                'trip_id'          => $trip->id,
-                'customer_id'      => $customerId,
-                'shipping_area_id' => $areaId,
-                'notes'            => $notes,
-                'ordered_at'       => $orderedAt,
-                'created_by'       => $createdBy,
-                'subtotal'         => $unitPrice,
-                'discount_amount'  => 0,
-                'shipping_fee'     => 0,
-                'shipping_discount'=> 0,
-                'shipping_weight_gram' => $product->weight_gram ?? 0,
-                'shipping_kg_charged'  => 0,
-                'total_amount'     => $unitPrice,
-                'deposit_paid'     => $dp > 0 ? $dp : 0,
-                'payment_status'   => $dp > 0 ? 'partial' : 'unpaid',
-                'created_at'       => $now,
-                'updated_at'       => $now,
+                'trip_id'              => $trip->id,
+                'customer_id'          => $customerId,
+                'shipping_area_id'     => $areaId,
+                'notes'                => $notes,
+                'ordered_at'           => $orderedAt,
+                'created_by'           => $createdBy,
+                'subtotal'             => $unitPrice,
+                'discount_amount'      => $bestDiscount,
+                'shipping_fee'         => $shippingFee,
+                'shipping_discount'    => $shippingDiscount,
+                'shipping_weight_gram' => $weightGram,
+                'shipping_kg_charged'  => $chargeableKg,
+                'total_amount'         => $totalAmount,
+                'deposit_paid'         => $dp > 0 ? $dp : 0,
+                'payment_status'       => $dp > 0 ? 'partial' : 'unpaid',
+                'created_at'           => $now,
+                'updated_at'           => $now,
             ];
 
             $itemsBatch[]  = ['_rowIdx' => count($ordersBatch) - 1,
@@ -396,20 +464,11 @@ class ReportController extends Controller
                 'updated_at'         => $now,
             ];
 
-            // Parse DP date (handles Excel serial dates)
+            // Parse DP date — handles Excel serials, DD/MM/YYYY, DD-MM-YY, text dates
             if ($dp > 0) {
-                $dpDate = $now;
-                if ($dpRaw) {
-                    if (is_numeric($dpRaw) && (int)$dpRaw > 40000) {
-                        // Excel serial date → convert
-                        $dpDate = \Carbon\Carbon::createFromTimestamp(((int)$dpRaw - 25569) * 86400)->format('Y-m-d');
-                    } else {
-                        try {
-                            $dpDate = str_contains((string)$dpRaw, '/')
-                                ? implode('-', array_reverse(explode('/', $dpRaw)))
-                                : \Carbon\Carbon::parse($dpRaw)->format('Y-m-d');
-                        } catch (\Exception $e) { $dpDate = now()->format('Y-m-d'); }
-                    }
+                $dpDate = substr($now, 0, 10); // default today
+                if ($dpRaw !== '' && $dpRaw !== null) {
+                    $dpDate = $this->parseDateValue($dpRaw, $dpDate);
                 }
                 $paymentsBatch[] = ['_rowIdx' => count($ordersBatch) - 1,
                     'amount' => $dp, 'type' => 'deposit', 'method' => 'transfer',
@@ -433,7 +492,78 @@ class ReportController extends Controller
 
         return redirect()
             ->route('orders.index', ['trip_id' => $trip->id])
-            ->with('success', "✓ Imported {$imported} order(s) for '{$trip->name}'. Totals are set from item price — recalculate individually if promo/shipping is needed." . ($skipped ? " {$skipped} skipped (product not found)." : ''));
+            ->with('success', "✓ Imported {$imported} order(s) for '{$trip->name}'. Promo and shipping applied per order." . ($skipped ? " {$skipped} skipped (product not found)." : ''));
+    }
+
+    /**
+     * Parse any date value from Excel — handles:
+     *   - Excel serial numbers (e.g. 46145 → 2026-05-03)
+     *   - DD/MM/YYYY or DD/MM/YY  (slash-separated)
+     *   - DD-MM-YYYY or DD-MM-YY  (dash-separated, day first)
+     *   - YYYY-MM-DD              (ISO format)
+     *   - Text like "11-May-26"   (Carbon parse fallback)
+     * Returns YYYY-MM-DD string or $fallback on failure.
+     */
+    private function parseDateValue(mixed $raw, string $fallback): string
+    {
+        $s = trim((string)$raw);
+        if ($s === '') return $fallback;
+
+        // Excel serial number (days since 1900-01-00, modern dates > 40000)
+        if (is_numeric($s) && (int)$s > 40000) {
+            try {
+                $r = \Carbon\Carbon::createFromTimestamp(((int)$s - 25569) * 86400)->utc()->format('Y-m-d');
+                if ($this->isValidYmd($r)) return $r;
+            } catch (\Exception $e) {}
+        }
+
+        // Small numeric (e.g. serial < 40000) — not a usable date
+        if (is_numeric($s)) return $fallback;
+
+        // Slash-separated: DD/MM/YYYY or DD/MM/YY  (day first)
+        if (str_contains($s, '/')) {
+            $p = explode('/', $s);
+            if (count($p) === 3) {
+                [$d, $m, $y] = [(int)$p[0], (int)$p[1], (int)$p[2]];
+                if ($y < 100) $y += 2000;
+                if (checkdate($m, $d, $y)) return sprintf('%04d-%02d-%02d', $y, $m, $d);
+            }
+        }
+
+        // Dash-separated: try multiple interpretations, accept first valid one
+        if (str_contains($s, '-')) {
+            $p = explode('-', $s);
+            if (count($p) === 3) {
+                $a = (int)$p[0]; $b = (int)$p[1]; $c = (int)$p[2];
+
+                // ISO: YYYY-MM-DD
+                if ($a > 1900 && checkdate($b, $c, $a))
+                    return sprintf('%04d-%02d-%02d', $a, $b, $c);
+
+                // DD-MM-YY / DD-MM-YYYY
+                $y = $c < 100 ? $c + 2000 : $c;
+                if ($y >= 1900 && checkdate($b, $a, $y))
+                    return sprintf('%04d-%02d-%02d', $y, $b, $a);
+
+                // MM-DD-YY / MM-DD-YYYY
+                if ($y >= 1900 && checkdate($a, $b, $y))
+                    return sprintf('%04d-%02d-%02d', $y, $a, $b);
+            }
+        }
+
+        // Text fallback (e.g. "11-May-26") — validate after parsing
+        try {
+            $r = \Carbon\Carbon::parse($s)->format('Y-m-d');
+            if ($this->isValidYmd($r)) return $r;
+        } catch (\Exception $e) {}
+
+        return $fallback;
+    }
+
+    private function isValidYmd(string $d): bool
+    {
+        if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $d, $m)) return false;
+        return (int)$m[1] >= 1900 && (int)$m[1] <= 2100 && checkdate((int)$m[2], (int)$m[3], (int)$m[1]);
     }
 
     private function flushOrderBatch(array &$orders, array &$items, array &$payments): void
