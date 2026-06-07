@@ -135,14 +135,15 @@ class ReportController extends Controller
     public function orderImportTemplate()
     {
         return $this->streamXlsx('order_import_template.xlsx', [
-            ['No', 'Name', 'Phone', 'Type', 'Area', 'Code', 'Color', 'Size', 'Qty', 'Price', 'DP', 'Date of DP', 'Notes'],
-            // Type: customer | reseller | selected_customer (leave blank = customer)
-            // Price: leave blank to use system product price.
-            // DP can be on any row for a customer — each DP row creates a separate payment.
-            [1, 'JASMINE 7911', '08123456789', 'customer',  'SURABAYA', 'NA_03', 'GREY',  'FZ', 2, '', 500000, '2026-05-03', ''],
-            [2, 'JASMINE 7911', '',            '',          '',         'NA_03', 'BROWN', 'FZ', 1, '', '',      '',           ''],
-            [3, 'SARI 0812',    '08129876543', 'reseller',  'JAKARTA',  'NZ_01', 'BLACK', 'M',  3, '', '',      '',           'fragile'],
-            [4, 'SARI 0812',    '',            '',          '',         'NA_03', 'NAVY',  'FZ', 2, '', 300000,  '2026-05-04', ''],
+            ['No', 'Name', 'Phone', 'Type', 'Area', 'Code', 'Color', 'Size', 'Qty', 'Price', 'DP', 'Date of DP', 'Notes', 'Ordered At'],
+            // Ordered At: when customer actually ordered (YYYY-MM-DD HH:MM)
+            // Same Name + same Ordered At = same order | Different Ordered At = NEW separate order
+            // Leave blank = uses import time (not recommended for FIFO fairness)
+            [1, 'JASMINE 7911', '08123456789', 'customer', 'SURABAYA', 'NA_03', 'GREY',  'FZ', 1, '', 500000, '2026-05-03', '', '2026-05-03 09:00'],
+            [2, 'JASMINE 7911', '',            '',         '',         'NA_03', 'BROWN', 'FZ', 1, '', '',      '',           '', '2026-05-03 14:00'],
+            [3, 'JASMINE 7911', '',            '',         '',         'NA_03', 'GREY',  'FZ', 1, '', '',      '',           '', '2026-05-03 21:00'],
+            [4, 'SARI 0812',    '08129876543', 'reseller', 'JAKARTA',  'NZ_01', 'BLACK', 'M',  3, '', '',      '',           'fragile', '2026-05-03 10:00'],
+            [5, 'SARI 0812',    '',            '',         '',         'NA_03', 'NAVY',  'FZ', 2, '', 300000,  '2026-05-04', '', '2026-05-03 10:00'],
         ]);
     }
 
@@ -282,21 +283,48 @@ class ReportController extends Controller
         DB::transaction(function () use ($rows, $trip, &$imported, $promoSvc) {
             $currentOrder    = null;
             $currentCustName = null;
-
             foreach ($rows as $row) {
-                $name   = trim($row[1] ?? '');
-                $phone  = trim($row[2] ?? '');
-                $type   = trim($row[3] ?? '');
-                $area   = trim($row[4] ?? '');
-                $code   = strtoupper(trim($row[5] ?? ''));
-                $color  = trim($row[6] ?? '');
-                $size   = trim($row[7] ?? '');
-                $qty    = max(1, (int)($row[8] ?? 1));
-                $price  = (float)($row[9] ?? 0);
-                $dp     = (float)($row[10] ?? 0);
-                $dpDate = trim($row[11] ?? '');
-                $notes  = trim($row[12] ?? '');
-                // Normalise type — default to 'customer' if blank or invalid
+                $name      = trim($row[1] ?? '');
+                $phone     = trim($row[2] ?? '');
+                $type      = trim($row[3] ?? '');
+                $area      = trim($row[4] ?? '');
+                $code      = strtoupper(trim($row[5] ?? ''));
+                $color     = trim($row[6] ?? '');
+                $size      = trim($row[7] ?? '');
+                $qty       = max(1, (int)($row[8] ?? 1));
+                $price     = (float)($row[9] ?? 0);
+                $dp        = (float)($row[10] ?? 0);
+                $dpDate    = trim($row[11] ?? '');
+                $notes     = trim($row[12] ?? '');
+                $orderedAt = trim($row[13] ?? '');
+
+                // Normalize and parse Ordered At
+                $parsedOrderedAt = null;
+                if ($orderedAt) {
+                    try {
+                        // Support DD/MM/YYYY HH:MM and YYYY-MM-DD HH:MM
+                        if (preg_match('/^\d{2}\/\d{2}\/\d{4}/', $orderedAt)) {
+                            $parts = explode(' ', $orderedAt);
+                            $dateParts = explode('/', $parts[0]);
+                            $dateStr = "{$dateParts[2]}-{$dateParts[1]}-{$dateParts[0]}" . (isset($parts[1]) ? " {$parts[1]}" : '');
+                            $parsedOrderedAt = \Carbon\Carbon::parse($dateStr);
+                        } else {
+                            $parsedOrderedAt = \Carbon\Carbon::parse($orderedAt);
+                        }
+                    } catch (\Exception $e) {
+                        $parsedOrderedAt = null;
+                    }
+                }
+
+                // Normalize current customer name
+                if ($name) $currentCustName = $name;
+
+                // Grouping key: Name + Ordered At (if provided)
+                // Same name + same time = same order
+                // Same name + different time = NEW order (for Record Each Chat Separately)
+                $groupKey = $currentCustName . '|' . ($parsedOrderedAt ? $parsedOrderedAt->format('Y-m-d H:i') : 'default');
+
+                // Normalise type
                 $validTypes = ['customer', 'reseller', 'selected_customer'];
                 $type = in_array(strtolower($type), $validTypes) ? strtolower($type) : 'customer';
 
@@ -304,8 +332,9 @@ class ReportController extends Controller
                 if ($name) $currentCustName = $name;
                 if (!$currentCustName) continue;
 
-                // Start a new order when name changes
-                if ($name && $name !== ($currentOrder?->customer->name)) {
+                // Start a new order when groupKey changes
+                // (new customer OR same customer with different Ordered At time)
+                if ($name && $groupKey !== ($currentOrder->_importGroupKey ?? '')) {
 
                     // Recalculate previous order
                     if ($currentOrder) {
@@ -339,7 +368,6 @@ class ReportController extends Controller
                             'default_shipping_area_id' => $shippingArea?->id,
                         ]);
                     } else {
-                        // Update type if explicitly provided (not blank)
                         $updates = [];
                         if (!empty(trim($row[3] ?? ''))) $updates['type'] = $type;
                         if ($shippingArea && !$customer->default_shipping_area_id) $updates['default_shipping_area_id'] = $shippingArea->id;
@@ -356,8 +384,11 @@ class ReportController extends Controller
                         'customer_id'      => $customer->id,
                         'shipping_area_id' => $shippingArea?->id,
                         'notes'            => $notes ?: null,
+                        'ordered_at'       => $parsedOrderedAt ?? now(),
                         'created_by'       => Auth::id(),
                     ]);
+                    // Store group key on object for this loop
+                    $currentOrder->_importGroupKey = $groupKey;
                     $imported++;
                 }
 

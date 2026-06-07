@@ -84,11 +84,10 @@
             </div>
             <div class="modal-body">
                 <div class="alert alert-light border small mb-3">
-                    <strong>Columns (13):</strong> No · Name · Phone · <strong>Type</strong> · Area · Code · Color · Size · Qty · Price · DP · Date of DP · Notes<br>
+                    <strong>Columns (14):</strong> No · Name · Phone · Type · Area · Code · Color · Size · Qty · Price · DP · Date of DP · Notes · <strong>Ordered At</strong><br>
                     <span class="text-muted d-block mt-1">
-                        • <strong>Type</strong>: <code>customer</code> / <code>reseller</code> / <code>selected_customer</code> — leave blank for default (customer).<br>
-                        • <strong>Each row = 1 item line</strong> with its own Qty.<br>
-                        • Repeat customer name each row, or leave blank to continue same customer.<br>
+                        • <strong>Ordered At</strong>: when customer actually ordered (e.g. <code>2026-06-06 09:00</code>). Same name + same time = same order. Same name + different time = separate order (for FIFO fairness).<br>
+                        • <strong>Type</strong>: <code>customer</code> / <code>reseller</code> / <code>selected_customer</code> — blank = customer.<br>
                         • Products must exist in the selected trip. Color/Size must match exactly.
                     </span>
                     <a href="{{ route('orders.import.template') }}" class="small mt-1 d-inline-block">

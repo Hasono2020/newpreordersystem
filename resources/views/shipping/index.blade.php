@@ -63,9 +63,8 @@
                     <th>Area / City</th>
                     <th>Province</th>
                     <th>Price / kg</th>
-                    <th>Sample: 500g</th>
-                    <th>Sample: 1.5kg</th>
-                    <th>Sample: 3kg</th>
+                    <th>Est. 500g</th>
+                    <th>Est. 2kg</th>
                     <th>Status</th>
                     <th></th>
                 </tr>
@@ -77,8 +76,7 @@
                     <td class="text-muted small">{{ $area->province ?? '—' }}</td>
                     <td>Rp {{ number_format($area->price_per_kg, 0, ',', '.') }}</td>
                     <td class="small text-muted">Rp {{ number_format($area->calcShippingFee(500), 0, ',', '.') }}</td>
-                    <td class="small text-muted">Rp {{ number_format($area->calcShippingFee(1500), 0, ',', '.') }}</td>
-                    <td class="small text-muted">Rp {{ number_format($area->calcShippingFee(3000), 0, ',', '.') }}</td>
+                    <td class="small text-muted">Rp {{ number_format($area->calcShippingFee(2000), 0, ',', '.') }}</td>
                     <td>
                         @if($area->is_active)
                             <span class="badge bg-success">Active</span>
@@ -86,18 +84,20 @@
                             <span class="badge bg-secondary">Inactive</span>
                         @endif
                     </td>
-                    <td>
+                    <td class="text-nowrap">
                         <a href="{{ route('shipping.edit', $area) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
+                        @if(auth()->user()->isAdmin())
                         <form method="POST" action="{{ route('shipping.destroy', $area) }}" class="d-inline"
                             onsubmit="return confirm('Delete {{ $area->name }}?')">
                             @csrf @method('DELETE')
                             <button class="btn btn-sm btn-outline-danger">×</button>
                         </form>
+                        @endif
                     </td>
                 </tr>
                 @empty
                 <tr>
-                    <td colspan="8" class="text-center text-muted py-4">
+                    <td colspan="7" class="text-center text-muted py-4">
                         No shipping areas yet.
                         <a href="{{ route('shipping.template') }}">Download template (.xlsx)</a> to import in bulk.
                     </td>
