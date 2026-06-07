@@ -29,6 +29,7 @@ Route::middleware('auth')->group(function () {
     Route::get('products-export', [ProductController::class, 'export'])->name('products.export');
     Route::get('products-import-template', [ProductController::class, 'importTemplate'])->name('products.import.template');
     Route::post('products-import', [ProductController::class, 'importCsv'])->name('products.import');
+    Route::post('products/bulk-destroy', [ProductController::class, 'bulkDestroy'])->name('products.bulk-destroy');
     Route::resource('products', ProductController::class);
     Route::post('products/{product}/variants', [ProductController::class, 'storeVariant'])->name('products.variants.store');
     Route::patch('products/{product}/variants/{variant}', [ProductController::class, 'updateVariant'])->name('products.variants.update');
@@ -70,7 +71,7 @@ Route::middleware('auth')->group(function () {
     Route::get('shipping/template', [ShippingAreaController::class, 'template'])->name('shipping.template');
     Route::get('shipping/export', [ShippingAreaController::class, 'export'])->name('shipping.export');
     Route::post('shipping/import', [ShippingAreaController::class, 'import'])->name('shipping.import');
-    Route::resource('shipping', ShippingAreaController::class)->except(['show']);
+    Route::resource('shipping', ShippingAreaController::class);
 
     // Reports & Export
     Route::get('reports', [ReportController::class, 'index'])->name('reports.index');

@@ -3,58 +3,56 @@
 @section('page-title', 'Shipping Areas')
 
 @section('content')
-{{-- Import / Export / Template toolbar --}}
-<div class="row g-2 mb-3 align-items-end">
-    <div class="col">
-        <form class="d-flex gap-2">
-            <input type="text" name="search" class="form-control form-control-sm" style="width:220px;"
-                placeholder="Search area or province…" value="{{ request('search') }}">
-            <button class="btn btn-sm btn-outline-secondary">Search</button>
-            @if(request('search'))
-                <a href="{{ route('shipping.index') }}" class="btn btn-sm btn-link">Clear</a>
-            @endif
-        </form>
+
+{{-- Toolbar --}}
+<div class="d-flex gap-2 mb-3 flex-wrap align-items-center">
+    <form class="d-flex gap-2 flex-grow-1" method="GET" action="{{ route('shipping.index') }}">
+        <input type="hidden" name="per_page" value="{{ $perPage }}">
+        <input type="text" name="search" class="form-control form-control-sm" style="max-width:240px;"
+            placeholder="Search area or province…" value="{{ request('search') }}">
+        <button class="btn btn-sm btn-outline-secondary">Search</button>
+        @if(request('search'))
+            <a href="{{ route('shipping.index', ['per_page' => $perPage]) }}" class="btn btn-sm btn-link">Clear</a>
+        @endif
+    </form>
+
+    {{-- Per page --}}
+    <form method="GET" action="{{ route('shipping.index') }}" class="d-flex align-items-center gap-1">
+        <input type="hidden" name="search" value="{{ request('search') }}">
+        <label class="small text-muted mb-0">Show:</label>
+        <select name="per_page" class="form-select form-select-sm" style="width:80px;" onchange="this.form.submit()">
+            @foreach([30, 50, 100, 200] as $n)
+                <option value="{{ $n }}" {{ $perPage == $n ? 'selected' : '' }}>{{ $n }}</option>
+            @endforeach
+        </select>
+    </form>
+
+    <div class="dropdown">
+        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+            <i class="bi bi-arrow-down-up me-1"></i>Import / Export
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end" style="min-width:240px;">
+            <li><h6 class="dropdown-header">Export</h6></li>
+            <li><a class="dropdown-item" href="{{ route('shipping.export') }}"><i class="bi bi-download me-2 text-success"></i>Export all as Excel</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><h6 class="dropdown-header">Import</h6></li>
+            <li><a class="dropdown-item" href="{{ route('shipping.template') }}"><i class="bi bi-file-earmark-spreadsheet me-2 text-secondary"></i>Download template (.xlsx)</a></li>
+            <li><button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#importModal"><i class="bi bi-upload me-2 text-primary"></i>Import from Excel</button></li>
+        </ul>
     </div>
-    <div class="col-auto d-flex gap-2">
-        <div class="dropdown">
-            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
-                <i class="bi bi-arrow-down-up me-1"></i>Import / Export
-            </button>
-            <ul class="dropdown-menu dropdown-menu-end" style="min-width:240px;">
-                <li><h6 class="dropdown-header">Export</h6></li>
-                <li>
-                    <a class="dropdown-item" href="{{ route('shipping.export') }}">
-                        <i class="bi bi-download me-2 text-success"></i>Export all as Excel
-                    </a>
-                </li>
-                <li><hr class="dropdown-divider"></li>
-                <li><h6 class="dropdown-header">Import</h6></li>
-                <li>
-                    <a class="dropdown-item" href="{{ route('shipping.template') }}">
-                        <i class="bi bi-file-earmark-spreadsheet me-2 text-secondary"></i>Download template (.xlsx)
-                    </a>
-                </li>
-                <li>
-                    <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#importModal">
-                        <i class="bi bi-upload me-2 text-primary"></i>Import from Excel
-                    </button>
-                </li>
-            </ul>
-        </div>
-        <a href="{{ route('shipping.create') }}" class="btn btn-sm btn-primary">
-            <i class="bi bi-plus-lg me-1"></i>Add Area
-        </a>
-    </div>
+
+    <a href="{{ route('shipping.create') }}" class="btn btn-sm btn-primary">
+        <i class="bi bi-plus-lg me-1"></i>Add Area
+    </a>
 </div>
 
-{{-- Shipping calculation reference --}}
+{{-- Info --}}
 <div class="alert alert-info py-2 small mb-3">
     <i class="bi bi-info-circle me-1"></i>
-    <strong>Shipping weight rule:</strong>
-    ≤ 1,350g → 1 kg &nbsp;|&nbsp; ≤ 2,350g → 2 kg &nbsp;|&nbsp; ≤ 3,350g → 3 kg &nbsp;|&nbsp; and so on.
-    Formula: <code>ceil((grams − 350) / 1000)</code>, minimum 1 kg.
+    <strong>Shipping formula:</strong> ≤1,350g = 1kg · ≤2,350g = 2kg · formula: <code>ceil((grams−350)/1000)</code>, min 1kg.
 </div>
 
+{{-- Table --}}
 <div class="card">
     <div class="table-responsive">
         <table class="table table-hover mb-0">
@@ -63,8 +61,6 @@
                     <th>Area / City</th>
                     <th>Province</th>
                     <th>Price / kg</th>
-                    <th>Est. 500g</th>
-                    <th>Est. 2kg</th>
                     <th>Status</th>
                     <th></th>
                 </tr>
@@ -75,16 +71,13 @@
                     <td class="fw-semibold">{{ $area->name }}</td>
                     <td class="text-muted small">{{ $area->province ?? '—' }}</td>
                     <td>Rp {{ number_format($area->price_per_kg, 0, ',', '.') }}</td>
-                    <td class="small text-muted">Rp {{ number_format($area->calcShippingFee(500), 0, ',', '.') }}</td>
-                    <td class="small text-muted">Rp {{ number_format($area->calcShippingFee(2000), 0, ',', '.') }}</td>
                     <td>
-                        @if($area->is_active)
-                            <span class="badge bg-success">Active</span>
-                        @else
-                            <span class="badge bg-secondary">Inactive</span>
-                        @endif
+                        <span class="badge {{ $area->is_active ? 'bg-success' : 'bg-secondary' }}">
+                            {{ $area->is_active ? 'Active' : 'Inactive' }}
+                        </span>
                     </td>
                     <td class="text-nowrap">
+                        <a href="{{ route('shipping.show', $area) }}" class="btn btn-sm btn-outline-primary">View</a>
                         <a href="{{ route('shipping.edit', $area) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
                         @if(auth()->user()->isAdmin())
                         <form method="POST" action="{{ route('shipping.destroy', $area) }}" class="d-inline"
@@ -97,16 +90,20 @@
                 </tr>
                 @empty
                 <tr>
-                    <td colspan="7" class="text-center text-muted py-4">
-                        No shipping areas yet.
-                        <a href="{{ route('shipping.template') }}">Download template (.xlsx)</a> to import in bulk.
+                    <td colspan="5" class="text-center text-muted py-4">
+                        No shipping areas yet. <a href="{{ route('shipping.template') }}">Download template</a> to import in bulk.
                     </td>
                 </tr>
                 @endforelse
             </tbody>
         </table>
     </div>
-    <div class="card-footer bg-white">{{ $areas->links() }}</div>
+    <div class="card-footer bg-white d-flex justify-content-between align-items-center py-2">
+        <span class="small text-muted">
+            {{ $areas->firstItem() }}–{{ $areas->lastItem() }} of {{ $areas->total() }} areas
+        </span>
+        <div>{{ $areas->links() }}</div>
+    </div>
 </div>
 
 {{-- Import Modal --}}
@@ -127,9 +124,7 @@
                             <i class="bi bi-download me-1"></i>Download template (.xlsx)
                         </a>
                     </div>
-                    <div class="mb-3">
-                        <input type="file" name="file" class="form-control" accept=".xlsx" required>
-                    </div>
+                    <input type="file" name="file" class="form-control" accept=".xlsx" required>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>

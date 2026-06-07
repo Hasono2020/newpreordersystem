@@ -8,31 +8,35 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <style>
-        :root { --sidebar-width: 240px; }
-        body { background: #f4f6f9; }
+        :root { --sidebar-width: 220px; }
+        body { background: #f4f6f9; font-size: .9rem; }
         .sidebar {
             width: var(--sidebar-width);
-            min-height: 100vh;
+            height: 100vh;
             background: #1e2a3a;
             position: fixed;
             top: 0; left: 0;
             overflow-y: auto;
+            overflow-x: hidden;
             z-index: 100;
         }
-        .sidebar .brand { padding: 1.25rem 1.5rem; color: #fff; font-weight: 700; font-size: 1.1rem; border-bottom: 1px solid rgba(255,255,255,.1); }
-        .sidebar .nav-link { color: rgba(255,255,255,.75); padding: .6rem 1.5rem; border-radius: 0; display: flex; align-items: center; gap: .6rem; }
+        .sidebar .brand { padding: 1rem 1.25rem; color: #fff; font-weight: 700; font-size: 1rem; border-bottom: 1px solid rgba(255,255,255,.1); }
+        .sidebar .nav-link { color: rgba(255,255,255,.72); padding: .5rem 1.25rem; border-radius: 0; display: flex; align-items: center; gap: .55rem; font-size: .85rem; }
+        .sidebar .nav-link i { font-size: .95rem; flex-shrink: 0; }
         .sidebar .nav-link:hover, .sidebar .nav-link.active { color: #fff; background: rgba(255,255,255,.1); }
-        .sidebar .nav-section { color: rgba(255,255,255,.4); font-size: .7rem; text-transform: uppercase; letter-spacing: .08em; padding: 1rem 1.5rem .4rem; }
+        .sidebar .nav-section { color: rgba(255,255,255,.38); font-size: .65rem; text-transform: uppercase; letter-spacing: .08em; padding: .85rem 1.25rem .3rem; }
         .main-content { margin-left: var(--sidebar-width); padding: 1.5rem; }
-        .topbar { background: #fff; border-bottom: 1px solid #e5e7eb; padding: .75rem 1.5rem; margin: -1.5rem -1.5rem 1.5rem; display: flex; align-items: center; justify-content: space-between; }
+        .topbar { background: #fff; border-bottom: 1px solid #e5e7eb; padding: .65rem 1.5rem; margin: -1.5rem -1.5rem 1.5rem; display: flex; align-items: center; justify-content: space-between; }
         .badge-status { font-size: .75rem; }
-        .table th { font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: #6b7280; font-weight: 600; }
+        .table th { font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; color: #6b7280; font-weight: 600; }
         .card { border: 1px solid #e5e7eb; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
         .stat-card { border-left: 4px solid; }
         .stat-card.blue { border-color: #3b82f6; }
         .stat-card.green { border-color: #10b981; }
         .stat-card.yellow { border-color: #f59e0b; }
         .stat-card.red { border-color: #ef4444; }
+        /* Prevent Bootstrap Icons SVG fallback blobs */
+        .bi::before { max-width: 1em; max-height: 1em; overflow: hidden; }
     </style>
     @stack('styles')
 </head>

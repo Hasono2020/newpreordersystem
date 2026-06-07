@@ -13,7 +13,8 @@ class ProductController extends Controller
     use \App\Traits\HandlesXlsx;
     public function index(Request $request)
     {
-        $query = Product::with('trip', 'supplier')->withCount('orderItems');
+        $perPage = in_array((int)$request->per_page, [20, 50, 100, 200]) ? (int)$request->per_page : 20;
+        $query   = Product::with('trip', 'supplier')->withCount('orderItems');
 
         if ($request->trip_id) {
             $query->where('trip_id', $request->trip_id);
@@ -26,9 +27,9 @@ class ProductController extends Controller
             });
         }
 
-        $products = $query->orderBy('name')->paginate(20)->withQueryString();
+        $products = $query->orderBy('name')->paginate($perPage)->withQueryString();
         $trips    = Trip::orderByDesc('id')->get();
-        return view('products.index', compact('products', 'trips'));
+        return view('products.index', compact('products', 'trips', 'perPage'));
     }
 
     public function create(Request $request)
@@ -129,6 +130,42 @@ class ProductController extends Controller
 
         $product->update($data);
         return redirect()->route('products.show', $product)->with('success', 'Product updated.');
+    }
+
+    public function bulkDestroy(Request $request)
+    {
+        $this->adminOnly('bulk delete products');
+
+        $request->validate([
+            'action'      => 'required|in:selected,no_orders',
+            'product_ids' => 'required_if:action,selected|array',
+        ]);
+
+        $query = Product::query();
+
+        if ($request->action === 'selected') {
+            $query->whereIn('id', $request->product_ids ?? []);
+        } elseif ($request->action === 'no_orders') {
+            $query->whereDoesntHave('orderItems');
+        }
+
+        $products = $query->with('variants')->get();
+        $deleted  = 0;
+
+        \DB::transaction(function () use ($products, &$deleted) {
+            foreach ($products as $product) {
+                $variantIds = $product->variants->pluck('id');
+                \App\Models\PurchaseOrderItem::whereIn('product_variant_id', $variantIds)
+                    ->orWhere('product_id', $product->id)->delete();
+                $product->items()->delete();
+                $product->variants()->delete();
+                $product->delete();
+                $deleted++;
+            }
+        });
+
+        return redirect()->route('products.index', request()->only('trip_id', 'search'))
+            ->with('success', "Deleted {$deleted} product(s).");
     }
 
     public function destroy(Product $product)

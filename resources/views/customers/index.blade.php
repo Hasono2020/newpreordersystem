@@ -173,7 +173,23 @@
             </tbody>
         </table>
     </div>
-    <div class="card-footer bg-white">{{ $customers->links() }}</div>
+    <div class="card-footer bg-white d-flex justify-content-between align-items-center py-2">
+        <div class="d-flex align-items-center gap-2">
+            <span class="small text-muted">{{ $customers->total() }} customer(s)</span>
+            <form method="GET" action="{{ route('customers.index') }}" class="d-flex align-items-center gap-1 ms-2">
+                @foreach(request()->except('per_page','page') as $k => $v)
+                    <input type="hidden" name="{{ $k }}" value="{{ $v }}">
+                @endforeach
+                <label class="small text-muted mb-0">Show:</label>
+                <select name="per_page" class="form-select form-select-sm" style="width:70px;" onchange="this.form.submit()">
+                    @foreach([20,50,100,200] as $n)
+                        <option value="{{ $n }}" {{ $perPage==$n?'selected':'' }}>{{ $n }}</option>
+                    @endforeach
+                </select>
+            </form>
+        </div>
+        <div>{{ $customers->links() }}</div>
+    </div>
 </div>
 @endsection
 

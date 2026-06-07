@@ -9,13 +9,14 @@ class SupplierController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Supplier::withCount('products', 'purchaseOrders');
+        $perPage = in_array((int)$request->per_page, [20, 50, 100, 200]) ? (int)$request->per_page : 20;
+        $query   = Supplier::withCount('products', 'purchaseOrders');
         if ($request->search) {
             $query->where('name', 'like', '%'.$request->search.'%')
                   ->orWhere('contact_person', 'like', '%'.$request->search.'%');
         }
-        $suppliers = $query->orderBy('name')->paginate(20)->withQueryString();
-        return view('suppliers.index', compact('suppliers'));
+        $suppliers = $query->orderBy('name')->paginate($perPage)->withQueryString();
+        return view('suppliers.index', compact('suppliers', 'perPage'));
     }
 
     public function create()

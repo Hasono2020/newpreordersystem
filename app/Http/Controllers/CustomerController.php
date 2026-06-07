@@ -13,7 +13,8 @@ class CustomerController extends Controller
 
     public function index(Request $request)
     {
-        $query = Customer::withCount('orders');
+        $perPage = in_array((int)$request->per_page, [20, 50, 100, 200]) ? (int)$request->per_page : 20;
+        $query   = Customer::withCount('orders');
         if ($request->search) {
             $query->where(function ($q) use ($request) {
                 $q->where('name', 'like', '%'.$request->search.'%')
@@ -23,8 +24,8 @@ class CustomerController extends Controller
         if ($request->type) {
             $query->where('type', $request->type);
         }
-        $customers = $query->latest()->paginate(20)->withQueryString();
-        return view('customers.index', compact('customers'));
+        $customers = $query->latest()->paginate($perPage)->withQueryString();
+        return view('customers.index', compact('customers', 'perPage'));
     }
 
     public function create()

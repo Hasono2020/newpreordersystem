@@ -11,13 +11,23 @@ class ShippingAreaController extends Controller
     use \App\Traits\HandlesXlsx;
     public function index(Request $request)
     {
-        $query = ShippingArea::query();
+        $perPage = in_array((int)$request->per_page, [30, 50, 100, 200]) ? (int)$request->per_page : 50;
+        $query   = ShippingArea::query();
         if ($request->search) {
             $query->where('name', 'like', '%'.$request->search.'%')
                   ->orWhere('province', 'like', '%'.$request->search.'%');
         }
-        $areas = $query->orderBy('name')->paginate(30)->withQueryString();
-        return view('shipping.index', compact('areas'));
+        $areas = $query->orderBy('name')->paginate($perPage)->withQueryString();
+        return view('shipping.index', compact('areas', 'perPage'));
+    }
+
+    public function show(ShippingArea $shipping)
+    {
+        $customerCount = \App\Models\Customer::where('default_shipping_area_id', $shipping->id)->count();
+        $orderCount    = \App\Models\Order::where('shipping_area_id', $shipping->id)->count();
+        // Sample shipping fees
+        $samples = [500, 1000, 2000, 3000, 5000, 10000];
+        return view('shipping.show', compact('shipping', 'customerCount', 'orderCount', 'samples'));
     }
 
     public function create()

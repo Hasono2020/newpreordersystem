@@ -60,6 +60,27 @@
                 </li>
             </ul>
         </div>
+    <div class="col-auto d-flex gap-2">
+        @if(auth()->user()->isAdmin())
+        <div class="dropdown">
+            <button class="btn btn-sm btn-outline-danger dropdown-toggle" data-bs-toggle="dropdown">
+                <i class="bi bi-trash3 me-1"></i>Delete
+            </button>
+            <ul class="dropdown-menu">
+                <li>
+                    <button class="dropdown-item" id="deleteSelectedBtn" disabled onclick="confirmBulkDelete('selected')">
+                        <i class="bi bi-check2-square me-2"></i>Delete selected
+                        <span class="badge bg-danger ms-1" id="selectedCount" style="display:none;"></span>
+                    </button>
+                </li>
+                <li>
+                    <button class="dropdown-item text-danger" onclick="confirmBulkDelete('no_orders')">
+                        <i class="bi bi-collection me-2"></i>Delete all with no orders
+                    </button>
+                </li>
+            </ul>
+        </div>
+        @endif
         <a href="{{ route('products.create') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>Add Product</a>
     </div>
 </div>
@@ -96,15 +117,33 @@
     </div>
 </div>
 
+<form method="POST" action="{{ route('products.bulk-destroy') }}" id="bulkDeleteForm">
+    @csrf
+    <input type="hidden" name="action" id="bulkAction" value="">
+</form>
+
 <div class="card">
     <div class="table-responsive">
         <table class="table table-hover mb-0">
             <thead class="table-light">
-                <tr><th>Product</th><th>Code</th><th>Trip</th><th>Price</th><th>Weight</th><th>Status</th><th>Orders</th><th></th></tr>
+                <tr>
+                    @if(auth()->user()->isAdmin())
+                    <th style="width:36px;">
+                        <input type="checkbox" id="selectAll" class="form-check-input">
+                    </th>
+                    @endif
+                    <th>Product</th><th>Code</th><th>Trip</th><th>Price</th><th>Weight</th><th>Status</th><th>Orders</th><th></th>
+                </tr>
             </thead>
             <tbody>
                 @forelse($products as $product)
                 <tr>
+                    @if(auth()->user()->isAdmin())
+                    <td>
+                        <input type="checkbox" name="product_ids[]" value="{{ $product->id }}"
+                            class="form-check-input product-checkbox" form="bulkDeleteForm">
+                    </td>
+                    @endif
                     <td>
                         <div class="d-flex align-items-center gap-2">
                             @if($product->image)
@@ -154,11 +193,58 @@
                     </td>
                 </tr>
                 @empty
-                <tr><td colspan="7" class="text-center text-muted py-4">No products yet</td></tr>
+                <tr><td colspan="{{ auth()->user()->isAdmin() ? 9 : 8 }}" class="text-center text-muted py-4">No products yet</td></tr>
                 @endforelse
             </tbody>
         </table>
     </div>
-    <div class="card-footer bg-white">{{ $products->links() }}</div>
+    <div class="card-footer bg-white d-flex justify-content-between align-items-center py-2">
+        <div class="d-flex align-items-center gap-2">
+            <span class="small text-muted">{{ $products->total() }} product(s)</span>
+            <form method="GET" action="{{ route('products.index') }}" class="d-flex align-items-center gap-1 ms-2">
+                @foreach(request()->except('per_page','page') as $k => $v)
+                    <input type="hidden" name="{{ $k }}" value="{{ $v }}">
+                @endforeach
+                <label class="small text-muted mb-0">Show:</label>
+                <select name="per_page" class="form-select form-select-sm" style="width:70px;" onchange="this.form.submit()">
+                    @foreach([20,50,100,200] as $n)
+                        <option value="{{ $n }}" {{ $perPage==$n?'selected':'' }}>{{ $n }}</option>
+                    @endforeach
+                </select>
+            </form>
+        </div>
+        <div>{{ $products->links() }}</div>
+    </div>
 </div>
+
+@if(auth()->user()->isAdmin())
+<script>
+const selectAll   = document.getElementById('selectAll');
+const countBadge  = document.getElementById('selectedCount');
+const deleteBtn   = document.getElementById('deleteSelectedBtn');
+
+function updateCount() {
+    const checked = document.querySelectorAll('.product-checkbox:checked').length;
+    deleteBtn.disabled = checked === 0;
+    countBadge.style.display = checked > 0 ? 'inline-block' : 'none';
+    countBadge.textContent = checked;
+}
+
+selectAll?.addEventListener('change', () => {
+    document.querySelectorAll('.product-checkbox').forEach(c => c.checked = selectAll.checked);
+    updateCount();
+});
+
+document.querySelectorAll('.product-checkbox').forEach(c => c.addEventListener('change', updateCount));
+
+function confirmBulkDelete(action) {
+    const form = document.getElementById('bulkDeleteForm');
+    document.getElementById('bulkAction').value = action;
+    const msg = action === 'selected'
+        ? `Delete ${document.querySelectorAll('.product-checkbox:checked').length} selected product(s)? This cannot be undone.`
+        : 'Delete ALL products with no orders? This cannot be undone.';
+    if (confirm(msg)) form.submit();
+}
+</script>
+@endif
 @endsection
