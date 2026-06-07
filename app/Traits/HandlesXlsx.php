@@ -6,7 +6,7 @@ trait HandlesXlsx
 {
     /**
      * Read an .xlsx file and return a 2D array (rows × columns).
-     * Row 0 is the header row.
+     * Uses XMLReader (streaming) instead of SimpleXML for large files.
      */
     protected function readXlsx(string $path): array
     {
@@ -15,60 +15,94 @@ trait HandlesXlsx
             $zip = new \ZipArchive();
             if ($zip->open($path) !== true) return [];
 
-            // Shared strings
+            // ── Shared strings via XMLReader ──────────────────────────────
             $sharedStrings = [];
             $ssXml = $zip->getFromName('xl/sharedStrings.xml');
             if ($ssXml) {
-                $ss = simplexml_load_string($ssXml);
-                foreach ($ss->si as $si) {
-                    if (isset($si->t)) {
-                        $sharedStrings[] = (string)$si->t;
-                    } elseif (isset($si->r)) {
-                        $val = '';
-                        foreach ($si->r as $r) $val .= (string)($r->t ?? '');
-                        $sharedStrings[] = $val;
-                    } else {
-                        $sharedStrings[] = '';
+                $reader = new \XMLReader();
+                $reader->XML($ssXml);
+                $current = '';
+                while ($reader->read()) {
+                    if ($reader->nodeType === \XMLReader::ELEMENT && $reader->localName === 'si') {
+                        $current = '';
+                    } elseif ($reader->nodeType === \XMLReader::TEXT || $reader->nodeType === \XMLReader::CDATA) {
+                        $current .= $reader->value;
+                    } elseif ($reader->nodeType === \XMLReader::END_ELEMENT && $reader->localName === 'si') {
+                        $sharedStrings[] = $current;
                     }
                 }
+                $reader->close();
             }
 
+            // ── Sheet data via XMLReader ───────────────────────────────────
             $sheetXml = $zip->getFromName('xl/worksheets/sheet1.xml');
             $zip->close();
             if (!$sheetXml) return [];
 
-            $sheet  = simplexml_load_string($sheetXml);
-            $maxCol = 0;
+            $reader   = new \XMLReader();
+            $reader->XML($sheetXml);
+            $rowData  = [];
+            $rowIdx   = 0;
+            $colIdx   = 0;
+            $cellType = '';
+            $inV      = false;
+            $vVal     = '';
 
-            foreach ($sheet->sheetData->row as $row) {
-                $rowData = [];
-                $rowIdx  = (int)$row['r'] - 1;
-                foreach ($row->c as $cell) {
-                    preg_match('/^([A-Z]+)(\d+)$/', (string)$cell['r'], $m);
-                    $colIdx = $this->xlsxColToIndex($m[1]);
-                    $maxCol = max($maxCol, $colIdx);
+            while ($reader->read()) {
+                if ($reader->nodeType === \XMLReader::ELEMENT) {
+                    $name = $reader->localName;
 
-                    $type = (string)($cell['t'] ?? '');
-                    $v    = (string)($cell->v ?? '');
+                    if ($name === 'row') {
+                        $rowData = [];
+                        $rowIdx  = (int)$reader->getAttribute('r') - 1;
 
-                    if ($type === 's') {
-                        $rowData[$colIdx] = $sharedStrings[(int)$v] ?? '';
-                    } elseif ($type === 'str' || $type === 'inlineStr') {
-                        $rowData[$colIdx] = $v;
-                    } else {
-                        $rowData[$colIdx] = is_numeric($v)
-                            ? (strpos($v, '.') !== false ? (float)$v : (int)$v)
-                            : $v;
+                    } elseif ($name === 'c') {
+                        $ref      = $reader->getAttribute('r') ?? '';
+                        $cellType = $reader->getAttribute('t') ?? '';
+                        // Parse column letter from ref (e.g. "B3" → col 1)
+                        preg_match('/^([A-Z]+)/', $ref, $m);
+                        $colIdx = $m ? $this->xlsxColToIndex($m[1]) : 0;
+                        $vVal   = '';
+                        $inV    = false;
+
+                    } elseif ($name === 'v' || $name === 'is') {
+                        $inV  = true;
+                        $vVal = '';
+                    }
+
+                } elseif ($reader->nodeType === \XMLReader::TEXT && $inV) {
+                    $vVal .= $reader->value;
+
+                } elseif ($reader->nodeType === \XMLReader::END_ELEMENT) {
+                    $name = $reader->localName;
+
+                    if (($name === 'v' || $name === 'is') && $inV) {
+                        // Resolve cell value
+                        if ($cellType === 's') {
+                            $rowData[$colIdx] = $sharedStrings[(int)$vVal] ?? '';
+                        } elseif ($cellType === 'str' || $cellType === 'inlineStr') {
+                            $rowData[$colIdx] = $vVal;
+                        } else {
+                            $rowData[$colIdx] = is_numeric($vVal)
+                                ? (str_contains($vVal, '.') ? (float)$vVal : (int)$vVal)
+                                : $vVal;
+                        }
+                        $inV = false;
+
+                    } elseif ($name === 'row' && !empty($rowData)) {
+                        $maxCol = max(array_keys($rowData));
+                        for ($i = 0; $i <= $maxCol; $i++) {
+                            if (!array_key_exists($i, $rowData)) $rowData[$i] = '';
+                        }
+                        ksort($rowData);
+                        $rows[$rowIdx] = array_values($rowData);
                     }
                 }
-                for ($i = 0; $i <= $maxCol; $i++) {
-                    if (!array_key_exists($i, $rowData)) $rowData[$i] = '';
-                }
-                ksort($rowData);
-                $rows[$rowIdx] = array_values($rowData);
             }
+            $reader->close();
             ksort($rows);
             return array_values($rows);
+
         } catch (\Exception $e) {
             return [];
         }

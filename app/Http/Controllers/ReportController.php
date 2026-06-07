@@ -67,83 +67,103 @@ class ReportController extends Controller
 
     // ── CSV Exports ──────────────────────────────────────────────────
 
+    /**
+     * Export orders — one row per item, matching the LIST ORDERAN CUSTOMER format.
+     * Columns: KET | NO | NAMA | IG/WA | KOTA | KODE | WARNA | SIZE | HARGA SATUAN | DP | TGL DP | AN | KET
+     */
     public function exportOrders(Request $request)
     {
-        $query = Order::with('customer', 'trip', 'shippingArea', 'items.product', 'items.variant');
+        $query = Order::with('customer', 'trip', 'shippingArea', 'items.product', 'items.variant', 'payments')
+            ->orderBy('ordered_at');
         if ($request->trip_id) $query->where('trip_id', $request->trip_id);
-        $orders = $query->latest()->get();
+        $orders = $query->get();
 
-        // One row per item — order info repeats on first item row, blank on subsequent rows
-        $rows = [['order_number','customer_name','customer_type','customer_phone',
-            'trip','shipping_area','code','product_name','color','size','qty',
-            'unit_price','item_status',
-            'subtotal','discount','shipping_fee','shipping_discount',
-            'total_amount','paid','balance_due','payment_status','notes']];
+        $rows = [[
+            'KET', 'NO', 'NAMA', 'IG/WA', 'KOTA',
+            'KODE', 'WARNA', 'SIZE', 'HARGA SATUAN',
+            'DP', 'TGL DP', 'AN', 'KET',
+        ]];
 
+        $no = 1;
         foreach ($orders as $o) {
-            $base = [$o->order_number, $o->customer->name, $o->customer->type,
-                $o->customer->phone, $o->trip->name, $o->shippingArea?->name ?? ''];
+            $firstPayment = $o->payments->sortBy('paid_at')->first();
+            $dp    = $firstPayment?->amount ?? ($o->deposit_paid ?: '');
+            $tglDp = $firstPayment ? \Carbon\Carbon::parse($firstPayment->paid_at)->format('d-M-y') : '';
+            $an    = $o->notes ?? '';
 
-            $summaryBase = [$o->subtotal, $o->discount_amount, $o->shipping_fee,
-                $o->shipping_discount, $o->total_amount, $o->deposit_paid,
-                $o->total_amount - $o->deposit_paid, $o->payment_status, $o->notes ?? ''];
+            foreach ($o->items as $item) {
+                $rows[] = [
+                    $item->status !== 'pending' ? ucfirst($item->status) : '', // KET (status)
+                    $no,
+                    $o->customer->name,
+                    $o->customer->phone ?? '',
+                    $o->shippingArea?->name ?? '',
+                    $item->product->product_code ?? '',
+                    $item->variant?->color ?? '',
+                    $item->variant?->size ?? '',
+                    $item->unit_price,
+                    $dp,
+                    $tglDp,
+                    $an,
+                    '', // KET (trailing notes)
+                ];
+                $no++;
+                // Only show DP on first item row per order
+                $dp    = '';
+                $tglDp = '';
+            }
 
+            // If order has no items
             if ($o->items->isEmpty()) {
-                $rows[] = array_merge($base, ['','(no items)','','',0,'',''], $summaryBase);
-            } else {
-                foreach ($o->items as $i => $item) {
-                    $itemCols = [
-                        $item->product->product_code ?? '',
-                        $item->product->name,
-                        $item->variant?->color ?? '',
-                        $item->variant?->size ?? '',
-                        $item->quantity,
-                        $item->unit_price,
-                        $item->status,
-                    ];
-                    if ($i === 0) {
-                        $rows[] = array_merge($base, $itemCols, $summaryBase);
-                    } else {
-                        $rows[] = array_merge(['','','','','',''], $itemCols, ['','','','','','','','','']);
-                    }
-                }
+                $rows[] = [
+                    '', $no, $o->customer->name, $o->customer->phone ?? '',
+                    $o->shippingArea?->name ?? '',
+                    '', '', '', '',
+                    $dp, $tglDp, $an, '',
+                ];
+                $no++;
             }
         }
+
         return $this->streamXlsx('orders_export.xlsx', $rows);
     }
 
     public function exportOrderItems(Request $request)
     {
-        $query = OrderItem::with('order.customer', 'order.trip', 'product', 'variant');
-        if ($request->trip_id) {
-            $query->whereHas('order', fn($q) => $q->where('trip_id', $request->trip_id));
-        }
-        $items = $query->latest()->get();
-
-        $rows = [['order_number','customer_name','customer_type','trip',
-            'product_name','product_code','color','size','unit_price','line_total','status','notes']];
-        foreach ($items as $i) {
-            $rows[] = [$i->order->order_number, $i->order->customer->name,
-                $i->order->customer->type, $i->order->trip->name,
-                $i->product->name, $i->product->product_code ?? '',
-                $i->variant?->color ?? '', $i->variant?->size ?? '',
-                $i->unit_price, $i->line_total, $i->status, $i->notes];
-        }
-        return $this->streamXlsx('order_items_export.xlsx', $rows);
+        // Alias to exportOrders for compatibility
+        return $this->exportOrders($request);
     }
 
+    /**
+     * Import template — matches LIST ORDERAN CUSTOMER format.
+     * Each row = 1 separate order with 1 item.
+     *
+     * COLUMNS (13):
+     *  0  KET         – notes/remarks (ignored on import)
+     *  1  NO          – row number (determines FIFO order when Ordered At blank)
+     *  2  NAMA        – customer name
+     *  3  IG/WA       – customer phone or IG/WA contact
+     *  4  KOTA        – shipping area name
+     *  5  KODE        – product code (must exist in selected trip)
+     *  6  WARNA       – variant color
+     *  7  SIZE        – variant size
+     *  8  HARGA SATUAN– unit price (blank = use system product price)
+     *  9  DP          – deposit amount
+     * 10  TGL DP      – deposit date (DD/MM/YYYY or YYYY-MM-DD)
+     * 11  AN          – atas nama / order notes
+     * 12  KET         – additional notes
+     */
     public function orderImportTemplate()
     {
         return $this->streamXlsx('order_import_template.xlsx', [
-            ['No', 'Name', 'Phone', 'Type', 'Area', 'Code', 'Color', 'Size', 'Qty', 'Price', 'DP', 'Date of DP', 'Notes', 'Ordered At'],
-            // Ordered At: when customer actually ordered (YYYY-MM-DD HH:MM)
-            // Same Name + same Ordered At = same order | Different Ordered At = NEW separate order
-            // Leave blank = uses import time (not recommended for FIFO fairness)
-            [1, 'JASMINE 7911', '08123456789', 'customer', 'SURABAYA', 'NA_03', 'GREY',  'FZ', 1, '', 500000, '2026-05-03', '', '2026-05-03 09:00'],
-            [2, 'JASMINE 7911', '',            '',         '',         'NA_03', 'BROWN', 'FZ', 1, '', '',      '',           '', '2026-05-03 14:00'],
-            [3, 'JASMINE 7911', '',            '',         '',         'NA_03', 'GREY',  'FZ', 1, '', '',      '',           '', '2026-05-03 21:00'],
-            [4, 'SARI 0812',    '08129876543', 'reseller', 'JAKARTA',  'NZ_01', 'BLACK', 'M',  3, '', '',      '',           'fragile', '2026-05-03 10:00'],
-            [5, 'SARI 0812',    '',            '',         '',         'NA_03', 'NAVY',  'FZ', 2, '', 300000,  '2026-05-04', '', '2026-05-03 10:00'],
+            ['KET', 'NO', 'NAMA', 'IG/WA', 'KOTA', 'KODE', 'WARNA', 'SIZE', 'HARGA SATUAN', 'DP', 'TGL DP', 'AN', 'KET'],
+            // Each row = 1 order with 1 item. Row order = FIFO priority (top = first).
+            // Leave HARGA SATUAN blank to use system product price.
+            ['', 1, 'JASMINE 7911', '08123456789', 'SURABAYA', 'NA_03', 'GREY',  'FZ', '', 500000, '2026-05-03', 'JASMINE',  ''],
+            ['', 2, 'JASMINE 7911', '',            '',         'NA_03', 'BROWN', 'FZ', '', '',     '',           '',         ''],
+            ['', 3, 'JASMINE 7911', '',            '',         'NA_03', 'GREY',  'FZ', '', '',     '',           '',         ''],
+            ['', 4, 'SARI 0812',    '08129876543', 'JAKARTA',  'NZ_01', 'BLACK', 'M',  '', 300000, '2026-05-04', 'SARI',     'fragile'],
+            ['', 5, 'SARI 0812',    '',            '',         'NA_03', 'NAVY',  'FZ', '', '',     '',           '',         ''],
         ]);
     }
 
@@ -205,304 +225,373 @@ class ReportController extends Controller
     public function importOrders(Request $request)
     {
         $request->validate([
-            'file'    => 'required|file|max:10240',
+            'file'    => 'required|file|max:51200', // 50MB
             'trip_id' => 'required|exists:trips,id',
         ]);
 
         $trip = Trip::findOrFail($request->trip_id);
         $rows = $this->readXlsx($request->file('file')->getRealPath());
-
         if (empty($rows)) {
             return back()->with('error', 'Could not read the file. Make sure it is a valid .xlsx file.');
         }
 
         array_shift($rows); // remove header
 
-        // Remove completely blank rows
+        // Remove blank rows
         $rows = array_values(array_filter($rows, fn($r) =>
-            !empty(trim($r[1] ?? '')) || !empty(trim($r[4] ?? ''))
+            !empty(trim((string)($r[2] ?? ''))) || !empty(trim((string)($r[5] ?? '')))
         ));
 
-        // ── Validation pass ────────────────────────────────────────────
-        $validationErrors = [];
-        $currentName      = null;
+        // ── Validation pass ─────────────────────────────────────────────
+        $errors = [];
+        foreach (array_slice($rows, 0, 100) as $i => $row) { // validate first 100 rows
+            $lineNum = $i + 2;
+            $name    = trim((string)($row[2] ?? ''));
+            $code    = strtoupper(trim((string)($row[5] ?? '')));
+            if (empty($name) || empty($code)) continue;
+
+            $exists = Product::where('product_code', $code)->where('trip_id', $trip->id)->exists();
+            if (!$exists) {
+                $errors[] = "Row {$lineNum} ({$name}): Code '{$code}' not found in trip '{$trip->name}'.";
+                if (count($errors) >= 5) { $errors[] = '... (showing first 5 errors only)'; break; }
+            }
+        }
+        if (!empty($errors)) {
+            return back()->with('import_errors', $errors)
+                         ->with('error', 'Import blocked — fix these issues:');
+        }
+
+        // ── Pre-load reference data into memory ──────────────────────────
+        $products = Product::where('trip_id', $trip->id)
+            ->with('variants')
+            ->get()
+            ->keyBy(fn($p) => strtoupper($p->product_code ?? ''));
+
+        $shippingAreas = \App\Models\ShippingArea::all()
+            ->keyBy(fn($a) => strtolower(trim($a->name)));
+
+        $existingPhones = DB::table('customers')->whereNotNull('phone')
+            ->pluck('id', 'phone')
+            ->mapWithKeys(fn($id, $p) => [strtolower(trim($p)) => $id])->toArray();
+
+        $existingNames = DB::table('customers')->pluck('id', 'name')
+            ->mapWithKeys(fn($id, $n) => [strtolower(trim($n)) => $id])->toArray();
+
+        // ── Import pass — fast batch inserts ─────────────────────────────
+        $imported  = 0;
+        $skipped   = 0;
+        $baseTime  = now();
+        $now       = $baseTime->toDateTimeString();
+        $createdBy = Auth::id();
+
+        $ordersBatch    = [];
+        $itemsBatch     = [];
+        $paymentsBatch  = [];
 
         foreach ($rows as $rowIdx => $row) {
-            $lineNum = $rowIdx + 2;
-            $name    = trim($row[1] ?? '');
-            $code    = strtoupper(trim($row[5] ?? ''));
-            $color   = trim($row[6] ?? '');
-            $size    = trim($row[7] ?? '');
-            if ($name) $currentName = $name;
+            $name    = trim((string)($row[2] ?? ''));
+            $contact = trim((string)($row[3] ?? ''));
+            $area    = trim((string)($row[4] ?? ''));
+            $code    = strtoupper(trim((string)($row[5] ?? '')));
+            $color   = trim((string)($row[6] ?? ''));
+            $size    = trim((string)($row[7] ?? ''));
+            $price   = (float)($row[8] ?? 0);
+            $dp      = (float)($row[9] ?? 0);
+            $dpRaw   = $row[10] ?? '';
+            $an      = trim((string)($row[11] ?? ''));
+            $ketPost = trim((string)($row[12] ?? ''));
 
-            // Every item row must have a product code
-            if (empty($code)) {
-                if ($currentName) {
-                    $validationErrors[] = "Row {$lineNum} ({$currentName}): Product code is missing.";
-                }
-                continue;
-            }
+            if (empty($name) || empty($code)) continue;
 
-            // Must have a customer name (from this row or a previous row)
-            if (empty($currentName)) {
-                $validationErrors[] = "Row {$lineNum}: No customer name set — fill Name on the first row of each customer.";
-                continue;
-            }
-
-            // Product must exist in this trip
-            $product = Product::where('product_code', $code)
-                ->where('trip_id', $trip->id)
-                ->first();
-
-            if (!$product) {
-                $validationErrors[] = "Row {$lineNum} ({$currentName}): Product code '{$code}' not found in trip '{$trip->name}'.";
-                continue;
-            }
-
-            // Variant must exist if color/size given
-            if ($color || $size) {
-                $query = $product->variants();
-                if ($color) $query->whereRaw('LOWER(color) = ?', [strtolower($color)]);
-                if ($size)  $query->whereRaw('LOWER(size) = ?',  [strtolower($size)]);
-                if (!$query->exists()) {
-                    $validationErrors[] = "Row {$lineNum} ({$currentName}): Variant '{$color}/{$size}' not found for product '{$code}'.";
-                }
-            }
-        }
-
-        if (!empty($validationErrors)) {
-            return back()
-                ->with('import_errors', $validationErrors)
-                ->with('error', 'Import blocked — fix these issues in your Excel file before importing:');
-        }
-
-        // ── Import pass ────────────────────────────────────────────────
-        $imported = 0;
-        $promoSvc = app(\App\Services\PromoService::class);
-
-        DB::transaction(function () use ($rows, $trip, &$imported, $promoSvc) {
-            $currentOrder    = null;
-            $currentCustName = null;
-            foreach ($rows as $row) {
-                $name      = trim($row[1] ?? '');
-                $phone     = trim($row[2] ?? '');
-                $type      = trim($row[3] ?? '');
-                $area      = trim($row[4] ?? '');
-                $code      = strtoupper(trim($row[5] ?? ''));
-                $color     = trim($row[6] ?? '');
-                $size      = trim($row[7] ?? '');
-                $qty       = max(1, (int)($row[8] ?? 1));
-                $price     = (float)($row[9] ?? 0);
-                $dp        = (float)($row[10] ?? 0);
-                $dpDate    = trim($row[11] ?? '');
-                $notes     = trim($row[12] ?? '');
-                $orderedAt = trim($row[13] ?? '');
-
-                // Normalize and parse Ordered At
-                $parsedOrderedAt = null;
-                if ($orderedAt) {
-                    try {
-                        // Support DD/MM/YYYY HH:MM and YYYY-MM-DD HH:MM
-                        if (preg_match('/^\d{2}\/\d{2}\/\d{4}/', $orderedAt)) {
-                            $parts = explode(' ', $orderedAt);
-                            $dateParts = explode('/', $parts[0]);
-                            $dateStr = "{$dateParts[2]}-{$dateParts[1]}-{$dateParts[0]}" . (isset($parts[1]) ? " {$parts[1]}" : '');
-                            $parsedOrderedAt = \Carbon\Carbon::parse($dateStr);
-                        } else {
-                            $parsedOrderedAt = \Carbon\Carbon::parse($orderedAt);
+            // Find or create customer
+            $normalizedPhone = Customer::normalizePhone($contact);
+            $customerId = null;
+            if ($normalizedPhone && isset($existingPhones[strtolower($normalizedPhone)])) {
+                $customerId = $existingPhones[strtolower($normalizedPhone)];
+            } elseif (isset($existingNames[strtolower($name)])) {
+                $customerId = $existingNames[strtolower($name)];
+            } else {
+                // Resolve area for new customer
+                $areaKey = strtolower($area);
+                $areaId  = $shippingAreas[$areaKey]?->id ?? null;
+                if (!$areaId && $area) {
+                    foreach ($shippingAreas as $k => $a) {
+                        if (str_contains($k, $areaKey) || str_contains($areaKey, $k)) {
+                            $areaId = $a->id; break;
                         }
-                    } catch (\Exception $e) {
-                        $parsedOrderedAt = null;
                     }
                 }
-
-                // Normalize current customer name
-                if ($name) $currentCustName = $name;
-
-                // Grouping key: Name + Ordered At (if provided)
-                // Same name + same time = same order
-                // Same name + different time = NEW order (for Record Each Chat Separately)
-                $groupKey = $currentCustName . '|' . ($parsedOrderedAt ? $parsedOrderedAt->format('Y-m-d H:i') : 'default');
-
-                // Normalise type
-                $validTypes = ['customer', 'reseller', 'selected_customer'];
-                $type = in_array(strtolower($type), $validTypes) ? strtolower($type) : 'customer';
-
-                // Resolve current customer name (blank = continue previous)
-                if ($name) $currentCustName = $name;
-                if (!$currentCustName) continue;
-
-                // Start a new order when groupKey changes
-                // (new customer OR same customer with different Ordered At time)
-                if ($name && $groupKey !== ($currentOrder->_importGroupKey ?? '')) {
-
-                    // Recalculate previous order
-                    if ($currentOrder) {
-                        $calc = $promoSvc->recalculate($currentOrder->fresh());
-                        $currentOrder->update([
-                            'subtotal'             => $calc['subtotal'],
-                            'discount_amount'      => $calc['discount_amount'],
-                            'shipping_fee'         => $calc['shipping_fee'],
-                            'shipping_discount'    => $calc['shipping_discount'],
-                            'shipping_weight_gram' => $calc['shipping_weight_gram'],
-                            'shipping_kg_charged'  => $calc['shipping_kg_charged'],
-                            'total_amount'         => $calc['total_amount'],
-                        ]);
-                    }
-
-                    // Resolve shipping area
-                    $shippingArea = $area
-                        ? ShippingArea::whereRaw('LOWER(name) LIKE ?', ['%'.strtolower($area).'%'])->first()
-                        : null;
-
-                    // Find or create customer — normalize phone first
-                    $normalizedPhone = Customer::normalizePhone($phone);
-                    $customer = null;
-                    if ($normalizedPhone) $customer = Customer::where('phone', $normalizedPhone)->first();
-                    if (!$customer) $customer = Customer::where('name', $name)->first();
-                    if (!$customer) {
-                        $customer = Customer::create([
-                            'name'                     => $name,
-                            'phone'                    => $normalizedPhone,
-                            'type'                     => $type,
-                            'default_shipping_area_id' => $shippingArea?->id,
-                        ]);
-                    } else {
-                        $updates = [];
-                        if (!empty(trim($row[3] ?? ''))) $updates['type'] = $type;
-                        if ($shippingArea && !$customer->default_shipping_area_id) $updates['default_shipping_area_id'] = $shippingArea->id;
-                        if (!empty($updates)) $customer->update($updates);
-                    }
-
-                    // Fallback: use customer's default area if none in file
-                    if (!$shippingArea && $customer->default_shipping_area_id) {
-                        $shippingArea = $customer->defaultShippingArea;
-                    }
-
-                    $currentOrder = Order::create([
-                        'trip_id'          => $trip->id,
-                        'customer_id'      => $customer->id,
-                        'shipping_area_id' => $shippingArea?->id,
-                        'notes'            => $notes ?: null,
-                        'ordered_at'       => $parsedOrderedAt ?? now(),
-                        'created_by'       => Auth::id(),
-                    ]);
-                    // Store group key on object for this loop
-                    $currentOrder->_importGroupKey = $groupKey;
-                    $imported++;
-                }
-
-                // Record DP payment if present on this row (works on any row for this customer)
-                if ($currentOrder && $dp > 0) {
-                    $parsedDate = now()->format('Y-m-d');
-                    try {
-                        if ($dpDate) {
-                            $parsedDate = str_contains($dpDate, '/')
-                                ? implode('-', array_reverse(explode('/', $dpDate)))
-                                : \Carbon\Carbon::parse($dpDate)->format('Y-m-d');
-                        }
-                    } catch (\Exception $e) {}
-
-                    $currentOrder->payments()->create([
-                        'amount'      => $dp,
-                        'type'        => 'deposit',
-                        'method'      => 'transfer',
-                        'paid_at'     => $parsedDate,
-                        'recorded_by' => Auth::id(),
-                    ]);
-
-                    // Update deposit_paid total
-                    $totalPaid = $currentOrder->payments()->sum('amount');
-                    $payStatus = $totalPaid >= $currentOrder->total_amount && $currentOrder->total_amount > 0
-                        ? 'paid' : 'partial';
-                    $currentOrder->update(['deposit_paid' => $totalPaid, 'payment_status' => $payStatus]);
-                }
-
-                // Add item to current order
-                if ($currentOrder && $code) {
-                    $product = Product::where('product_code', $code)
-                        ->where('trip_id', $trip->id)
-                        ->first();
-
-                    if ($product) {
-                        $variant = null;
-                        if ($color || $size) {
-                            $query = $product->variants();
-                            if ($color) $query->whereRaw('LOWER(color) = ?', [strtolower($color)]);
-                            if ($size)  $query->whereRaw('LOWER(size) = ?',  [strtolower($size)]);
-                            $variant = $query->first();
-                        }
-
-                        // Use system price (blank price = use product/variant price)
-                        $unitPrice = ($price > 0) ? $price : ($variant?->final_price ?? $product->price);
-                        $currentOrder->items()->create([
-                            'product_id'         => $product->id,
-                            'product_variant_id' => $variant?->id,
-                            'quantity'           => $qty,
-                            'unit_price'         => $unitPrice,
-                            'line_total'         => $unitPrice * $qty,
-                            'status'             => 'pending',
-                        ]);
-                    }
-                }
-            }
-
-            // Recalculate final order
-            if ($currentOrder) {
-                $calc = $promoSvc->recalculate($currentOrder->fresh());
-                $currentOrder->update([
-                    'subtotal'             => $calc['subtotal'],
-                    'discount_amount'      => $calc['discount_amount'],
-                    'shipping_fee'         => $calc['shipping_fee'],
-                    'shipping_discount'    => $calc['shipping_discount'],
-                    'shipping_weight_gram' => $calc['shipping_weight_gram'],
-                    'shipping_kg_charged'  => $calc['shipping_kg_charged'],
-                    'total_amount'         => $calc['total_amount'],
+                $customerId = DB::table('customers')->insertGetId([
+                    'name'                     => $name,
+                    'phone'                    => $normalizedPhone ?: null,
+                    'type'                     => 'customer',
+                    'default_shipping_area_id' => $areaId,
+                    'created_at'               => $now,
+                    'updated_at'               => $now,
                 ]);
+                if ($normalizedPhone) $existingPhones[strtolower($normalizedPhone)] = $customerId;
+                $existingNames[strtolower($name)] = $customerId;
             }
-        });
+
+            // Resolve shipping area
+            $areaKey = strtolower($area);
+            $areaId  = $shippingAreas[$areaKey]?->id ?? null;
+            if (!$areaId && $area) {
+                foreach ($shippingAreas as $k => $a) {
+                    if (str_contains($k, $areaKey) || str_contains($areaKey, $k)) {
+                        $areaId = $a->id; break;
+                    }
+                }
+            }
+
+            // Find product and variant
+            $product = $products[$code] ?? null;
+            if (!$product) { $skipped++; continue; }
+
+            $variant   = null;
+            $unitPrice = $price > 0 ? $price : $product->price;
+            if ($color || $size) {
+                foreach ($product->variants as $v) {
+                    $colorMatch = !$color || strtolower($v->color ?? '') === strtolower($color);
+                    $sizeMatch  = !$size  || strtolower($v->size ?? '')  === strtolower($size);
+                    if ($colorMatch && $sizeMatch) { $variant = $v; break; }
+                }
+                if ($variant && !$price) {
+                    $unitPrice = $variant->final_price ?? $product->price;
+                }
+            }
+
+            // FIFO timestamp based on row position
+            $orderedAt = $baseTime->copy()->addSeconds($rowIdx)->toDateTimeString();
+            $notes     = implode(' | ', array_filter([$an, $ketPost])) ?: null;
+
+            $ordersBatch[] = [
+                'trip_id'          => $trip->id,
+                'customer_id'      => $customerId,
+                'shipping_area_id' => $areaId,
+                'notes'            => $notes,
+                'ordered_at'       => $orderedAt,
+                'created_by'       => $createdBy,
+                'subtotal'         => $unitPrice,
+                'discount_amount'  => 0,
+                'shipping_fee'     => 0,
+                'shipping_discount'=> 0,
+                'shipping_weight_gram' => $product->weight_gram ?? 0,
+                'shipping_kg_charged'  => 0,
+                'total_amount'     => $unitPrice,
+                'deposit_paid'     => $dp > 0 ? $dp : 0,
+                'payment_status'   => $dp > 0 ? 'partial' : 'unpaid',
+                'created_at'       => $now,
+                'updated_at'       => $now,
+            ];
+
+            $itemsBatch[]  = ['_rowIdx' => count($ordersBatch) - 1,
+                'product_id'         => $product->id,
+                'product_variant_id' => $variant?->id,
+                'quantity'           => 1,
+                'unit_price'         => $unitPrice,
+                'line_total'         => $unitPrice,
+                'status'             => 'pending',
+                'created_at'         => $now,
+                'updated_at'         => $now,
+            ];
+
+            // Parse DP date (handles Excel serial dates)
+            if ($dp > 0) {
+                $dpDate = $now;
+                if ($dpRaw) {
+                    if (is_numeric($dpRaw) && (int)$dpRaw > 40000) {
+                        // Excel serial date → convert
+                        $dpDate = \Carbon\Carbon::createFromTimestamp(((int)$dpRaw - 25569) * 86400)->format('Y-m-d');
+                    } else {
+                        try {
+                            $dpDate = str_contains((string)$dpRaw, '/')
+                                ? implode('-', array_reverse(explode('/', $dpRaw)))
+                                : \Carbon\Carbon::parse($dpRaw)->format('Y-m-d');
+                        } catch (\Exception $e) { $dpDate = now()->format('Y-m-d'); }
+                    }
+                }
+                $paymentsBatch[] = ['_rowIdx' => count($ordersBatch) - 1,
+                    'amount' => $dp, 'type' => 'deposit', 'method' => 'transfer',
+                    'paid_at' => $dpDate, 'recorded_by' => $createdBy,
+                    'created_at' => $now, 'updated_at' => $now,
+                ];
+            }
+
+            $imported++;
+
+            // Flush every 500 orders
+            if (count($ordersBatch) >= 500) {
+                $this->flushOrderBatch($ordersBatch, $itemsBatch, $paymentsBatch);
+                $ordersBatch = []; $itemsBatch = []; $paymentsBatch = [];
+            }
+        }
+
+        if (!empty($ordersBatch)) {
+            $this->flushOrderBatch($ordersBatch, $itemsBatch, $paymentsBatch);
+        }
 
         return redirect()
             ->route('orders.index', ['trip_id' => $trip->id])
-            ->with('success', "✓ Imported {$imported} order(s) for trip '{$trip->name}'. Check below.");
+            ->with('success', "✓ Imported {$imported} order(s) for '{$trip->name}'. Totals are set from item price — recalculate individually if promo/shipping is needed." . ($skipped ? " {$skipped} skipped (product not found)." : ''));
     }
 
+    private function flushOrderBatch(array &$orders, array &$items, array &$payments): void
+    {
+        if (empty($orders)) return;
+        $count = count($orders);
+
+        // Generate unique order numbers using random hex
+        foreach ($orders as $i => &$order) {
+            $order['order_number'] = 'ORD-' . strtoupper(bin2hex(random_bytes(5)));
+        }
+        unset($order);
+
+        DB::table('orders')->insert($orders);
+
+        // MySQL guarantees contiguous auto-increment IDs for a single INSERT
+        // lastInsertId() returns the FIRST inserted ID
+        $firstId = (int) DB::getPdo()->lastInsertId();
+        $insertedIds = range($firstId, $firstId + $count - 1);
+
+        // Insert items
+        $itemsToInsert = [];
+        foreach ($items as $item) {
+            $idx = $item['_rowIdx'];
+            if (isset($insertedIds[$idx])) {
+                unset($item['_rowIdx']);
+                $item['order_id'] = $insertedIds[$idx];
+                $itemsToInsert[]  = $item;
+            }
+        }
+        if ($itemsToInsert) DB::table('order_items')->insert($itemsToInsert);
+
+        // Insert payments
+        $paymentsToInsert = [];
+        foreach ($payments as $pay) {
+            $idx = $pay['_rowIdx'];
+            if (isset($insertedIds[$idx])) {
+                unset($pay['_rowIdx']);
+                $pay['order_id']    = $insertedIds[$idx];
+                $paymentsToInsert[] = $pay;
+            }
+        }
+        if ($paymentsToInsert) DB::table('payments')->insert($paymentsToInsert);
+    }
     public function importCustomers(Request $request)
     {
-        $request->validate(['file' => 'required|file|mimes:csv,txt|max:2048']);
-        $handle   = fopen($request->file('file')->getRealPath(), 'r');
-        $header   = fgetcsv($handle); // skip header
-        $imported = 0;
+        set_time_limit(300); // allow up to 5 minutes for large files
 
-        while (($row = fgetcsv($handle)) !== false) {
-            $name  = trim($row[0] ?? '');
-            $phone = trim($row[1] ?? '');
-            $type  = trim($row[2] ?? 'customer');
+        $request->validate(['file' => 'required|file|max:10240']);
+
+        $rows = $this->readXlsx($request->file('file')->getRealPath());
+        if (empty($rows)) {
+            return back()->with('error', 'Could not read the file. Make sure it is a valid .xlsx file.');
+        }
+
+        array_shift($rows); // remove header
+
+        // ── Pre-load existing data into memory (avoid per-row DB queries) ──
+        $existingPhones = Customer::whereNotNull('phone')
+            ->pluck('phone')
+            ->map(fn($p) => strtolower(trim($p)))
+            ->flip()
+            ->toArray(); // [normalized_phone => true]
+
+        $existingNames = Customer::pluck('name')
+            ->map(fn($n) => strtolower(trim($n)))
+            ->flip()
+            ->toArray(); // [name => true]
+
+        // Pre-load shipping areas keyed by lowercase name
+        $shippingAreas = ShippingArea::all()->keyBy(fn($a) => strtolower(trim($a->name)));
+        $areaIdCache   = []; // [search_term => area_id]
+
+        $imported    = 0;
+        $skipped     = 0;
+        $toInsert    = [];
+        $skipReasons = [];
+
+        foreach ($rows as $rowIdx => $row) {
+            $lineNum  = $rowIdx + 2;
+            $name     = trim($row[0] ?? '');
+            $phone    = trim($row[1] ?? '');
+            $type     = trim($row[2] ?? 'customer');
             $areaName = trim($row[3] ?? '');
             $address  = trim($row[4] ?? '');
             $notes    = trim($row[5] ?? '');
 
             if (empty($name)) continue;
 
-            // Find shipping area by name
-            $shippingArea = $areaName
-                ? ShippingArea::whereRaw('LOWER(name) LIKE ?', ['%'.strtolower($areaName).'%'])->first()
-                : null;
+            $normalizedPhone = Customer::normalizePhone($phone);
 
-            if (!Customer::where('name', $name)->exists()) {
-                Customer::create([
-                    'name'                     => $name,
-                    'phone'                    => $phone ?: 'imported',
-                    'type'                     => in_array($type, ['customer','reseller','selected_customer']) ? $type : 'customer',
-                    'default_shipping_area_id' => $shippingArea?->id,
-                    'address'                  => $address,
-                    'notes'                    => $notes,
-                ]);
-                $imported++;
+            // Check duplicates in memory
+            if ($normalizedPhone && isset($existingPhones[strtolower($normalizedPhone)])) {
+                $skipped++;
+                $skipReasons[] = "Row {$lineNum} ({$name}): phone already exists.";
+                continue;
+            }
+            if (!$normalizedPhone && isset($existingNames[strtolower($name)])) {
+                $skipped++;
+                $skipReasons[] = "Row {$lineNum} ({$name}): name already exists.";
+                continue;
+            }
+
+            // Resolve shipping area in memory
+            $areaId = null;
+            if ($areaName) {
+                $cacheKey = strtolower($areaName);
+                if (!array_key_exists($cacheKey, $areaIdCache)) {
+                    // Find best match by substring
+                    $match = null;
+                    foreach ($shippingAreas as $key => $area) {
+                        if (str_contains($key, $cacheKey) || str_contains($cacheKey, $key)) {
+                            $match = $area;
+                            break;
+                        }
+                    }
+                    $areaIdCache[$cacheKey] = $match?->id;
+                }
+                $areaId = $areaIdCache[$cacheKey];
+            }
+
+            $validType = in_array($type, ['customer','reseller','selected_customer']) ? $type : 'customer';
+            $now       = now()->toDateTimeString();
+
+            $toInsert[] = [
+                'name'                     => $name,
+                'phone'                    => $normalizedPhone ?: null,
+                'type'                     => $validType,
+                'default_shipping_area_id' => $areaId,
+                'address'                  => $address ?: null,
+                'notes'                    => $notes ?: null,
+                'created_at'               => $now,
+                'updated_at'               => $now,
+            ];
+
+            // Track in memory to catch duplicates within same file
+            if ($normalizedPhone) $existingPhones[strtolower($normalizedPhone)] = true;
+            $existingNames[strtolower($name)] = true;
+
+            $imported++;
+
+            // Batch insert every 200 rows to avoid memory issues
+            if (count($toInsert) >= 200) {
+                DB::table('customers')->insert($toInsert);
+                $toInsert = [];
             }
         }
-        fclose($handle);
-        return redirect()->route('reports.index')->with('success', "Imported {$imported} customers.");
+
+        // Insert remaining rows
+        if (!empty($toInsert)) {
+            DB::table('customers')->insert($toInsert);
+        }
+
+        $msg = "✓ Imported {$imported} customer(s).";
+        if ($skipped) $msg .= " {$skipped} skipped (duplicates).";
+
+        return redirect()->route('customers.index')
+            ->with($skipped ? 'warning' : 'success', $msg);
     }
 
 }

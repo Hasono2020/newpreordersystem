@@ -150,45 +150,54 @@ class CustomerController extends Controller
 
     public function importCsv(Request $request)
     {
-        $request->validate(['file' => 'required|file|max:5120']);
+        $request->validate(['file' => 'required|file|max:10240']);
 
         $rows = $this->readXlsx($request->file('file')->getRealPath());
         if (empty($rows)) {
             return back()->with('error', 'Could not read the file. Make sure it is a valid .xlsx file.');
         }
 
-        $header = array_shift($rows); // remove header row
+        array_shift($rows); // remove header
 
-        // ── Validation pass first ──────────────────────────────────────
+        // ── Pre-load all existing data into memory (3 queries total) ──
+        $existingPhones = DB::table('customers')
+            ->whereNotNull('phone')->pluck('phone')
+            ->mapWithKeys(fn($p) => [strtolower(trim($p)) => true])->toArray();
+
+        $existingNames = DB::table('customers')
+            ->pluck('name')
+            ->mapWithKeys(fn($n) => [strtolower(trim($n)) => true])->toArray();
+
+        $shippingAreas = \App\Models\ShippingArea::all()
+            ->mapWithKeys(fn($a) => [strtolower(trim($a->name)) => $a->id])->toArray();
+
+        // ── Validation pass ─────────────────────────────────────────────
         $validationErrors = [];
         foreach ($rows as $rowIdx => $row) {
-            $lineNum  = $rowIdx + 2; // +2: 1=header, rowIdx starts at 0
+            $lineNum  = $rowIdx + 2;
             $name     = trim($row[0] ?? '');
             $phone    = trim($row[1] ?? '');
             $areaName = trim($row[3] ?? '');
-
-            if (empty($name)) continue; // skip blank rows silently
+            if (empty($name)) continue;
 
             $issues = [];
             if (empty($phone))    $issues[] = 'Phone is required';
             if (empty($areaName)) $issues[] = 'Shipping Area is required';
-
             if (!empty($issues)) {
                 $validationErrors[] = "Row {$lineNum} ({$name}): " . implode(', ', $issues) . '.';
             }
         }
-
-        // If any validation errors found, stop and show them all
         if (!empty($validationErrors)) {
-            $errorList = implode("\n", $validationErrors);
             return back()->with('import_errors', $validationErrors)
-                         ->with('error', 'Import blocked — please fix the following issues in your Excel file before importing:');
+                         ->with('error', 'Import blocked — fix the following issues:');
         }
 
-        // ── All rows valid — proceed with import ───────────────────────
-        $imported = 0;
-        $skipped  = 0;
+        // ── Import pass ─────────────────────────────────────────────────
+        $imported    = 0;
+        $skipped     = 0;
         $skipReasons = [];
+        $toInsert    = [];
+        $now         = now()->toDateTimeString();
 
         foreach ($rows as $rowIdx => $row) {
             $lineNum  = $rowIdx + 2;
@@ -201,47 +210,65 @@ class CustomerController extends Controller
 
             if (empty($name)) continue;
 
-            // Normalize phone before duplicate check
             $normalizedPhone = \App\Models\Customer::normalizePhone($phone);
 
-            // Check duplicates
-            if ($normalizedPhone && Customer::where('phone', $normalizedPhone)->exists()) {
-                $skipped++;
-                $skipReasons[] = "Row {$lineNum} ({$name}): phone {$normalizedPhone} already exists.";
-                continue;
+            // Dedup in memory
+            if ($normalizedPhone && isset($existingPhones[strtolower($normalizedPhone)])) {
+                $skipped++; $skipReasons[] = "Row {$lineNum} ({$name}): phone already exists."; continue;
             }
-            if (!$normalizedPhone && Customer::where('name', $name)->exists()) {
-                $skipped++;
-                $skipReasons[] = "Row {$lineNum} ({$name}): name already exists.";
-                continue;
+            if (!$normalizedPhone && isset($existingNames[strtolower($name)])) {
+                $skipped++; $skipReasons[] = "Row {$lineNum} ({$name}): name already exists."; continue;
             }
 
-            $shippingArea = $areaName
-                ? \App\Models\ShippingArea::whereRaw('LOWER(name) LIKE ?', ['%'.strtolower($areaName).'%'])->first()
-                : null;
-
-            if ($areaName && !$shippingArea) {
-                $skipped++;
-                $skipReasons[] = "Row {$lineNum} ({$name}): shipping area '{$areaName}' not found in system.";
-                continue;
+            // Resolve shipping area in memory
+            $areaId = null;
+            if ($areaName) {
+                $key = strtolower($areaName);
+                $areaId = $shippingAreas[$key] ?? null;
+                if (!$areaId) {
+                    // fuzzy match
+                    foreach ($shippingAreas as $aKey => $aId) {
+                        if (str_contains($aKey, $key) || str_contains($key, $aKey)) {
+                            $areaId = $aId; break;
+                        }
+                    }
+                }
+                if (!$areaId) {
+                    $skipped++; $skipReasons[] = "Row {$lineNum} ({$name}): area '{$areaName}' not found."; continue;
+                }
             }
 
-            Customer::create([
+            $toInsert[] = [
                 'name'                     => $name,
-                'phone'                    => $phone,
+                'phone'                    => $normalizedPhone ?: null,
                 'type'                     => in_array($type, ['customer','reseller','selected_customer']) ? $type : 'customer',
-                'default_shipping_area_id' => $shippingArea?->id,
-                'address'                  => $address,
-                'notes'                    => $notes,
-            ]);
+                'default_shipping_area_id' => $areaId,
+                'address'                  => $address ?: null,
+                'notes'                    => $notes ?: null,
+                'created_at'               => $now,
+                'updated_at'               => $now,
+            ];
+
+            // Track in memory
+            if ($normalizedPhone) $existingPhones[strtolower($normalizedPhone)] = true;
+            $existingNames[strtolower($name)] = true;
             $imported++;
+
+            // Batch insert every 100 rows
+            if (count($toInsert) >= 100) {
+                DB::table('customers')->insert($toInsert);
+                $toInsert = [];
+            }
         }
 
-        $msg = "Imported {$imported} customer(s) successfully.";
-        if ($skipped) $msg .= " {$skipped} skipped: " . implode(' | ', $skipReasons);
-        return redirect()->route('customers.index')->with('success', $msg);
-    }
+        if (!empty($toInsert)) {
+            DB::table('customers')->insert($toInsert);
+        }
 
+        $msg = "✓ Imported {$imported} customer(s).";
+        if ($skipped) $msg .= " {$skipped} skipped.";
+        return redirect()->route('customers.index')->with($skipped ? 'warning' : 'success', $msg);
+    }
     public function bulkDestroy(Request $request)
     {
         $this->adminOnly('bulk delete customers');

@@ -83,12 +83,20 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
+                <div class="alert alert-warning py-2 px-3 small mb-3">
+                    <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                    <strong>Import order affects FIFO priority.</strong><br>
+                    If <em>Ordered At</em> column is blank, each row gets a timestamp based on its row position — row 2 is earlier than row 6.<br>
+                    <strong>If importing multiple files: import earliest orders first, latest orders last.</strong>
+                </div>
                 <div class="alert alert-light border small mb-3">
-                    <strong>Columns (14):</strong> No · Name · Phone · Type · Area · Code · Color · Size · Qty · Price · DP · Date of DP · Notes · <strong>Ordered At</strong><br>
+                    <strong>Columns (13) — LIST ORDERAN CUSTOMER format:</strong><br>
+                    <code>KET · NO · NAMA · IG/WA · KOTA · KODE · WARNA · SIZE · HARGA SATUAN · DP · TGL DP · AN · KET</code>
                     <span class="text-muted d-block mt-1">
-                        • <strong>Ordered At</strong>: when customer actually ordered (e.g. <code>2026-06-06 09:00</code>). Same name + same time = same order. Same name + different time = separate order (for FIFO fairness).<br>
-                        • <strong>Type</strong>: <code>customer</code> / <code>reseller</code> / <code>selected_customer</code> — blank = customer.<br>
-                        • Products must exist in the selected trip. Color/Size must match exactly.
+                        • <strong>Each row = 1 order + 1 item.</strong> Row order = FIFO priority (row 1 gets stock first).<br>
+                        • <strong>KODE</strong> must exist in the selected trip. <strong>WARNA/SIZE</strong> must match exactly.<br>
+                        • Leave <strong>HARGA SATUAN</strong> blank to use system product price.<br>
+                        • <strong>AN</strong> = Atas Nama / order notes.
                     </span>
                     <a href="{{ route('orders.import.template') }}" class="small mt-1 d-inline-block">
                         <i class="bi bi-download me-1"></i>Download template (.xlsx)
@@ -157,3 +165,15 @@
     <div class="card-footer bg-white">{{ $orders->links() }}</div>
 </div>
 @endsection
+
+@push('scripts')
+@if(session('import_errors'))
+<script>
+    // Auto-reopen import modal so user sees errors in context
+    document.addEventListener('DOMContentLoaded', function () {
+        var modal = new bootstrap.Modal(document.getElementById('importOrderModal'));
+        modal.show();
+    });
+</script>
+@endif
+@endpush
