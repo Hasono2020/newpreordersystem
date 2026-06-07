@@ -13,8 +13,10 @@ class Order extends Model
         'order_number', 'trip_id', 'customer_id', 'shipping_area_id', 'created_by',
         'subtotal', 'discount_amount', 'shipping_fee', 'shipping_discount',
         'shipping_weight_gram', 'shipping_kg_charged',
-        'total_amount', 'deposit_paid', 'payment_status', 'notes',
+        'total_amount', 'deposit_paid', 'payment_status', 'notes', 'ordered_at',
     ];
+
+    protected $casts = ['ordered_at' => 'datetime'];
 
     public function trip()        { return $this->belongsTo(Trip::class); }
     public function customer()    { return $this->belongsTo(Customer::class); }

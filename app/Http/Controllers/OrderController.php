@@ -48,6 +48,7 @@ class OrderController extends Controller
             'customer_id'      => 'required|exists:customers,id',
             'shipping_area_id' => 'nullable|exists:shipping_areas,id',
             'notes'            => 'nullable|string',
+            'ordered_at'       => 'nullable|date',
             'items'                          => 'required|array|min:1',
             'items.*.product_id'             => 'required|exists:products,id',
             'items.*.product_variant_id'     => 'nullable|exists:product_variants,id',
@@ -68,8 +69,6 @@ class OrderController extends Controller
 
         $order = \DB::transaction(function () use ($request) {
             $shippingAreaId = $request->shipping_area_id ?: null;
-
-            // Fallback: use customer's default shipping area if none set on order
             if (!$shippingAreaId) {
                 $customer       = \App\Models\Customer::find($request->customer_id);
                 $shippingAreaId = $customer?->default_shipping_area_id;
@@ -80,6 +79,7 @@ class OrderController extends Controller
                 'customer_id'      => $request->customer_id,
                 'shipping_area_id' => $shippingAreaId,
                 'notes'            => $request->notes,
+                'ordered_at'       => $request->ordered_at ?: now(),
                 'created_by'       => Auth::id(),
             ]);
 
@@ -170,6 +170,7 @@ class OrderController extends Controller
         $request->validate([
             'shipping_area_id' => 'nullable|exists:shipping_areas,id',
             'notes'            => 'nullable|string',
+            'ordered_at'       => 'nullable|date',
         ]);
 
         $shippingAreaId = $request->shipping_area_id ?: null;
@@ -180,6 +181,7 @@ class OrderController extends Controller
         $order->update([
             'shipping_area_id' => $shippingAreaId,
             'notes'            => $request->notes,
+            'ordered_at'       => $request->ordered_at ?: $order->ordered_at,
         ]);
 
         $calc = $this->promoService->recalculate($order);
@@ -341,6 +343,33 @@ class OrderController extends Controller
     {
         $order->load(['customer', 'trip', 'shippingArea', 'items.product', 'items.variant', 'payments', 'createdBy']);
         return view('orders.invoice', compact('order'));
+    }
+
+    /**
+     * Combined invoice — merges all selected orders for one customer
+     * into a single printable document.
+     * URL: /customers/{customer}/combined-invoice?order_ids[]=1&order_ids[]=2&trip_id=3
+     */
+    public function combinedInvoice(Request $request, Customer $customer)
+    {
+        $tripId   = $request->trip_id;
+        $orderIds = $request->order_ids ?? [];
+
+        $query = Order::with(['items.product', 'items.variant', 'payments', 'trip', 'shippingArea'])
+            ->where('customer_id', $customer->id);
+
+        if ($tripId)            $query->where('trip_id', $tripId);
+        if (!empty($orderIds))  $query->whereIn('id', $orderIds);
+
+        $orders = $query->orderBy('created_at')->get();
+
+        if ($orders->isEmpty()) {
+            return back()->with('error', 'No orders found for this customer.');
+        }
+
+        $customer->load('defaultShippingArea');
+
+        return view('orders.combined-invoice', compact('customer', 'orders', 'tripId'));
     }
 
     // ── AJAX: trip products ──────────────────────────────────────────

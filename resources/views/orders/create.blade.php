@@ -90,6 +90,17 @@
                     </select>
                 </div>
                 <div class="col-md-4">
+                    <label class="form-label fw-semibold">
+                        Order Date &amp; Time
+                        <span class="badge bg-warning text-dark ms-1" style="font-size:.65rem;">FIFO</span>
+                    </label>
+                    <input type="datetime-local" name="ordered_at" class="form-control"
+                        value="{{ old('ordered_at', now()->format('Y-m-d\TH:i')) }}">
+                    <div class="form-text text-muted" style="font-size:.72rem;">
+                        <i class="bi bi-clock me-1"></i>When customer actually ordered. Adjust for missed orders.
+                    </div>
+                </div>
+                <div class="col-md-4">
                     <label class="form-label fw-semibold">Notes</label>
                     <input type="text" name="notes" class="form-control" value="{{ old('notes') }}" placeholder="Special instructions…">
                 </div>

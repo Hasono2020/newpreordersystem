@@ -38,6 +38,13 @@
                         <div class="text-muted small">Created by</div>
                         <div>{{ $order->createdBy->name }}</div>
                         <div class="text-muted small">{{ $order->created_at->format('d M Y H:i') }}</div>
+                        <div class="small mt-1">
+                            <span class="text-muted">Ordered:</span>
+                            <strong>{{ ($order->ordered_at ?? $order->created_at)->format('d M Y H:i') }}</strong>
+                            @if($order->ordered_at && $order->ordered_at->format('Y-m-d H:i') !== $order->created_at->format('Y-m-d H:i'))
+                                <span class="badge bg-warning text-dark" style="font-size:.6rem;">backdated</span>
+                            @endif
+                        </div>
                     </div>
                     <div class="col-md-3">
                         <div class="text-muted small">Payment</div>
@@ -234,6 +241,15 @@
                                 </option>
                             @endforeach
                         </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold">
+                            Order Date &amp; Time
+                            <span class="badge bg-warning text-dark ms-1" style="font-size:.6rem;">FIFO</span>
+                        </label>
+                        <input type="datetime-local" name="ordered_at" class="form-control form-control-sm"
+                            value="{{ $order->ordered_at?->format('Y-m-d\TH:i') ?? $order->created_at->format('Y-m-d\TH:i') }}">
+                        <div class="form-text" style="font-size:.7rem;">When customer actually ordered. Adjust to fix missed orders.</div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label small fw-semibold">Notes</label>

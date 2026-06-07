@@ -231,7 +231,7 @@ class PurchasingController extends Controller
                     ->whereIn('status', ['pending', 'confirmed'])
                     ->whereHas('order', fn($q) => $q->where('trip_id', $purchasing->trip_id))
                     ->join('orders', 'order_items.order_id', '=', 'orders.id')
-                    ->orderBy('orders.created_at', 'asc')
+                    ->orderBy('orders.ordered_at', 'asc')
                     ->orderBy('order_items.id', 'asc')
                     ->select('order_items.*')
                     ->get();
