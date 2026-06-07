@@ -262,19 +262,15 @@ class ProductController extends Controller
                 continue;
             }
 
-            // If same code seen before in this file, it must be same trip
+            // If same code seen before in this file, must be same trip (adding a variant)
             if (isset($seenCodes[$code])) {
                 if ($seenCodes[$code] !== $trip->id) {
                     $errors[] = "Row {$lineNum} ({$name}): Code '{$code}' used in multiple trips — each code must belong to one trip.";
                 }
-                continue; // same code = same product, adding a variant — no further checks needed
+                continue; // same code = same product, adding a variant — OK
             }
             $seenCodes[$code] = $trip->id;
-
-            // Code must not already exist in this trip in the DB
-            if (\App\Models\Product::where('product_code', $code)->where('trip_id', $trip->id)->exists()) {
-                $errors[] = "Row {$lineNum} ({$name}): Code '{$code}' already exists in trip '{$trip->name}'.";
-            }
+            // Note: if code already exists in DB, import will add variants to it (not block)
         }
 
         if (!empty($errors)) {
@@ -322,40 +318,67 @@ class ProductController extends Controller
                 $supplierId = $supplier->id;
             }
 
-            // If code already seen in this import, just add variant
+            // Find existing product in this import batch, or in DB, or create new
             if (isset($productMap[$code])) {
-                $product = $productMap[$code];
+                $product = $productMap[$code]; // already handled this code in this file
             } else {
-                $product = \App\Models\Product::create([
-                    'trip_id'             => $trip->id,
-                    'name'                => $name,
-                    'product_code'        => $code,
-                    'sku'                 => $sku   ?: null,
-                    'brand'               => $brand ?: null,
-                    'supplier_id'         => $supplierId,
-                    'price'               => $price,
-                    'weight_gram'         => $weight,
-                    'excluded_from_promo' => $excluded,
-                    'status'              => in_array($status, ['active','closed','arrived']) ? $status : 'active',
-                ]);
+                // Check if product already exists in DB for this trip
+                $existing = \App\Models\Product::where('product_code', $code)
+                    ->where('trip_id', $trip->id)->first();
+
+                if ($existing) {
+                    // Update product info with latest data from file
+                    $existing->update(array_filter([
+                        'name'                => $name,
+                        'sku'                 => $sku   ?: $existing->sku,
+                        'brand'               => $brand ?: $existing->brand,
+                        'supplier_id'         => $supplierId ?: $existing->supplier_id,
+                        'price'               => $price  ?: $existing->price,
+                        'weight_gram'         => $weight ?: $existing->weight_gram,
+                        'excluded_from_promo' => $excluded,
+                        'status'              => in_array($status, ['active','closed','arrived']) ? $status : $existing->status,
+                    ]));
+                    $product = $existing;
+                    $imported++; // count as updated
+                } else {
+                    $product = \App\Models\Product::create([
+                        'trip_id'             => $trip->id,
+                        'name'                => $name,
+                        'product_code'        => $code,
+                        'sku'                 => $sku   ?: null,
+                        'brand'               => $brand ?: null,
+                        'supplier_id'         => $supplierId,
+                        'price'               => $price,
+                        'weight_gram'         => $weight,
+                        'excluded_from_promo' => $excluded,
+                        'status'              => in_array($status, ['active','closed','arrived']) ? $status : 'active',
+                    ]);
+                    $imported++;
+                }
                 $productMap[$code] = $product;
-                $imported++;
             }
 
-            // Add variant if color or size is present
+            // Add variant if color or size present, skip if exact same variant already exists
             if ($color || $size) {
-                $product->variants()->create([
-                    'color'            => $color    ?: null,
-                    'size'             => $size     ?: null,
-                    'price_adjustment' => $priceAdj,
-                    'supplier_stock'   => $suppStock,
-                    'allocated_qty'    => 0,
-                ]);
-                $variantCount++;
+                $variantExists = $product->variants()
+                    ->whereRaw('LOWER(COALESCE(color,"")) = ?', [strtolower($color)])
+                    ->whereRaw('LOWER(COALESCE(size,"")) = ?', [strtolower($size)])
+                    ->exists();
+
+                if (!$variantExists) {
+                    $product->variants()->create([
+                        'color'            => $color    ?: null,
+                        'size'             => $size     ?: null,
+                        'price_adjustment' => $priceAdj,
+                        'supplier_stock'   => $suppStock,
+                        'allocated_qty'    => 0,
+                    ]);
+                    $variantCount++;
+                }
             }
         }
 
-        $msg = "✓ Imported {$imported} product(s) with {$variantCount} variant(s).";
+        $msg = "✓ Imported/updated {$imported} product(s) with {$variantCount} new variant(s).";
         if ($newSuppliers) $msg .= " {$newSuppliers} new supplier(s) auto-created.";
         return redirect()->route('products.index')->with('success', $msg);
     }
