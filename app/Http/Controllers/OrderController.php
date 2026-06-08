@@ -362,27 +362,51 @@ class OrderController extends Controller
             'recorded_by' => Auth::id(),
         ]);
 
-        // Recalculate deposit_paid from all non-refund payments
-        $paid = $order->payments()->where('type', '!=', 'refund')->sum('amount')
-              - $order->payments()->where('type', 'refund')->sum('amount');
-        $status = $paid <= 0 ? 'unpaid'
-            : ($paid >= $order->total_amount ? 'paid' : 'partial');
-        $order->update(['deposit_paid' => max(0, $paid), 'payment_status' => $status]);
-
-        // Auto-advance: when fully paid, move all 'pending' items → 'confirmed'
-        $autoConfirmed = 0;
-        if ($status === 'paid') {
-            $autoConfirmed = $order->items()
-                ->where('status', 'pending')
-                ->update(['status' => 'confirmed']);
-        }
+        $this->recalcOrderPayment($order);
+        $order->refresh();
 
         $msg = 'Payment recorded.';
-        if ($status === 'paid')    $msg .= ' ✓ Order is now fully paid.';
-        if ($autoConfirmed > 0)    $msg .= " {$autoConfirmed} pending item(s) automatically confirmed.";
-        if ($status === 'partial') $msg .= ' Balance remaining: Rp ' . number_format($order->total_amount - $paid, 0, ',', '.');
+        if ($order->payment_status === 'paid')    $msg .= ' ✓ Order is now fully paid.';
+        if ($order->payment_status === 'partial') $msg .= ' Balance remaining: Rp ' . number_format($order->total_amount - $order->deposit_paid, 0, ',', '.');
 
         return back()->with('success', $msg);
+    }
+
+    public function voidPayment(Request $request, \App\Models\Payment $payment)
+    {
+        $request->validate(['void_reason' => 'required|string|max:500']);
+
+        if ($payment->isVoided()) {
+            return back()->with('error', 'This payment has already been voided.');
+        }
+
+        $payment->update([
+            'voided_at'   => now(),
+            'voided_by'   => Auth::id(),
+            'void_reason' => $request->void_reason,
+        ]);
+
+        $order = $payment->order;
+        $this->recalcOrderPayment($order);
+        $order->refresh();
+
+        return back()->with('success',
+            'Payment of Rp ' . number_format($payment->amount, 0, ',', '.') . ' voided. ' .
+            'New balance due: Rp ' . number_format($order->total_amount - $order->deposit_paid, 0, ',', '.')
+        );
+    }
+
+    private function recalcOrderPayment(Order $order): void
+    {
+        $payments = $order->payments()->whereNull('voided_at')->get();
+        $paid = $payments->where('type', '!=', 'refund')->sum('amount')
+              - $payments->where('type', 'refund')->sum('amount');
+        $status = $paid <= 0 ? 'unpaid'
+            : ($paid >= $order->total_amount ? 'paid' : 'partial');
+        if ($status === 'paid') {
+            $order->items()->where('status', 'pending')->update(['status' => 'confirmed']);
+        }
+        $order->update(['deposit_paid' => max(0, $paid), 'payment_status' => $status]);
     }
 
     public function invoice(Order $order)

@@ -173,22 +173,43 @@
             <div class="table-responsive">
                 <table class="table table-sm mb-0 small">
                     <thead class="table-light">
-                        <tr><th>Date</th><th>Type</th><th>Method</th><th>Reference</th><th>Amount</th><th>By</th></tr>
+                        <tr><th>Date</th><th>Type</th><th>Method</th><th>Reference</th><th>Amount</th><th>By</th><th></th></tr>
                     </thead>
                     <tbody>
                         @forelse($order->payments as $payment)
-                        <tr>
+                        <tr class="{{ $payment->isVoided() ? 'text-decoration-line-through text-muted opacity-50' : '' }}">
                             <td>{{ $payment->paid_at->format('d M Y') }}</td>
-                            <td><span class="badge bg-secondary">{{ ucfirst($payment->type) }}</span></td>
+                            <td>
+                                <span class="badge {{ $payment->isVoided() ? 'bg-danger' : 'bg-secondary' }}">
+                                    {{ $payment->isVoided() ? 'VOIDED' : ucfirst($payment->type) }}
+                                </span>
+                            </td>
                             <td>{{ $payment->method ?? '—' }}</td>
                             <td class="font-monospace">{{ $payment->reference ?? '—' }}</td>
-                            <td class="{{ $payment->type === 'refund' ? 'text-danger' : 'text-success' }} fw-semibold">
+                            <td class="{{ $payment->isVoided() ? '' : ($payment->type === 'refund' ? 'text-danger' : 'text-success') }} fw-semibold">
                                 {{ $payment->type === 'refund' ? '-' : '+' }}Rp {{ number_format($payment->amount, 0, ',', '.') }}
                             </td>
-                            <td>{{ $payment->recordedBy->name }}</td>
+                            <td class="small">
+                                {{ $payment->recordedBy->name }}
+                                @if($payment->isVoided())
+                                <div class="text-danger small mt-1">
+                                    Voided by {{ $payment->voidedBy->name }} on {{ $payment->voided_at->format('d M Y H:i') }}<br>
+                                    Reason: {{ $payment->void_reason }}
+                                </div>
+                                @endif
+                            </td>
+                            <td>
+                                @if(!$payment->isVoided() && auth()->user()->isAdmin())
+                                <button type="button" class="btn btn-xs btn-outline-danger py-0 px-1"
+                                    style="font-size:.75rem;"
+                                    onclick="showVoidModal({{ $payment->id }}, {{ $payment->amount }})">
+                                    Void
+                                </button>
+                                @endif
+                            </td>
                         </tr>
                         @empty
-                        <tr><td colspan="6" class="text-center text-muted py-3">No payments recorded</td></tr>
+                        <tr><td colspan="7" class="text-center text-muted py-3">No payments recorded</td></tr>
                         @endforelse
                     </tbody>
                 </table>
@@ -314,4 +335,50 @@
         </div>
     </div>
 </div>
+
+{{-- Void Payment Modal --}}
+<div class="modal fade" id="voidPaymentModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header border-danger">
+                <h5 class="modal-title text-danger"><i class="bi bi-x-circle me-2"></i>Void Payment</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="voidPaymentForm" method="POST">
+                @csrf
+                <div class="modal-body">
+                    <div class="alert alert-warning py-2 small">
+                        <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                        <strong>Voiding does not delete the record.</strong> It marks the payment as invalid and removes it from the balance calculation. A full audit trail is kept.
+                    </div>
+                    <p class="mb-2">You are voiding: <strong id="voidAmountDisplay"></strong></p>
+                    <label class="form-label fw-semibold">Reason for voiding <span class="text-danger">*</span></label>
+                    <textarea name="void_reason" class="form-control" rows="3"
+                        placeholder="e.g. Customer confirmed only 1 transfer was made. Second entry was a data entry error by staff."
+                        required></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger">
+                        <i class="bi bi-x-circle me-1"></i>Void This Payment
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@push('scripts')
+<script>
+function showVoidModal(paymentId, amount) {
+    const form = document.getElementById('voidPaymentForm');
+    form.action = `/payments/${paymentId}/void`;
+    form.querySelector('textarea').value = '';
+    document.getElementById('voidAmountDisplay').textContent =
+        'Rp ' + amount.toLocaleString('id-ID');
+    new bootstrap.Modal(document.getElementById('voidPaymentModal')).show();
+}
+</script>
+@endpush
+
 @endsection

@@ -54,6 +54,7 @@ Route::middleware('auth')->group(function () {
     Route::patch('orders/{order}/items/{item}/status', [OrderController::class, 'updateItemStatus'])->name('orders.items.status');
     Route::delete('orders/{order}/items/{item}', [OrderController::class, 'removeItem'])->name('orders.items.remove');
     Route::post('orders/{order}/payments', [OrderController::class, 'addPayment'])->name('orders.payments.add');
+    Route::post('payments/{payment}/void', [OrderController::class, 'voidPayment'])->name('payments.void');
     Route::get('orders/{order}/invoice', [OrderController::class, 'invoice'])->name('orders.invoice');
     Route::get('customers/{customer}/combined-invoice', [OrderController::class, 'combinedInvoice'])->name('orders.combined-invoice');
 
