@@ -10,7 +10,7 @@ class ShippingAreaController extends Controller
     use \App\Traits\HandlesXlsx;
     public function index(Request $request)
     {
-        $perPage = in_array((int)$request->per_page, [30, 50, 100, 200]) ? (int)$request->per_page : 50;
+        $perPage = in_array((int)$request->per_page, [20, 50, 100, 200]) ? (int)$request->per_page : 20;
         $query   = ShippingArea::query();
         if ($request->search) {
             $query->where('name', 'like', '%'.$request->search.'%')
@@ -148,7 +148,10 @@ class ShippingAreaController extends Controller
     {
         if ($request->boolean('delete_all')) {
             $count = ShippingArea::count();
-            ShippingArea::truncate();
+            // Null out all FK references first
+            \App\Models\Order::whereNotNull('shipping_area_id')->update(['shipping_area_id' => null]);
+            \App\Models\Customer::whereNotNull('default_shipping_area_id')->update(['default_shipping_area_id' => null]);
+            ShippingArea::query()->delete();
             return redirect()->route('shipping.index')->with('success', "All {$count} shipping area(s) deleted.");
         }
         $ids = $request->input('ids', []);

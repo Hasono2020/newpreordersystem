@@ -15,12 +15,20 @@
         </form>
     </div>
     <div class="col-auto d-flex gap-2">
-        <button type="button" class="btn btn-sm btn-outline-danger" id="bulkDeleteBtn" style="display:none;" onclick="bulkDelete()">
-            <i class="bi bi-trash me-1"></i>Delete Selected (<span id="selectedCount">0</span>)
-        </button>
-        <button type="button" class="btn btn-sm btn-danger" onclick="deleteAll()">
-            <i class="bi bi-trash-fill me-1"></i>Delete All
-        </button>
+        <div class="dropdown">
+            <button class="btn btn-sm btn-outline-danger dropdown-toggle" data-bs-toggle="dropdown">
+                <i class="bi bi-trash3 me-1"></i>Delete
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><button class="dropdown-item" id="deleteSelectedBtn" disabled onclick="bulkDelete()">
+                    <i class="bi bi-check2-square me-2"></i>Delete selected (<span id="selectedCount">0</span>)
+                </button></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><button class="dropdown-item text-danger" onclick="deleteAll()">
+                    <i class="bi bi-trash-fill me-2"></i>Delete all suppliers
+                </button></li>
+            </ul>
+        </div>
         <a href="{{ route('suppliers.create') }}" class="btn btn-primary btn-sm">
             <i class="bi bi-plus-lg me-1"></i>Add Supplier
         </a>
@@ -105,8 +113,8 @@ document.addEventListener('change', e => {
 });
 function updateBulkBtn() {
     const checked = document.querySelectorAll('.row-check:checked').length;
-    const btn = document.getElementById('bulkDeleteBtn');
-    if (btn) { btn.style.display = checked > 0 ? '' : 'none'; }
+    const btn = document.getElementById('deleteSelectedBtn');
+    if (btn) btn.disabled = checked === 0;
     const cnt = document.getElementById('selectedCount');
     if (cnt) cnt.textContent = checked;
 }

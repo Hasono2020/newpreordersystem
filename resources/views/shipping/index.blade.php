@@ -16,16 +16,22 @@
         @endif
     </form>
 
-    {{-- Per page --}}
-    <form method="GET" action="{{ route('shipping.index') }}" class="d-flex align-items-center gap-1">
-        <input type="hidden" name="search" value="{{ request('search') }}">
-        <label class="small text-muted mb-0">Show:</label>
-        <select name="per_page" class="form-select form-select-sm" style="width:80px;" onchange="this.form.submit()">
-            @foreach([30, 50, 100, 200] as $n)
-                <option value="{{ $n }}" {{ $perPage == $n ? 'selected' : '' }}>{{ $n }}</option>
-            @endforeach
-        </select>
-    </form>
+    @if(auth()->user()->isAdmin())
+    <div class="dropdown">
+        <button class="btn btn-sm btn-outline-danger dropdown-toggle" data-bs-toggle="dropdown">
+            <i class="bi bi-trash3 me-1"></i>Delete
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+            <li><button class="dropdown-item" id="deleteSelectedBtn" disabled onclick="bulkDelete()">
+                <i class="bi bi-check2-square me-2"></i>Delete selected (<span id="selectedCount">0</span>)
+            </button></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><button class="dropdown-item text-danger" onclick="deleteAll()">
+                <i class="bi bi-trash-fill me-2"></i>Delete all areas
+            </button></li>
+        </ul>
+    </div>
+    @endif
 
     <div class="dropdown">
         <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
@@ -44,14 +50,6 @@
     <a href="{{ route('shipping.create') }}" class="btn btn-sm btn-primary">
         <i class="bi bi-plus-lg me-1"></i>Add Area
     </a>
-    @if(auth()->user()->isAdmin())
-    <button type="button" class="btn btn-sm btn-outline-danger" id="bulkDeleteBtn" style="display:none;" onclick="bulkDelete()">
-        <i class="bi bi-trash me-1"></i>Delete Selected (<span id="selectedCount">0</span>)
-    </button>
-    <button type="button" class="btn btn-sm btn-danger" onclick="deleteAll()">
-        <i class="bi bi-trash-fill me-1"></i>Delete All
-    </button>
-    @endif
 </div>
 
 {{-- Info --}}
@@ -113,9 +111,20 @@
         </table>
     </div>
     <div class="card-footer bg-white d-flex justify-content-between align-items-center py-2">
-        <span class="small text-muted">
-            {{ $areas->firstItem() }}–{{ $areas->lastItem() }} of {{ $areas->total() }} areas
-        </span>
+        <div class="d-flex align-items-center gap-2">
+            <span class="small text-muted">{{ $areas->total() }} area(s)</span>
+            <form method="GET" action="{{ route('shipping.index') }}" class="d-flex align-items-center gap-1 ms-2">
+                @foreach(request()->except('per_page','page') as $k => $v)
+                    <input type="hidden" name="{{ $k }}" value="{{ $v }}">
+                @endforeach
+                <label class="small text-muted mb-0">Show:</label>
+                <select name="per_page" class="form-select form-select-sm" style="width:70px;" onchange="this.form.submit()">
+                    @foreach([20,50,100,200] as $n)
+                        <option value="{{ $n }}" {{ $perPage==$n?'selected':'' }}>{{ $n }}</option>
+                    @endforeach
+                </select>
+            </form>
+        </div>
         <div>{{ $areas->links() }}</div>
     </div>
 </div>
@@ -168,8 +177,8 @@ document.addEventListener('change', e => {
 });
 function updateBulkBtn() {
     const checked = document.querySelectorAll('.row-check:checked').length;
-    const btn = document.getElementById('bulkDeleteBtn');
-    if (btn) { btn.style.display = checked > 0 ? '' : 'none'; }
+    const btn = document.getElementById('deleteSelectedBtn');
+    if (btn) btn.disabled = checked === 0;
     const cnt = document.getElementById('selectedCount');
     if (cnt) cnt.textContent = checked;
 }
