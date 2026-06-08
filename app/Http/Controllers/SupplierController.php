@@ -105,9 +105,14 @@ class SupplierController extends Controller
 
     public function bulkDestroy(Request $request)
     {
+        if ($request->boolean('delete_all')) {
+            \App\Models\Product::whereNotNull('supplier_id')->update(['supplier_id' => null]);
+            $count = \App\Models\Supplier::count();
+            \App\Models\Supplier::truncate();
+            return redirect()->route('suppliers.index')->with('success', "All {$count} supplier(s) deleted.");
+        }
         $ids = $request->input('ids', []);
         if (!empty($ids)) {
-            // Unlink products before deleting
             \App\Models\Product::whereIn('supplier_id', $ids)->update(['supplier_id' => null]);
             \App\Models\Supplier::whereIn('id', $ids)->delete();
         }

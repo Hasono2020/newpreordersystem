@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\ShippingArea;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Response;
 
 class ShippingAreaController extends Controller
 {
@@ -147,6 +146,11 @@ class ShippingAreaController extends Controller
 
     public function bulkDestroy(Request $request)
     {
+        if ($request->boolean('delete_all')) {
+            $count = ShippingArea::count();
+            ShippingArea::truncate();
+            return redirect()->route('shipping.index')->with('success', "All {$count} shipping area(s) deleted.");
+        }
         $ids = $request->input('ids', []);
         if (!empty($ids)) {
             ShippingArea::whereIn('id', $ids)->delete();

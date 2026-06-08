@@ -48,6 +48,9 @@
     <button type="button" class="btn btn-sm btn-outline-danger" id="bulkDeleteBtn" style="display:none;" onclick="bulkDelete()">
         <i class="bi bi-trash me-1"></i>Delete Selected (<span id="selectedCount">0</span>)
     </button>
+    <button type="button" class="btn btn-sm btn-danger" onclick="deleteAll()">
+        <i class="bi bi-trash-fill me-1"></i>Delete All
+    </button>
     @endif
 </div>
 
@@ -145,10 +148,10 @@
         </div>
     </div>
 </div>
-{{-- Bulk Delete Form --}}
 @if(auth()->user()->isAdmin())
 <form id="bulkDeleteForm" method="POST" action="{{ route('shipping.bulk-destroy') }}" style="display:none;">
     @csrf @method('DELETE')
+    <input type="hidden" name="delete_all" id="deleteAllFlag" value="0">
     <div id="bulkIds"></div>
 </form>
 @endif
@@ -174,8 +177,16 @@ function bulkDelete() {
     const ids = [...document.querySelectorAll('.row-check:checked')].map(cb => cb.value);
     if (!ids.length) return;
     if (!confirm(`Delete ${ids.length} shipping area(s)? This cannot be undone.`)) return;
+    document.getElementById('deleteAllFlag').value = '0';
     const container = document.getElementById('bulkIds');
     container.innerHTML = ids.map(id => `<input type="hidden" name="ids[]" value="${id}">`).join('');
+    document.getElementById('bulkDeleteForm').submit();
+}
+function deleteAll() {
+    const total = {{ $areas->total() }};
+    if (!confirm(`⚠️ DELETE ALL ${total} shipping areas?\n\nThis will remove every single shipping area and cannot be undone.\n\nType OK to confirm.`)) return;
+    document.getElementById('deleteAllFlag').value = '1';
+    document.getElementById('bulkIds').innerHTML = '';
     document.getElementById('bulkDeleteForm').submit();
 }
 </script>
