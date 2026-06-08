@@ -102,4 +102,15 @@ class SupplierController extends Controller
         $supplier = Supplier::create(array_merge($data, ['is_active' => true]));
         return response()->json($supplier);
     }
+
+    public function bulkDestroy(Request $request)
+    {
+        $ids = $request->input('ids', []);
+        if (!empty($ids)) {
+            // Unlink products before deleting
+            \App\Models\Product::whereIn('supplier_id', $ids)->update(['supplier_id' => null]);
+            \App\Models\Supplier::whereIn('id', $ids)->delete();
+        }
+        return redirect()->route('suppliers.index')->with('success', count($ids) . ' supplier(s) deleted.');
+    }
 }

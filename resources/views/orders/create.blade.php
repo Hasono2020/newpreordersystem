@@ -14,6 +14,17 @@
 #customerDropdown .cust-add-btn { padding:.7rem 1rem; color:#2563eb; cursor:pointer; font-weight:600; font-size:.85rem; border-top:2px solid #e5e7eb; }
 #customerDropdown .cust-add-btn:hover { background:#eff6ff; }
 .selected-customer-card { background:#f0fdf4; border:1.5px solid #86efac; border-radius:8px; padding:.6rem 1rem; display:none; align-items:center; justify-content:space-between; }
+/* Product search */
+.product-dropdown { position:absolute; z-index:1060; background:#fff; border:1px solid #dee2e6; border-radius:6px; box-shadow:0 4px 12px rgba(0,0,0,.12); width:100%; max-height:220px; overflow-y:auto; display:none; top:100%; left:0; }
+.product-dropdown .prod-item { padding:.45rem .75rem; cursor:pointer; border-bottom:1px solid #f3f4f6; font-size:.82rem; }
+.product-dropdown .prod-item:hover { background:#f0f9ff; }
+.product-dropdown .prod-item .prod-code { font-weight:700; color:#2563eb; margin-right:.35rem; }
+.product-dropdown .prod-item .prod-name { color:#111; }
+.product-dropdown .prod-item .prod-price { color:#6b7280; font-size:.75rem; float:right; }
+.product-dropdown .prod-no-result { padding:.5rem .75rem; color:#9ca3af; font-size:.82rem; }
+.product-selected-badge { background:#eff6ff; border:1px solid #bfdbfe; border-radius:5px; padding:.25rem .6rem; font-size:.8rem; display:flex; align-items:center; justify-content:space-between; }
+.product-selected-badge .clear-product { cursor:pointer; color:#6b7280; font-size:1rem; line-height:1; margin-left:.4rem; }
+.product-selected-badge .clear-product:hover { color:#dc2626; }
 </style>
 @endpush
 
@@ -121,9 +132,12 @@
                 <div class="row g-2 align-items-end">
                     <div class="col-md-4">
                         <label class="form-label small fw-semibold">Product</label>
-                        <select name="items[0][product_id]" class="form-select form-select-sm product-select" required>
-                            <option value="">Select product…</option>
-                        </select>
+                        <input type="hidden" name="items[0][product_id]" class="product-id-input">
+                        <div class="product-search-wrap position-relative">
+                            <input type="text" class="form-control form-control-sm product-search-input" placeholder="Search code or name…" autocomplete="off">
+                            <div class="product-dropdown"></div>
+                        </div>
+                        <div class="product-selected-badge mt-1" style="display:none;"></div>
                     </div>
                     <div class="col-md-3">
                         <label class="form-label small fw-semibold">Variant</label>
@@ -264,58 +278,116 @@ document.getElementById('tripSelect').addEventListener('change', function() {
 });
 
 function populateAllProductSelects() {
-    document.querySelectorAll('.product-select').forEach(sel => populateProductSelect(sel));
+    // no-op for legacy callers; search inputs don't need pre-population
 }
 
 function populateProductSelect(sel) {
-    const cur = sel.value;
-    sel.innerHTML = '<option value="">Select product…</option>';
-    tripProducts.forEach(p => {
-        const label = p.code ? `[${p.code}] ${p.name}` : p.name;
-        sel.innerHTML += `<option value="${p.id}"
-                    data-price="${p.price}"
-                    data-weight="${p.weight || 0}"
-                    data-code="${p.code || ''}"
-                    data-variants='${JSON.stringify(p.variants || [])}'>${label}</option>`;
+    // legacy no-op
+}
+
+// ── Product search widget ─────────────────────────────────────────────
+function initProductSearch(wrap) {
+    const searchInput = wrap.querySelector('.product-search-input');
+    const dropdown    = wrap.querySelector('.product-dropdown');
+    const hiddenInput = wrap.parentElement.querySelector('.product-id-input');
+    const badge       = wrap.parentElement.querySelector('.product-selected-badge');
+    const row         = wrap.closest('.item-row');
+
+    searchInput.addEventListener('input', function() {
+        const q = this.value.trim().toLowerCase();
+        dropdown.innerHTML = '';
+        if (!q) { dropdown.style.display = 'none'; return; }
+
+        const matches = tripProducts.filter(p =>
+            (p.code  && p.code.toLowerCase().includes(q)) ||
+            (p.name  && p.name.toLowerCase().includes(q))
+        );
+
+        if (!matches.length) {
+            dropdown.innerHTML = '<div class="prod-no-result">No products found</div>';
+            dropdown.style.display = 'block';
+            return;
+        }
+        matches.forEach(p => {
+            const div = document.createElement('div');
+            div.className = 'prod-item';
+            const priceStr = parseInt(p.price).toLocaleString('id-ID');
+            div.innerHTML = `${p.code ? `<span class="prod-code">[${p.code}]</span>` : ''}<span class="prod-name">${p.name}</span><span class="prod-price">Rp ${priceStr}</span>`;
+            div.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                selectProduct(p, wrap);
+            });
+            dropdown.appendChild(div);
+        });
+        dropdown.style.display = 'block';
     });
-    if (cur) sel.value = cur;
+
+    searchInput.addEventListener('blur', () => {
+        setTimeout(() => { dropdown.style.display = 'none'; }, 150);
+    });
+}
+
+function selectProduct(p, wrap) {
+    const hiddenInput = wrap.parentElement.querySelector('.product-id-input');
+    const badge       = wrap.parentElement.querySelector('.product-selected-badge');
+    const searchInput = wrap.querySelector('.product-search-input');
+    const dropdown    = wrap.querySelector('.product-dropdown');
+    const row         = wrap.closest('.item-row');
+    const varSel      = row.querySelector('.variant-select');
+    const priceIn     = row.querySelector('.item-price');
+    const codeEl      = row.querySelector('.product-code');
+    const weightWarn  = row.querySelector('.weight-warn');
+    const editLink    = row.querySelector('.edit-product-link');
+
+    hiddenInput.value = p.id;
+
+    // Show badge
+    const label = p.code ? `[${p.code}] ${p.name}` : p.name;
+    badge.innerHTML = `<span>${label} <span class="text-muted ms-1" style="font-size:.75rem;">Rp ${parseInt(p.price).toLocaleString('id-ID')}</span></span><span class="clear-product" title="Change product">×</span>`;
+    badge.style.display = 'flex';
+    searchInput.style.display = 'none';
+    searchInput.value = '';
+    dropdown.style.display = 'none';
+
+    badge.querySelector('.clear-product').addEventListener('click', () => {
+        hiddenInput.value = '';
+        badge.style.display = 'none';
+        searchInput.style.display = '';
+        searchInput.value = '';
+        searchInput.focus();
+        // Reset variant + price
+        varSel.innerHTML = '<option value="">No variant</option>';
+        priceIn.value = 0;
+        if (codeEl) codeEl.textContent = '—';
+        recalc();
+    });
+
+    // Update price, code, variants
+    priceIn.value = parseFloat(p.price) || 0;
+    if (codeEl) codeEl.textContent = p.code || '—';
+    if (editLink) { editLink.href = `/products/${p.id}/edit`; editLink.target = '_blank'; }
+    if (weightWarn) weightWarn.style.display = (!p.weight || p.weight == 0) && p.id ? 'inline' : 'none';
+
+    varSel.innerHTML = '<option value="">No variant</option>';
+    (p.variants || []).forEach(v => {
+        const finalPrice = parseFloat(v.price) || parseFloat(p.price) || 0;
+        varSel.innerHTML += `<option value="${v.id}" data-price="${finalPrice}">${v.label || 'Default'} — Rp ${Math.round(finalPrice).toLocaleString('id-ID')}</option>`;
+    });
+
+    checkDuplicate(row);
+    recalc();
+}
+
+// Store product data on row for recalc access
+function getRowProduct(row) {
+    const hiddenInput = row.querySelector('.product-id-input');
+    if (!hiddenInput || !hiddenInput.value) return null;
+    return tripProducts.find(p => p.id == hiddenInput.value) || null;
 }
 
 // ── Item events ──────────────────────────────────────────────────────
 document.addEventListener('change', function(e) {
-    if (e.target.classList.contains('product-select')) {
-        const row     = e.target.closest('.item-row');
-        const opt     = e.target.options[e.target.selectedIndex];
-        const varSel  = row.querySelector('.variant-select');
-        const priceIn = row.querySelector('.item-price');
-        const codeEl  = row.querySelector('.product-code');
 
-        if (!opt.value) return;
-        const price    = parseFloat(opt.dataset.price) || 0;
-        const variants = JSON.parse(opt.dataset.variants || '[]');
-        const code     = opt.dataset.code || '—';
-
-        priceIn.value      = price;
-        codeEl.textContent = code || '—';
-
-        // Update edit product link if weight is 0
-        const weightWarn = row.querySelector('.weight-warn');
-        const editLink   = row.querySelector('.edit-product-link');
-        if (weightWarn && editLink) {
-            editLink.href = `/products/${opt.value}/edit`;
-            editLink.target = '_blank';
-        }
-
-        varSel.innerHTML = '<option value="">No variant</option>';
-        variants.forEach(v => {
-            const lbl = v.label || 'Default';
-            const finalPrice = parseFloat(v.price) || price;
-            varSel.innerHTML += `<option value="${v.id}" data-price="${finalPrice}">${lbl} — Rp ${Math.round(finalPrice).toLocaleString('id-ID')}</option>`;
-        });
-
-        checkDuplicate(row);
-        recalc();
-    }
     if (e.target.classList.contains('variant-select')) {
         const row = e.target.closest('.item-row');
         const opt = e.target.options[e.target.selectedIndex];
@@ -332,9 +404,9 @@ document.addEventListener('change', function(e) {
  * If yes, show warning with option to merge quantities.
  */
 function checkDuplicate(row) {
-    const prodSel = row.querySelector('.product-select');
+    const hiddenProd = row.querySelector('.product-id-input');
     const varSel  = row.querySelector('.variant-select');
-    const prodId  = prodSel?.value;
+    const prodId  = hiddenProd?.value;
     const varId   = varSel?.value || '';
 
     // Clear previous warning
@@ -347,7 +419,7 @@ function checkDuplicate(row) {
     let dupRow = null;
     document.querySelectorAll('.item-row').forEach(otherRow => {
         if (otherRow === row) return;
-        const oProd = otherRow.querySelector('.product-select')?.value;
+        const oProd = otherRow.querySelector('.product-id-input')?.value;
         const oVar  = otherRow.querySelector('.variant-select')?.value || '';
         if (oProd === prodId && oVar === varId) dupRow = otherRow;
     });
@@ -355,7 +427,8 @@ function checkDuplicate(row) {
     if (!dupRow) return;
 
     // Show warning under the current row
-    const prodName = prodSel.options[prodSel.selectedIndex]?.text?.split('—')[0]?.trim() || 'this product';
+    const prod = getRowProduct(row);
+    const prodName = prod ? (prod.code ? `[${prod.code}] ${prod.name}` : prod.name) : 'this product';
     const varName  = varSel.options[varSel.selectedIndex]?.text?.split('—')[0]?.trim() || '';
     const label    = varName && varName !== 'No variant' ? `${prodName} (${varName})` : prodName;
 
@@ -376,14 +449,14 @@ function checkDuplicate(row) {
  */
 function mergeRow(btn) {
     const row    = btn.closest('.item-row');
-    const prodId = row.querySelector('.product-select')?.value;
+    const prodId = row.querySelector('.product-id-input')?.value;
     const varId  = row.querySelector('.variant-select')?.value || '';
     const qty    = parseInt(row.querySelector('.item-qty')?.value) || 1;
 
     let dupRow = null;
     document.querySelectorAll('.item-row').forEach(otherRow => {
         if (otherRow === row) return;
-        const oProd = otherRow.querySelector('.product-select')?.value;
+        const oProd = otherRow.querySelector('.product-id-input')?.value;
         const oVar  = otherRow.querySelector('.variant-select')?.value || '';
         if (oProd === prodId && oVar === varId) dupRow = otherRow;
     });
@@ -417,14 +490,13 @@ function recalc() {
         }
 
         // weight per product
-        const prodSel   = row.querySelector('.product-select');
-        const prodOpt   = prodSel.options[prodSel.selectedIndex];
-        const wGram     = parseInt(prodOpt?.dataset?.weight || 0);
+        const prod      = getRowProduct(row);
+        const wGram     = parseInt(prod?.weight || 0);
         const lineGrams = wGram * qty;
         row.querySelector('.line-weight').textContent = fmtG(lineGrams);
         // Warn if weight is 0
         const weightWarn = row.querySelector('.weight-warn');
-        if (wGram === 0 && prodOpt?.value && weightWarn) {
+        if (wGram === 0 && prod && weightWarn) {
             weightWarn.style.display = 'block';
         } else if (weightWarn) {
             weightWarn.style.display = 'none';
@@ -484,9 +556,12 @@ document.getElementById('addItemBtn').addEventListener('click', () => {
         <div class="row g-2 align-items-end">
             <div class="col-md-4">
                 <label class="form-label small fw-semibold">Product</label>
-                <select name="items[${itemIndex}][product_id]" class="form-select form-select-sm product-select" required>
-                    <option value="">Select product…</option>
-                </select>
+                <input type="hidden" name="items[${itemIndex}][product_id]" class="product-id-input">
+                <div class="product-search-wrap position-relative">
+                    <input type="text" class="form-control form-control-sm product-search-input" placeholder="Search code or name…" autocomplete="off">
+                    <div class="product-dropdown"></div>
+                </div>
+                <div class="product-selected-badge mt-1" style="display:none;"></div>
             </div>
             <div class="col-md-3">
                 <label class="form-label small fw-semibold">Variant</label>
@@ -517,7 +592,7 @@ document.getElementById('addItemBtn').addEventListener('click', () => {
             </div>
         </div>`;
     document.getElementById('itemsContainer').appendChild(div);
-    populateProductSelect(div.querySelector('.product-select'));
+    initProductSearch(div.querySelector('.product-search-wrap'));
     itemIndex++;
 });
 
@@ -683,6 +758,9 @@ document.getElementById('saveQuickCustomer').addEventListener('click', () => {
         errEl.textContent='Error saving customer. Try again.'; errEl.style.display='block';
     });
 });
+
+// init product search on first row
+document.querySelectorAll('.product-search-wrap').forEach(w => initProductSearch(w));
 
 // init
 const tripSel = document.getElementById('tripSelect');

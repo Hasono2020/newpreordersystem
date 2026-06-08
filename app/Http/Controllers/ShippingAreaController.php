@@ -144,4 +144,13 @@ class ShippingAreaController extends Controller
     {
         return response()->json(ShippingArea::where('is_active', true)->orderBy('name')->get());
     }
+
+    public function bulkDestroy(Request $request)
+    {
+        $ids = $request->input('ids', []);
+        if (!empty($ids)) {
+            ShippingArea::whereIn('id', $ids)->delete();
+        }
+        return redirect()->route('shipping.index')->with('success', count($ids) . ' shipping area(s) deleted.');
+    }
 }

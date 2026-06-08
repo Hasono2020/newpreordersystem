@@ -14,7 +14,10 @@
             @endif
         </form>
     </div>
-    <div class="col-auto">
+    <div class="col-auto d-flex gap-2">
+        <button type="button" class="btn btn-sm btn-outline-danger" id="bulkDeleteBtn" style="display:none;" onclick="bulkDelete()">
+            <i class="bi bi-trash me-1"></i>Delete Selected (<span id="selectedCount">0</span>)
+        </button>
         <a href="{{ route('suppliers.create') }}" class="btn btn-primary btn-sm">
             <i class="bi bi-plus-lg me-1"></i>Add Supplier
         </a>
@@ -25,11 +28,15 @@
     <div class="table-responsive">
         <table class="table table-hover mb-0">
             <thead class="table-light">
-                <tr><th>Name</th><th>Contact</th><th>Phone</th><th>Country</th><th>Products</th><th>POs</th><th>Status</th><th></th></tr>
+                <tr>
+                    <th style="width:36px;"><input type="checkbox" id="selectAll" class="form-check-input"></th>
+                    <th>Name</th><th>Contact</th><th>Phone</th><th>Country</th><th>Products</th><th>POs</th><th>Status</th><th></th>
+                </tr>
             </thead>
             <tbody>
                 @forelse($suppliers as $supplier)
                 <tr>
+                    <td><input type="checkbox" class="form-check-input row-check" value="{{ $supplier->id }}"></td>
                     <td class="fw-semibold">{{ $supplier->name }}</td>
                     <td class="text-muted small">{{ $supplier->contact_person ?? '—' }}</td>
                     <td class="text-muted small">{{ $supplier->phone ?? '—' }}</td>
@@ -54,7 +61,7 @@
                     </td>
                 </tr>
                 @empty
-                <tr><td colspan="8" class="text-center text-muted py-4">No suppliers yet. <a href="{{ route('suppliers.create') }}">Add one</a></td></tr>
+                <tr><td colspan="9" class="text-center text-muted py-4">No suppliers yet. <a href="{{ route('suppliers.create') }}">Add one</a></td></tr>
                 @endforelse
             </tbody>
         </table>
@@ -77,4 +84,36 @@
         <div>{{ $suppliers->links() }}</div>
     </div>
 </div>
+{{-- Bulk Delete Form --}}
+<form id="bulkDeleteForm" method="POST" action="{{ route('suppliers.bulk-destroy') }}" style="display:none;">
+    @csrf @method('DELETE')
+    <div id="bulkIds"></div>
+</form>
+
+@push('scripts')
+<script>
+document.getElementById('selectAll')?.addEventListener('change', function() {
+    document.querySelectorAll('.row-check').forEach(cb => cb.checked = this.checked);
+    updateBulkBtn();
+});
+document.addEventListener('change', e => {
+    if (e.target.classList.contains('row-check')) updateBulkBtn();
+});
+function updateBulkBtn() {
+    const checked = document.querySelectorAll('.row-check:checked').length;
+    const btn = document.getElementById('bulkDeleteBtn');
+    if (btn) { btn.style.display = checked > 0 ? '' : 'none'; }
+    const cnt = document.getElementById('selectedCount');
+    if (cnt) cnt.textContent = checked;
+}
+function bulkDelete() {
+    const ids = [...document.querySelectorAll('.row-check:checked')].map(cb => cb.value);
+    if (!ids.length) return;
+    if (!confirm(`Delete ${ids.length} supplier(s)? Products linked will be unlinked.`)) return;
+    const container = document.getElementById('bulkIds');
+    container.innerHTML = ids.map(id => `<input type="hidden" name="ids[]" value="${id}">`).join('');
+    document.getElementById('bulkDeleteForm').submit();
+}
+</script>
+@endpush
 @endsection

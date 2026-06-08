@@ -73,6 +73,7 @@ Route::middleware('auth')->group(function () {
     Route::get('shipping/template', [ShippingAreaController::class, 'template'])->name('shipping.template');
     Route::get('shipping/export', [ShippingAreaController::class, 'export'])->name('shipping.export');
     Route::post('shipping/import', [ShippingAreaController::class, 'import'])->name('shipping.import');
+    Route::delete('shipping/bulk-destroy', [ShippingAreaController::class, 'bulkDestroy'])->name('shipping.bulk-destroy');
     Route::resource('shipping', ShippingAreaController::class);
 
     // Reports & Export
@@ -86,6 +87,7 @@ Route::middleware('auth')->group(function () {
     Route::post('reports/import/customers', [ReportController::class, 'importCustomers'])->name('reports.import.customers');
 
     // Suppliers
+    Route::delete('suppliers/bulk-destroy', [\App\Http\Controllers\SupplierController::class, 'bulkDestroy'])->name('suppliers.bulk-destroy');
     Route::resource('suppliers', \App\Http\Controllers\SupplierController::class);
 
     // Store Settings (admin only)

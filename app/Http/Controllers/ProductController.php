@@ -53,7 +53,7 @@ class ProductController extends Controller
             'price'            => 'required|numeric|min:0',
             'weight_gram'      => 'nullable|integer|min:0',
             'notes'            => 'nullable|string',
-            'image'            => 'nullable|image|max:512',
+            'image'            => 'nullable|image|max:5120',
             'variants'         => 'nullable|array',
             'variants.*.color' => 'nullable|string|max:50',
             'variants.*.size'  => 'nullable|string|max:20',
@@ -65,7 +65,7 @@ class ProductController extends Controller
         $data['excluded_from_promo'] = $request->boolean('excluded_from_promo');
 
         if ($request->hasFile('image')) {
-            $data['image'] = $request->file('image')->store('products', 'public');
+            $data['image'] = $this->resizeAndStoreImage($request->file('image'));
         }
 
         $product = Product::create($data);
@@ -116,7 +116,7 @@ class ProductController extends Controller
             'weight_gram'  => 'nullable|integer|min:0',
             'notes'        => 'nullable|string',
             'status'       => 'required|in:active,closed,arrived',
-            'image'        => 'nullable|image|max:512',
+            'image'        => 'nullable|image|max:5120',
         ], [
             'product_code.unique' => 'This product code is already used by another product. Each product code must be unique.',
         ]);
@@ -125,7 +125,7 @@ class ProductController extends Controller
 
         if ($request->hasFile('image')) {
             if ($product->image) Storage::disk('public')->delete($product->image);
-            $data['image'] = $request->file('image')->store('products', 'public');
+            $data['image'] = $this->resizeAndStoreImage($request->file('image'));
         }
 
         $product->update($data);
@@ -491,5 +491,73 @@ class ProductController extends Controller
 
         $variant->delete();
         return back()->with('success', 'Variant removed.');
+    }
+
+    /**
+     * Resize image to max 800×800px and store as JPEG ≤200KB.
+     * Uses GD (available on most shared hosting).
+     */
+    private function resizeAndStoreImage($file): string
+    {
+        $maxDim  = 800;   // max width or height in pixels
+        $quality = 82;    // JPEG quality start (will reduce if still too big)
+        $maxBytes = 200 * 1024; // 200 KB target
+
+        $mime = $file->getMimeType();
+        $src  = $file->getRealPath();
+
+        // Load source image via GD
+        $srcImg = match(true) {
+            str_contains($mime, 'jpeg') || str_contains($mime, 'jpg') => imagecreatefromjpeg($src),
+            str_contains($mime, 'png')  => imagecreatefrompng($src),
+            str_contains($mime, 'webp') => imagecreatefromwebp($src),
+            str_contains($mime, 'gif')  => imagecreatefromgif($src),
+            default                      => imagecreatefromjpeg($src),
+        };
+
+        if (!$srcImg) {
+            // Fallback: just store original
+            return $file->store('products', 'public');
+        }
+
+        $origW = imagesx($srcImg);
+        $origH = imagesy($srcImg);
+
+        // Calculate new dimensions keeping aspect ratio
+        if ($origW <= $maxDim && $origH <= $maxDim) {
+            $newW = $origW;
+            $newH = $origH;
+        } elseif ($origW >= $origH) {
+            $newW = $maxDim;
+            $newH = (int) round($origH * $maxDim / $origW);
+        } else {
+            $newH = $maxDim;
+            $newW = (int) round($origW * $maxDim / $origH);
+        }
+
+        $dstImg = imagecreatetruecolor($newW, $newH);
+
+        // Preserve transparency for PNG
+        imagealphablending($dstImg, false);
+        imagesavealpha($dstImg, true);
+        $transparent = imagecolorallocatealpha($dstImg, 0, 0, 0, 127);
+        imagefill($dstImg, 0, 0, $transparent);
+
+        imagecopyresampled($dstImg, $srcImg, 0, 0, 0, 0, $newW, $newH, $origW, $origH);
+        imagedestroy($srcImg);
+
+        // Save to temp buffer and reduce quality until under maxBytes
+        $filename = 'products/' . uniqid('img_', true) . '.jpg';
+        do {
+            ob_start();
+            imagejpeg($dstImg, null, $quality);
+            $data = ob_get_clean();
+            $quality -= 5;
+        } while (strlen($data) > $maxBytes && $quality > 20);
+
+        imagedestroy($dstImg);
+
+        Storage::disk('public')->put($filename, $data);
+        return $filename;
     }
 }
