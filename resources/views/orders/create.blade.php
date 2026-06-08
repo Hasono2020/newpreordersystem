@@ -271,11 +271,11 @@ function populateProductSelect(sel) {
     const cur = sel.value;
     sel.innerHTML = '<option value="">Select product…</option>';
     tripProducts.forEach(p => {
-        const label = p.product_code ? `[${p.product_code}] ${p.name}` : p.name;
+        const label = p.code ? `[${p.code}] ${p.name}` : p.name;
         sel.innerHTML += `<option value="${p.id}"
                     data-price="${p.price}"
                     data-weight="${p.weight || 0}"
-                    data-code="${p.product_code || ''}"
+                    data-code="${p.code || ''}"
                     data-variants='${JSON.stringify(p.variants || [])}'>${label}</option>`;
     });
     if (cur) sel.value = cur;
