@@ -225,7 +225,7 @@ function renderChunk() {
     const body  = document.getElementById('itemsBody');
     const chunk = filtered.slice(rendered, rendered + PAGE_SZ);
     if (!chunk.length) return;
-    const html = chunk.map(r => {
+    const html = chunk.map((r, ci) => {
         const qtyCell = ARRIVED
             ? `<td>${r.received}</td>`
             : `<td><input type="number" class="form-control form-control-sm qty-input qty-vis"
@@ -233,7 +233,7 @@ function renderChunk() {
                   min="0" max="${r.ordered}"
                   oninput="syncHidden(${r.i}, this.value)"></td>`;
         return `<tr class="item-row items-tbody" data-product="${r.product.toLowerCase()}" data-variant="${r.variant.toLowerCase()}">
-            <td class="text-muted" style="width:40px">${r.i + 1}</td>
+            <td class="text-muted" style="width:40px">${rendered + ci + 1}</td>
             <td><span class="fw-semibold">${escH(r.product)}</span>${r.code ? `<br><span class="font-monospace text-primary" style="font-size:.7rem">${escH(r.code)}</span>` : ''}</td>
             <td>${escH(r.variant)}</td>
             <td>${r.ordered}</td>
@@ -253,7 +253,7 @@ function syncHidden(idx, val) {
 
 function filterItems(q) {
     q = q.trim().toLowerCase();
-    filtered = q ? ITEMS.filter(r => r.product.toLowerCase().includes(q) || r.variant.toLowerCase().includes(q)) : ITEMS;
+    filtered = q ? ITEMS.filter(r => (r.product||'').toLowerCase().includes(q) || (r.variant||'').toLowerCase().includes(q)) : ITEMS;
     const body = document.getElementById('itemsBody');
     body.innerHTML = '';
     rendered = 0;

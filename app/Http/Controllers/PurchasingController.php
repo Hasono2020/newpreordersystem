@@ -180,66 +180,47 @@ class PurchasingController extends Controller
                 ]);
             }
 
-            // Load existing PO items keyed by product+variant for dedup check
-            $existingItems = DB::table('purchase_order_items')
+            // Merge into existing line if same variant, insert new line otherwise
+            $existing = DB::table('purchase_order_items')
                 ->where('purchase_order_id', $po->id)
                 ->get()
-                ->keyBy(fn($r) => $r->product_id . '_' . ($r->product_variant_id ?? 'null'));
+                ->keyBy(fn($r) => $r->product_id.'_'.($r->product_variant_id ?? 'null'));
 
-            $newRows   = [];
-            $updateIds = []; // existing items that need qty bump
-            $now       = now();
-
+            $inserts = [];
+            $now     = now();
             foreach ($request->items as $item) {
                 $qty       = (int)   $item['quantity_ordered'];
                 $cost      = (float) $item['unit_cost'];
-                $variantId = $item['product_variant_id'] ?: null;
-                $key       = $item['product_id'] . '_' . ($variantId ?? 'null');
+                $varId     = $item['product_variant_id'] ?: null;
+                $key       = $item['product_id'].'_'.($varId ?? 'null');
 
-                if (isset($existingItems[$key])) {
-                    // Same variant already in PO — accumulate qty to update later
-                    $updateIds[$key] = [
-                        'id'  => $existingItems[$key]->id,
-                        'qty' => ($existingItems[$key]->quantity_ordered + $qty),
-                        'cost'=> $cost ?: $existingItems[$key]->unit_cost,
-                    ];
+                if (isset($existing[$key])) {
+                    $newQty  = $existing[$key]->quantity_ordered + $qty;
+                    $useCost = $cost ?: $existing[$key]->unit_cost;
+                    DB::table('purchase_order_items')->where('id', $existing[$key]->id)->update([
+                        'quantity_ordered' => $newQty,
+                        'unit_cost'        => $useCost,
+                        'line_total'       => $newQty * $useCost,
+                        'updated_at'       => $now,
+                    ]);
                 } else {
-                    $lineTotal = $cost * $qty;
-                    $newRows[] = [
+                    $inserts[] = [
                         'purchase_order_id'  => $po->id,
                         'product_id'         => $item['product_id'],
-                        'product_variant_id' => $variantId,
+                        'product_variant_id' => $varId,
                         'quantity_ordered'   => $qty,
                         'quantity_received'  => 0,
                         'unit_cost'          => $cost,
-                        'line_total'         => $lineTotal,
+                        'line_total'         => $qty * $cost,
                         'created_at'         => $now,
                         'updated_at'         => $now,
                     ];
                 }
             }
+            if ($inserts) DB::table('purchase_order_items')->insert($inserts);
 
-            // Bulk INSERT new variant lines
-            if (!empty($newRows)) {
-                DB::table('purchase_order_items')->insert($newRows);
-            }
-
-            // Bump qty on existing lines (one query per updated line — usually very few)
-            foreach ($updateIds as $upd) {
-                $newLineTotal = $upd['qty'] * $upd['cost'];
-                DB::table('purchase_order_items')->where('id', $upd['id'])->update([
-                    'quantity_ordered' => $upd['qty'],
-                    'unit_cost'        => $upd['cost'],
-                    'line_total'       => $newLineTotal,
-                    'updated_at'       => $now,
-                ]);
-            }
-
-            // Recalculate total from all items
             $total = DB::table('purchase_order_items')
-                ->where('purchase_order_id', $po->id)
-                ->sum('line_total');
-
+                ->where('purchase_order_id', $po->id)->sum('line_total');
             $po->update(['total_amount' => $total, 'status' => 'submitted']);
         });
 
@@ -257,21 +238,16 @@ class PurchasingController extends Controller
         $purchasing->load(['items.product', 'items.variant', 'trip', 'supplier']);
         $suppliers = \App\Models\Supplier::where('is_active', true)->orderBy('name')->get();
 
-        // Load NEW demand not yet in this PO — same supplier, same trip, pending/confirmed items
-        // Exclude variants already in this PO
-        $existingVariantIds = $purchasing->items->pluck('product_variant_id')->filter()->toArray();
-        $existingProductIds = $purchasing->items->pluck('product_id')->toArray();
-
-        $newDemand = DB::table('order_items')
+        // Load uncovered demand for this PO's supplier+trip
+        // Shows net demand = total ordered - already in ALL active POs for this trip
+        // Same variant can appear if there's remaining uncovered demand
+        $allDemand = DB::table('order_items')
             ->join('orders',           'orders.id',           '=', 'order_items.order_id')
             ->join('products',         'products.id',         '=', 'order_items.product_id')
             ->leftJoin('product_variants', 'product_variants.id', '=', 'order_items.product_variant_id')
             ->where('orders.trip_id', $purchasing->trip_id)
             ->where('products.supplier_id', $purchasing->supplier_id)
             ->whereIn('order_items.status', ['pending', 'confirmed'])
-            ->when(!empty($existingVariantIds), fn($q) =>
-                $q->whereNotIn('order_items.product_variant_id', $existingVariantIds)
-            )
             ->select([
                 'products.id as product_id',
                 'products.name as product_name',
@@ -288,12 +264,31 @@ class PurchasingController extends Controller
                 'product_variants.supplier_stock',
             ])
             ->orderBy('products.name')
+            ->get();
+
+        // Get qty already in ALL active POs for this trip (keyed by product+variant)
+        $poQtyMap = DB::table('purchase_order_items')
+            ->join('purchase_orders', 'purchase_orders.id', '=', 'purchase_order_items.purchase_order_id')
+            ->where('purchase_orders.trip_id', $purchasing->trip_id)
+            ->whereNotIn('purchase_orders.status', ['cancelled', 'arrived'])
+            ->select([
+                'purchase_order_items.product_id',
+                'purchase_order_items.product_variant_id',
+                DB::raw('SUM(purchase_order_items.quantity_ordered) as po_qty'),
+            ])
+            ->groupBy('purchase_order_items.product_id', 'purchase_order_items.product_variant_id')
             ->get()
-            ->map(function($r) {
-                $parts = array_filter([$r->color, $r->size]);
-                $r->variant_label = $parts ? implode(' / ', $parts) : 'Default';
-                return $r;
-            });
+            ->keyBy(fn($r) => $r->product_id . '_' . ($r->product_variant_id ?? 'null'));
+
+        $newDemand = $allDemand->map(function($r) use ($poQtyMap) {
+            $parts = array_filter([$r->color, $r->size]);
+            $r->variant_label = $parts ? implode(' / ', $parts) : 'Default';
+            // Net uncovered demand
+            $key    = $r->product_id . '_' . ($r->variant_id ?? 'null');
+            $poQty  = isset($poQtyMap[$key]) ? (int) $poQtyMap[$key]->po_qty : 0;
+            $r->total_demanded = max(0, (int) $r->total_demanded - $poQty);
+            return $r;
+        })->filter(fn($r) => $r->total_demanded > 0)->values();
 
         return view('purchasing.edit', compact('purchasing', 'suppliers', 'newDemand'));
     }
@@ -327,53 +322,46 @@ class PurchasingController extends Controller
                 ->where('purchase_order_id', $purchasing->id)
                 ->sum('line_total');
 
-            // Add new items from demand panel — merge qty if variant already exists in PO
+            // Merge into existing line if same variant, insert new line otherwise
             if ($request->filled('new_items')) {
-                $existingItems = DB::table('purchase_order_items')
+                $existing = DB::table('purchase_order_items')
                     ->where('purchase_order_id', $purchasing->id)
                     ->get()
-                    ->keyBy(fn($r) => $r->product_id . '_' . ($r->product_variant_id ?? 'null'));
+                    ->keyBy(fn($r) => $r->product_id.'_'.($r->product_variant_id ?? 'null'));
 
-                $newRows = [];
+                $inserts = [];
                 $now     = now();
                 foreach ($request->new_items as $ni) {
                     if (empty($ni['product_id']) || empty($ni['quantity_ordered'])) continue;
-                    $qty       = (int)   $ni['quantity_ordered'];
-                    $cost      = (float) ($ni['unit_cost'] ?? 0);
-                    $variantId = $ni['product_variant_id'] ?: null;
-                    $key       = $ni['product_id'] . '_' . ($variantId ?? 'null');
+                    $qty   = (int)   $ni['quantity_ordered'];
+                    $cost  = (float) ($ni['unit_cost'] ?? 0);
+                    $varId = $ni['product_variant_id'] ?: null;
+                    $key   = $ni['product_id'].'_'.($varId ?? 'null');
 
-                    if (isset($existingItems[$key])) {
-                        // Merge into existing line
-                        $newQty       = $existingItems[$key]->quantity_ordered + $qty;
-                        $useCost      = $cost ?: $existingItems[$key]->unit_cost;
-                        $newLineTotal = $newQty * $useCost;
-                        DB::table('purchase_order_items')->where('id', $existingItems[$key]->id)->update([
+                    if (isset($existing[$key])) {
+                        $newQty  = $existing[$key]->quantity_ordered + $qty;
+                        $useCost = $cost ?: $existing[$key]->unit_cost;
+                        DB::table('purchase_order_items')->where('id', $existing[$key]->id)->update([
                             'quantity_ordered' => $newQty,
                             'unit_cost'        => $useCost,
-                            'line_total'       => $newLineTotal,
+                            'line_total'       => $newQty * $useCost,
                             'updated_at'       => $now,
                         ]);
-                        $total += $newLineTotal - ($existingItems[$key]->line_total ?? 0);
                     } else {
-                        $lineTotal = $qty * $cost;
-                        $total    += $lineTotal;
-                        $newRows[] = [
+                        $inserts[] = [
                             'purchase_order_id'  => $purchasing->id,
                             'product_id'         => $ni['product_id'],
-                            'product_variant_id' => $variantId,
+                            'product_variant_id' => $varId,
                             'quantity_ordered'   => $qty,
                             'quantity_received'  => 0,
                             'unit_cost'          => $cost,
-                            'line_total'         => $lineTotal,
+                            'line_total'         => $qty * $cost,
                             'created_at'         => $now,
                             'updated_at'         => $now,
                         ];
                     }
                 }
-                if (!empty($newRows)) {
-                    DB::table('purchase_order_items')->insert($newRows);
-                }
+                if ($inserts) DB::table('purchase_order_items')->insert($inserts);
             }
 
             $purchasing->update(['total_amount' => $total]);
@@ -417,6 +405,73 @@ class PurchasingController extends Controller
         $purchasing->update(['total_amount' => $total]);
 
         return response()->json(['ok' => true, 'line_total' => $lineTotal, 'po_total' => $total]);
+    }
+
+    public function addItem(Request $request, PurchaseOrder $purchasing)
+    {
+        $request->validate([
+            'product_id'         => 'required|integer',
+            'product_variant_id' => 'nullable|integer',
+            'quantity_ordered'   => 'required|integer|min:1',
+            'unit_cost'          => 'required|numeric|min:0',
+        ]);
+
+        $varId = $request->product_variant_id ?: null;
+        $qty   = (int)   $request->quantity_ordered;
+        $cost  = (float) $request->unit_cost;
+        $key   = $request->product_id . '_' . ($varId ?? 'null');
+        $now   = now();
+
+        // Merge into existing line if same variant exists
+        $existing = DB::table('purchase_order_items')
+            ->where('purchase_order_id', $purchasing->id)
+            ->where('product_id', $request->product_id)
+            ->where('product_variant_id', $varId)
+            ->first();
+
+        if ($existing) {
+            $newQty = $existing->quantity_ordered + $qty;
+            DB::table('purchase_order_items')->where('id', $existing->id)->update([
+                'quantity_ordered' => $newQty,
+                'unit_cost'        => $cost ?: $existing->unit_cost,
+                'line_total'       => $newQty * ($cost ?: $existing->unit_cost),
+                'updated_at'       => $now,
+            ]);
+            $itemId = $existing->id;
+        } else {
+            $itemId = DB::table('purchase_order_items')->insertGetId([
+                'purchase_order_id'  => $purchasing->id,
+                'product_id'         => $request->product_id,
+                'product_variant_id' => $varId,
+                'quantity_ordered'   => $qty,
+                'quantity_received'  => 0,
+                'unit_cost'          => $cost,
+                'line_total'         => $qty * $cost,
+                'created_at'         => $now,
+                'updated_at'         => $now,
+            ]);
+        }
+
+        $total = DB::table('purchase_order_items')
+            ->where('purchase_order_id', $purchasing->id)->sum('line_total');
+        $purchasing->update(['total_amount' => $total]);
+
+        return response()->json(['ok' => true, 'item_id' => $itemId, 'po_total' => $total]);
+    }
+
+    public function deleteItem(Request $request, PurchaseOrder $purchasing, int $itemId)
+    {
+        DB::table('purchase_order_items')
+            ->where('id', $itemId)
+            ->where('purchase_order_id', $purchasing->id)
+            ->delete();
+
+        $total = DB::table('purchase_order_items')
+            ->where('purchase_order_id', $purchasing->id)
+            ->sum('line_total');
+        $purchasing->update(['total_amount' => $total]);
+
+        return response()->json(['ok' => true, 'po_total' => $total]);
     }
 
     public function destroy(PurchaseOrder $purchasing)

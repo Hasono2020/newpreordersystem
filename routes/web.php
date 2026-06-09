@@ -69,6 +69,8 @@ Route::middleware('auth')->group(function () {
     Route::get('purchasing/{purchasing}/edit', [PurchasingController::class, 'edit'])->name('purchasing.edit');
     Route::put('purchasing/{purchasing}', [PurchasingController::class, 'update'])->name('purchasing.update');
     Route::patch('purchasing/{purchasing}/item/{item}', [PurchasingController::class, 'updateItem'])->name('purchasing.item.update');
+    Route::post('purchasing/{purchasing}/add-item', [PurchasingController::class, 'addItem'])->name('purchasing.item.add');
+    Route::delete('purchasing/{purchasing}/item/{item}', [PurchasingController::class, 'deleteItem'])->name('purchasing.item.delete');
     Route::delete('purchasing/{purchasing}', [PurchasingController::class, 'destroy'])->name('purchasing.destroy');
     Route::post('purchasing/{purchasing}/arrival', [PurchasingController::class, 'confirmArrival'])->name('purchasing.arrival');
 
