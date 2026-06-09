@@ -2,147 +2,161 @@
 @section('title', 'Staff Accounts')
 @section('page-title', 'Staff Accounts')
 
+@push('styles')
+<style>
+.role-badge { font-size:.72rem; padding:2px 8px; border-radius:10px; font-weight:600; }
+.role-admin      { background:#fef3c7;color:#92400e; }
+.role-finance    { background:#dbeafe;color:#1e40af; }
+.role-purchasing { background:#f3e8ff;color:#6b21a8; }
+.role-staff      { background:#dcfce7;color:#166534; }
+.role-viewer     { background:#f1f5f9;color:#475569; }
+.perm-group { margin-bottom:.75rem; }
+.perm-group-title { font-size:.72rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.3rem; }
+.perm-row { display:flex;align-items:center;gap:.5rem;font-size:.82rem;padding:2px 0; }
+.perm-row .form-check-input { margin:0; }
+.perm-override { color:#6366f1;font-size:.68rem;margin-left:.25rem; }
+</style>
+@endpush
+
 @section('content')
 
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div class="text-muted small">{{ $staff->count() }} account(s)</div>
+    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#createModal">
+        <i class="bi bi-person-plus me-1"></i>Add Account
+    </button>
+</div>
+
+{{-- Staff list --}}
 <div class="row g-3">
-    {{-- Add new account form --}}
-    <div class="col-lg-4">
-        <div class="card">
-            <div class="card-header bg-white py-3 fw-semibold">
-                <i class="bi bi-person-plus me-2"></i>Add Account
-            </div>
-            <div class="card-body">
-                <form method="POST" action="{{ route('staff.store') }}">
-                    @csrf
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">Full Name <span class="text-danger">*</span></label>
-                        <input type="text" name="name" class="form-control @error('name') is-invalid @enderror"
-                            value="{{ old('name') }}" required placeholder="e.g. Siti Rahma">
-                        @error('name')<div class="invalid-feedback">{{ $message }}</div>@enderror
+    @foreach($staff as $user)
+    @php
+        $defaults = \App\Models\User::roleDefaults($user->role);
+        $customs  = $user->permissions ?? [];
+        $hasOverrides = !empty($customs);
+    @endphp
+    <div class="col-12">
+        <div class="card {{ !$user->is_active ? 'opacity-50' : '' }}">
+            <div class="card-body py-3">
+                <div class="row align-items-center g-2">
+                    {{-- Avatar + name --}}
+                    <div class="col-md-3">
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center"
+                                style="width:38px;height:38px;font-size:.9rem;font-weight:700;flex-shrink:0;">
+                                {{ strtoupper(substr($user->name,0,1)) }}
+                            </div>
+                            <div>
+                                <div class="fw-semibold">{{ $user->name }}
+                                    @if($user->id === auth()->id())
+                                        <span class="badge bg-secondary ms-1" style="font-size:.65rem;">You</span>
+                                    @endif
+                                    @if(!$user->is_active)
+                                        <span class="badge bg-danger ms-1" style="font-size:.65rem;">Inactive</span>
+                                    @endif
+                                </div>
+                                <div class="text-muted small">{{ $user->email }}</div>
+                                @if($user->phone)
+                                    <div class="text-muted" style="font-size:.75rem;">{{ $user->phone }}</div>
+                                @endif
+                            </div>
+                        </div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">Email <span class="text-danger">*</span></label>
-                        <input type="email" name="email" class="form-control @error('email') is-invalid @enderror"
-                            value="{{ old('email') }}" required placeholder="email@example.com">
-                        @error('email')<div class="invalid-feedback">{{ $message }}</div>@enderror
+
+                    {{-- Role --}}
+                    <div class="col-md-2">
+                        <span class="role-badge role-{{ $user->role }}">{{ ucfirst($user->role) }}</span>
+                        @if($hasOverrides)
+                            <div style="font-size:.68rem;color:#6366f1;margin-top:2px;">
+                                <i class="bi bi-sliders me-1"></i>{{ count($customs) }} custom override(s)
+                            </div>
+                        @endif
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">Role <span class="text-danger">*</span></label>
-                        <select name="role" class="form-select">
-                            <option value="staff" {{ old('role') == 'staff' ? 'selected' : '' }}>Staff</option>
-                            <option value="admin" {{ old('role') == 'admin' ? 'selected' : '' }}>Admin</option>
-                        </select>
-                        <div class="form-text">Admin can manage staff accounts and access all settings.</div>
+
+                    {{-- Permission summary --}}
+                    <div class="col-md-5">
+                        @php
+                            $groups = [
+                                'Orders'     => ['orders.view','orders.create','orders.edit','orders.delete','orders.import'],
+                                'Customers'  => ['customers.view','customers.create','customers.edit','customers.delete'],
+                                'Products'   => ['products.view','products.create','products.edit','products.delete'],
+                                'Purchasing' => ['purchasing.view','purchasing.edit'],
+                                'Payments'   => ['payments.view','payments.record','payments.void'],
+                                'Other'      => ['invoices.view','trips.view','trips.edit','reports.view','settings.view','settings.edit'],
+                            ];
+                        @endphp
+                        <div class="d-flex flex-wrap gap-1">
+                            @foreach($groups as $groupName => $perms)
+                            @php
+                                $allowed = collect($perms)->filter(fn($p) => $user->hasPermission($p))->count();
+                                $total   = count($perms);
+                            @endphp
+                            <span class="badge {{ $allowed === $total ? 'bg-success' : ($allowed === 0 ? 'bg-light text-muted border' : 'bg-warning text-dark') }}"
+                                style="font-size:.68rem;" title="{{ $groupName }}: {{ $allowed }}/{{ $total }} permissions">
+                                {{ $groupName }} {{ $allowed }}/{{ $total }}
+                            </span>
+                            @endforeach
+                        </div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">Password <span class="text-danger">*</span></label>
-                        <input type="password" name="password" class="form-control @error('password') is-invalid @enderror"
-                            required minlength="8" placeholder="Min. 8 characters">
-                        @error('password')<div class="invalid-feedback">{{ $message }}</div>@enderror
+
+                    {{-- Actions --}}
+                    <div class="col-md-2 text-end">
+                        <button class="btn btn-sm btn-outline-secondary"
+                            onclick="openEditModal({{ $user->id }})">
+                            <i class="bi bi-pencil me-1"></i>Edit
+                        </button>
+                        @if($user->id !== auth()->id())
+                        <form method="POST" action="{{ route('staff.destroy', $user) }}"
+                            class="d-inline" onsubmit="return confirm('Delete {{ $user->name }}?')">
+                            @csrf @method('DELETE')
+                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                                <i class="bi bi-trash3"></i>
+                            </button>
+                        </form>
+                        @endif
                     </div>
-                    <div class="mb-4">
-                        <label class="form-label fw-semibold">Confirm Password <span class="text-danger">*</span></label>
-                        <input type="password" name="password_confirmation" class="form-control" required>
-                    </div>
-                    <button type="submit" class="btn btn-primary w-100">
-                        <i class="bi bi-person-plus me-1"></i>Create Account
-                    </button>
-                </form>
+                </div>
             </div>
         </div>
     </div>
+    @endforeach
+</div>
 
-    {{-- Accounts list --}}
-    <div class="col-lg-8">
-        <div class="card">
-            <div class="card-header bg-white py-3 fw-semibold">
-                <i class="bi bi-people me-2"></i>All Accounts ({{ $staff->count() }})
+{{-- Create Modal --}}
+<div class="modal fade" id="createModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-person-plus me-2"></i>Add Account</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <div class="table-responsive">
-                <table class="table table-hover mb-0">
-                    <thead class="table-light">
-                        <tr><th>Name</th><th>Email</th><th>Role</th><th>Created</th><th></th></tr>
-                    </thead>
-                    <tbody>
-                        @foreach($staff as $user)
-                        <tr>
-                            <td>
-                                <div class="fw-semibold">
-                                    {{ $user->name }}
-                                    @if($user->id === auth()->id())
-                                        <span class="badge bg-light text-secondary border ms-1" style="font-size:.65rem;">You</span>
-                                    @endif
-                                </div>
-                            </td>
-                            <td class="text-muted small">{{ $user->email }}</td>
-                            <td>
-                                @if($user->role === 'admin')
-                                    <span class="badge bg-primary">Admin</span>
-                                @else
-                                    <span class="badge bg-secondary">Staff</span>
-                                @endif
-                            </td>
-                            <td class="text-muted small">{{ $user->created_at->format('d M Y') }}</td>
-                            <td>
-                                <button class="btn btn-sm btn-outline-secondary"
-                                    data-bs-toggle="modal"
-                                    data-bs-target="#editModal{{ $user->id }}">
-                                    Edit
-                                </button>
-                                @if($user->id !== auth()->id())
-                                <form method="POST" action="{{ route('staff.destroy', $user) }}" class="d-inline"
-                                    onsubmit="return confirm('Delete {{ $user->name }}? This cannot be undone.')">
-                                    @csrf @method('DELETE')
-                                    <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
-                                </form>
-                                @endif
-                            </td>
-                        </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            </div>
+            <form method="POST" action="{{ route('staff.store') }}">
+                @csrf
+                <div class="modal-body">
+                    @include('staff._form', ['user' => null, 'roles' => $roles, 'allPermissions' => $allPermissions])
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create Account</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
 
-{{-- Edit modals --}}
+{{-- Edit Modals (one per user) --}}
 @foreach($staff as $user)
-<div class="modal fade" id="editModal{{ $user->id }}" tabindex="-1">
-    <div class="modal-dialog">
+<div class="modal fade" id="editModal-{{ $user->id }}" tabindex="-1">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-pencil me-2"></i>Edit — {{ $user->name }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
             <form method="POST" action="{{ route('staff.update', $user) }}">
                 @csrf @method('PUT')
-                <div class="modal-header">
-                    <h5 class="modal-title">Edit: {{ $user->name }}</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
                 <div class="modal-body">
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">Full Name</label>
-                        <input type="text" name="name" class="form-control" value="{{ $user->name }}" required>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">Email</label>
-                        <input type="email" name="email" class="form-control" value="{{ $user->email }}" required>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">Role</label>
-                        <select name="role" class="form-select">
-                            <option value="staff"  {{ $user->role === 'staff'  ? 'selected' : '' }}>Staff</option>
-                            <option value="admin"  {{ $user->role === 'admin'  ? 'selected' : '' }}>Admin</option>
-                        </select>
-                    </div>
-                    <hr>
-                    <div class="text-muted small mb-3">Leave password blank to keep the current password.</div>
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">New Password</label>
-                        <input type="password" name="password" class="form-control" minlength="8" placeholder="Min. 8 characters">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">Confirm New Password</label>
-                        <input type="password" name="password_confirmation" class="form-control">
-                    </div>
+                    @include('staff._form', ['user' => $user, 'roles' => $roles, 'allPermissions' => $allPermissions])
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -155,3 +169,26 @@
 @endforeach
 
 @endsection
+
+@push('scripts')
+<script>
+function openEditModal(userId) {
+    new bootstrap.Modal(document.getElementById('editModal-' + userId)).show();
+}
+
+// When role changes in create/edit form, refresh permission checkboxes to defaults
+function onRoleChange(selectEl, prefix) {
+    const role    = selectEl.value;
+    const defaults = {!! json_encode(
+        collect(['admin','finance','purchasing','staff','viewer'])
+            ->mapWithKeys(fn($r) => [$r => \App\Models\User::roleDefaults($r)])
+    ) !!};
+
+    if (!defaults[role]) return;
+    Object.entries(defaults[role]).forEach(([perm, allowed]) => {
+        const cb = document.querySelector(`input[name="${prefix}[${perm}]"]`);
+        if (cb) cb.checked = allowed;
+    });
+}
+</script>
+@endpush

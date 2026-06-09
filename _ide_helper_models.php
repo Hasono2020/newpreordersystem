@@ -145,11 +145,16 @@ namespace App\Models{
  * @property string|null $reference
  * @property \Illuminate\Support\Carbon $paid_at
  * @property string|null $notes
+ * @property \Illuminate\Support\Carbon|null $voided_at
  * @property int $recorded_by
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property int|null $voided_by
+ * @property string|null $void_reason
+ * @property-read float $effective_amount
  * @property-read \App\Models\Order $order
  * @property-read \App\Models\User $recordedBy
+ * @property-read \App\Models\User|null $voidedBy
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Payment newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Payment newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Payment query()
@@ -164,6 +169,9 @@ namespace App\Models{
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Payment whereReference($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Payment whereType($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Payment whereUpdatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Payment whereVoidReason($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Payment whereVoidedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Payment whereVoidedBy($value)
  */
 	class Payment extends \Eloquent {}
 }
