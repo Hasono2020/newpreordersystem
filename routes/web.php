@@ -12,6 +12,8 @@ use App\Http\Controllers\PurchasingController;
 use App\Http\Controllers\ShippingAreaController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\StaffController;
+use App\Http\Controllers\SupplierController;
+use App\Http\Controllers\SettingsController;
 
 // Auth
 Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
@@ -27,13 +29,14 @@ Route::middleware('auth')->group(function () {
 
     // Products — view always allowed; write actions gated by permission
     Route::get('products-export', [ProductController::class, 'export'])->name('products.export');
-    Route::resource('products', ProductController::class)->only(['index', 'show']);
+    // IMPORTANT: specific routes before resource wildcard to avoid /products/{product} catching 'create'
     Route::middleware('perm:products.create')->group(function () {
         Route::get('products-import-template', [ProductController::class, 'importTemplate'])->name('products.import.template');
         Route::post('products-import', [ProductController::class, 'importCsv'])->name('products.import');
         Route::get('products/create', [ProductController::class, 'create'])->name('products.create');
         Route::post('products', [ProductController::class, 'store'])->name('products.store');
     });
+    Route::resource('products', ProductController::class)->only(['index', 'show']);
     Route::middleware('perm:products.edit')->group(function () {
         Route::get('products/{product}/edit', [ProductController::class, 'edit'])->name('products.edit');
         Route::put('products/{product}', [ProductController::class, 'update'])->name('products.update');
@@ -47,8 +50,8 @@ Route::middleware('auth')->group(function () {
     });
 
     // Customers
-    Route::resource('customers', CustomerController::class);
     Route::delete('customers-bulk', [CustomerController::class, 'bulkDestroy'])->middleware('perm:customers.delete')->name('customers.bulk-destroy');
+    Route::resource('customers', CustomerController::class);
     Route::get('customers-export', [CustomerController::class, 'export'])->name('customers.export');
     Route::get('customers-import-template', [CustomerController::class, 'importTemplate'])->name('customers.import.template');
     Route::post('customers-import', [CustomerController::class, 'importCsv'])->name('customers.import');
@@ -104,12 +107,12 @@ Route::middleware('auth')->group(function () {
     Route::post('reports/import/customers', [ReportController::class, 'importCustomers'])->name('reports.import.customers');
 
     // Suppliers
-    Route::delete('suppliers/bulk-destroy', [\App\Http\Controllers\SupplierController::class, 'bulkDestroy'])->name('suppliers.bulk-destroy');
+    Route::delete('suppliers/bulk-destroy', [SupplierController::class, 'bulkDestroy'])->name('suppliers.bulk-destroy');
     Route::resource('suppliers', \App\Http\Controllers\SupplierController::class);
 
     // Store Settings (admin only)
-    Route::get('settings', [\App\Http\Controllers\SettingsController::class, 'index'])->name('settings.index');
-    Route::put('settings', [\App\Http\Controllers\SettingsController::class, 'update'])->name('settings.update');
+    Route::get('settings', [SettingsController::class, 'index'])->name('settings.index');
+    Route::put('settings', [SettingsController::class, 'update'])->name('settings.update');
 
     // Staff management (admin only)
     Route::get('staff', [StaffController::class, 'index'])->middleware('perm:settings.view')->name('staff.index');

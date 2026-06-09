@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Models\OrderItem;
-use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\ShippingArea;
 use App\Models\Trip;
@@ -403,6 +402,8 @@ class OrderController extends Controller
               - $payments->where('type', 'refund')->sum('amount');
         $status = $paid <= 0 ? 'unpaid'
             : ($paid >= $order->total_amount ? 'paid' : 'partial');
+        // Only auto-confirm pending items when fully paid
+        // Do NOT revert already-confirmed items when payment is voided
         if ($status === 'paid') {
             $order->items()->where('status', 'pending')->update(['status' => 'confirmed']);
         }
@@ -411,7 +412,7 @@ class OrderController extends Controller
 
     public function invoice(Order $order)
     {
-        $order->load(['customer', 'trip', 'shippingArea', 'items.product', 'items.variant', 'payments', 'createdBy']);
+        $order->load(['customer', 'trip', 'shippingArea', 'items.product', 'items.variant', 'payments.recordedBy', 'payments.voidedBy', 'createdBy']);
         return view('orders.invoice', compact('order'));
     }
 
