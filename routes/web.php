@@ -68,6 +68,7 @@ Route::middleware('auth')->group(function () {
     Route::get('purchasing/{purchasing}', [PurchasingController::class, 'show'])->name('purchasing.show');
     Route::get('purchasing/{purchasing}/edit', [PurchasingController::class, 'edit'])->name('purchasing.edit');
     Route::put('purchasing/{purchasing}', [PurchasingController::class, 'update'])->name('purchasing.update');
+    Route::post('purchasing/{purchasing}/sync-demand', [PurchasingController::class, 'syncDemand'])->name('purchasing.sync-demand');
     Route::patch('purchasing/{purchasing}/item/{item}', [PurchasingController::class, 'updateItem'])->name('purchasing.item.update');
     Route::post('purchasing/{purchasing}/add-item', [PurchasingController::class, 'addItem'])->name('purchasing.item.add');
     Route::delete('purchasing/{purchasing}/item/{item}', [PurchasingController::class, 'deleteItem'])->name('purchasing.item.delete');

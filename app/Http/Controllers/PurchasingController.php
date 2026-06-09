@@ -367,7 +367,39 @@ class PurchasingController extends Controller
             $purchasing->update(['total_amount' => $total]);
         });
 
-        return redirect()->route('purchasing.show', $purchasing)->with('success', 'Purchase order updated.');
+        // Count remaining uncovered demand for this supplier
+        $remainingDemand = DB::table('order_items')
+            ->join('orders', 'orders.id', '=', 'order_items.order_id')
+            ->join('products', 'products.id', '=', 'order_items.product_id')
+            ->where('orders.trip_id', $purchasing->trip_id)
+            ->where('products.supplier_id', $purchasing->supplier_id)
+            ->whereIn('order_items.status', ['pending', 'confirmed'])
+            ->count();
+
+        $coveredByPO = DB::table('purchase_order_items')
+            ->join('purchase_orders', 'purchase_orders.id', '=', 'purchase_order_items.purchase_order_id')
+            ->where('purchase_orders.trip_id', $purchasing->trip_id)
+            ->where('purchase_orders.supplier_id', $purchasing->supplier_id)
+            ->whereNotIn('purchase_orders.status', ['cancelled', 'arrived'])
+            ->sum('purchase_order_items.quantity_ordered');
+
+        $totalDemand = DB::table('order_items')
+            ->join('orders', 'orders.id', '=', 'order_items.order_id')
+            ->join('products', 'products.id', '=', 'order_items.product_id')
+            ->where('orders.trip_id', $purchasing->trip_id)
+            ->where('products.supplier_id', $purchasing->supplier_id)
+            ->whereIn('order_items.status', ['pending', 'confirmed'])
+            ->sum('order_items.quantity');
+
+        $netRemaining = max(0, $totalDemand - $coveredByPO);
+        $msg = 'Purchase order updated.';
+        if ($netRemaining > 0) {
+            $msg .= " Note: {$netRemaining} pcs still have uncovered demand — go back to Purchasing to add them.";
+        } else {
+            $msg .= ' All demand for this supplier is now covered.';
+        }
+
+        return redirect()->route('purchasing.show', $purchasing)->with('success', $msg);
     }
 
     /**
@@ -405,6 +437,73 @@ class PurchasingController extends Controller
         $purchasing->update(['total_amount' => $total]);
 
         return response()->json(['ok' => true, 'line_total' => $lineTotal, 'po_total' => $total]);
+    }
+
+    /**
+     * Sync PO items to match current total demand for this supplier+trip.
+     * Called when staff clicks "Add to PO" from purchasing index.
+     * Updates existing line qtys + inserts new variant lines in one shot.
+     */
+    public function syncDemand(PurchaseOrder $purchasing)
+    {
+        // Get ALL current demand for this supplier+trip grouped by product+variant
+        $demand = DB::table('order_items')
+            ->join('orders', 'orders.id', '=', 'order_items.order_id')
+            ->join('products', 'products.id', '=', 'order_items.product_id')
+            ->where('orders.trip_id', $purchasing->trip_id)
+            ->where('products.supplier_id', $purchasing->supplier_id)
+            ->whereIn('order_items.status', ['pending', 'confirmed'])
+            ->selectRaw('order_items.product_variant_id, products.id as product_id, SUM(order_items.quantity) as total_qty')
+            ->groupBy('order_items.product_variant_id', 'products.id')
+            ->get()
+            ->keyBy(fn($r) => $r->product_id.'_'.($r->product_variant_id ?? 'null'));
+
+        // Get existing PO items
+        $existing = DB::table('purchase_order_items')
+            ->where('purchase_order_id', $purchasing->id)
+            ->get()
+            ->keyBy(fn($r) => $r->product_id.'_'.($r->product_variant_id ?? 'null'));
+
+        $now     = now();
+        $inserts = [];
+
+        foreach ($demand as $key => $d) {
+            $totalQty = (int) $d->total_qty;
+            if (isset($existing[$key])) {
+                // Update existing line to match total demand
+                $item = $existing[$key];
+                if ($item->quantity_ordered != $totalQty) {
+                    DB::table('purchase_order_items')->where('id', $item->id)->update([
+                        'quantity_ordered' => $totalQty,
+                        'line_total'       => $totalQty * $item->unit_cost,
+                        'updated_at'       => $now,
+                    ]);
+                }
+            } else {
+                // New variant — insert
+                $inserts[] = [
+                    'purchase_order_id'  => $purchasing->id,
+                    'product_id'         => $d->product_id,
+                    'product_variant_id' => $d->product_variant_id,
+                    'quantity_ordered'   => $totalQty,
+                    'quantity_received'  => 0,
+                    'unit_cost'          => 0,
+                    'line_total'         => 0,
+                    'created_at'         => $now,
+                    'updated_at'         => $now,
+                ];
+            }
+        }
+
+        if ($inserts) DB::table('purchase_order_items')->insert($inserts);
+
+        // Recalculate total
+        $total = DB::table('purchase_order_items')
+            ->where('purchase_order_id', $purchasing->id)->sum('line_total');
+        $purchasing->update(['total_amount' => $total]);
+
+        return redirect()->route('purchasing.edit', $purchasing)
+            ->with('success', 'PO synced with latest demand. Set unit costs and click Save Changes.');
     }
 
     public function addItem(Request $request, PurchaseOrder $purchasing)

@@ -159,7 +159,7 @@ document.getElementById('tripSelect').addEventListener('change', function() {
 async function fetchDemand(tripId) {
     document.getElementById('loadingSpinner').style.display = '';
     try {
-        const res  = await fetch(`/purchasing-demand?trip_id=${tripId}`, {
+        const res  = await fetch(`/purchasing-demand?trip_id=${tripId}&_=${Date.now()}`, {
             headers: { 'X-CSRF-TOKEN': CSRF_TOKEN, 'Accept': 'application/json' }
         });
         DEMAND = await res.json();
@@ -237,9 +237,9 @@ function renderDemand() {
                             <i class="bi bi-chevron-double-up me-1"></i>Collapse
                         </button>
                         ${group.active_po
-                            ? `<a href="/purchasing/${group.active_po.id}/edit" class="btn btn-sm btn-warning">
+                            ? `<button class="btn btn-sm btn-warning" onclick="syncAndEdit(${group.active_po.id}, '${escH(group.active_po.po_number)}')">
                                 <i class="bi bi-pencil me-1"></i>Add to ${escH(group.active_po.po_number)}
-                              </a>`
+                              </button>`
                             : `<button class="btn btn-sm btn-primary" onclick="openPOPanel('${key}')">
                                 <i class="bi bi-file-earmark-plus me-1"></i>Create PO
                               </button>`
@@ -276,6 +276,17 @@ function groupByProduct(rows) {
     return g;
 }
 function escH(s)    { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// Sync PO with latest demand server-side, then redirect to Edit PO
+function syncAndEdit(poId, poNumber) {
+    if (!confirm(`Update "${poNumber}" with all current demand?\n\nItem quantities will be updated to match total orders. You can then set unit costs.`)) return;
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = `/purchasing/${poId}/sync-demand`;
+    form.innerHTML = `<input type="hidden" name="_token" value="${document.querySelector('meta[name=csrf-token]').content}">`;
+    document.body.appendChild(form);
+    form.submit();
+}
 function escAttr(s) { return String(s||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 function cap(s)     { return s ? s[0].toUpperCase()+s.slice(1) : s; }
 

@@ -12,7 +12,7 @@
 /* Unified variant table */
 #variantTable { width:100%;border-collapse:collapse; }
 #variantTable thead th {
-    position:sticky;top:56px;background:#f8fafc;z-index:5;
+    position:sticky;top:0;background:#f8fafc;z-index:5;
     font-size:.75rem;padding:.45rem .6rem;border-bottom:2px solid #e5e7eb;
     font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.04em;
 }
@@ -107,22 +107,41 @@ $existingJson = $purchasing->items->map(fn($i) => [
     'cost'    => (float) $i->unit_cost,
 ])->keyBy('key')->values()->all();
 
+// Build total demand map for this supplier+trip
+$totalDemandMap = DB::table('order_items')
+    ->join('orders', 'orders.id', '=', 'order_items.order_id')
+    ->join('products', 'products.id', '=', 'order_items.product_id')
+    ->where('orders.trip_id', $purchasing->trip_id)
+    ->where('products.supplier_id', $purchasing->supplier_id)
+    ->whereIn('order_items.status', ['pending', 'confirmed'])
+    ->selectRaw('CONCAT(products.id, "_", COALESCE(order_items.product_variant_id, "null")) as dkey,
+                 SUM(order_items.quantity) as total_qty')
+    ->groupBy('dkey')
+    ->pluck('total_qty', 'dkey')
+    ->toArray();
+
 // Combine: existing items first, then new demand
 $combinedRows = collect();
 
 // Existing items
 foreach($purchasing->items as $item) {
+    // Get total demand for this variant
+    $demandKey  = $item->product_id.'_'.($item->product_variant_id ?? 'null');
+    $totalDem   = isset($totalDemandMap[$demandKey]) ? (int)$totalDemandMap[$demandKey] : null;
+    $suggestQty = $totalDem ?? $item->quantity_ordered; // suggest total demand as qty
     $combinedRows->push([
-        'type'        => 'existing',
-        'item_id'     => $item->id,
-        'product_id'  => $item->product_id,
-        'variant_id'  => $item->product_variant_id,
-        'product'     => $item->product->name,
-        'code'        => $item->product->product_code ?? '',
-        'variant'     => $item->variant?->label ?? 'Default',
-        'qty'         => $item->quantity_ordered,
-        'cost'        => (float) $item->unit_cost,
-        'demand'      => null,
+        'type'         => 'existing',
+        'item_id'      => $item->id,
+        'product_id'   => $item->product_id,
+        'variant_id'   => $item->product_variant_id,
+        'product'      => $item->product->name,
+        'code'         => $item->product->product_code ?? '',
+        'variant'      => $item->variant?->label ?? 'Default',
+        'qty'          => $item->quantity_ordered,
+        'cost'         => (float) $item->unit_cost,
+        'demand'       => null,
+        'total_demand' => $totalDem,
+        'suggest_qty'  => $suggestQty,
     ]);
 }
 
@@ -138,9 +157,11 @@ foreach($newDemand as $nd) {
             'product'     => $nd->product_name,
             'code'        => $nd->product_code ?? '',
             'variant'     => $nd->variant_label,
-            'qty'         => 0,
+            'qty'         => $nd->total_demanded, // pre-fill with full demand
             'cost'        => 0,
             'demand'      => $nd->total_demanded,
+            'total_demand'=> $nd->total_demanded,
+            'suggest_qty' => $nd->total_demanded,
         ]);
     }
 }
@@ -156,7 +177,7 @@ foreach($newDemand as $nd) {
             @endif
         </div>
         <div class="d-flex gap-2 align-items-center">
-            <span class="small text-muted"><span class="new-badge">NEW</span> = uncovered demand · changes auto-save</span>
+            <span class="small text-muted d-none d-md-inline"><span class="new-badge">NEW</span> = new demand (pre-filled) · <span style="color:#f59e0b;font-weight:600;">⚠</span> = qty updated to match total demand · auto-saves on change</span>
             <input type="text" id="searchInput" class="form-control form-control-sm" style="width:180px;"
                 placeholder="Search…" oninput="filterTable(this.value)">
         </div>
@@ -202,14 +223,27 @@ function renderChunk() {
     if (!chunk.length) return;
 
     body.insertAdjacentHTML('beforeend', chunk.map((r, ci) => {
-        const isNew  = r.type === 'new';
-        const rowCls = isNew ? 'row-new' : '';
-        const demBadge = r.demand !== null
-            ? `<span class="demand-badge">${r.demand}</span>`
-            : `<span class="text-muted small">—</span>`;
-        const newBadge = isNew ? `<span class="new-badge ms-1">NEW</span>` : '';
-        const lineTotal = (r.qty||0) * (r.cost||0);
-        const rowId = isNew ? `new_${rendered+ci}` : `ex_${r.item_id}`;
+        const isNew     = r.type === 'new';
+        const totalDem  = r.total_demand || null;
+        const poQty     = r.qty || 0;
+        const shortfall = totalDem !== null ? totalDem - poQty : 0;
+        // Use suggest_qty as the input value (total demand for existing, demand for new)
+        const inputQty  = r.suggest_qty ?? poQty;
+        const rowCls    = isNew ? 'row-new' : (shortfall > 0 ? 'table-warning' : '');
+
+        let demBadge;
+        if (isNew) {
+            demBadge = `<span class="demand-badge">${r.demand}</span>`;
+        } else if (totalDem !== null) {
+            demBadge = shortfall > 0
+                ? `<span class="demand-badge" style="background:#f59e0b;" title="${shortfall} still uncovered — input pre-filled with total demand ${totalDem}">${totalDem} ⚠</span>`
+                : `<span style="font-size:.75rem;color:#16a34a;">✓${totalDem}</span>`;
+        } else {
+            demBadge = `<span class="text-muted small">—</span>`;
+        }
+        const newBadge  = isNew ? `<span class="new-badge ms-1">NEW</span>` : '';
+        const lineTotal = (inputQty||0) * (r.cost||0);
+        const rowId     = isNew ? `new_${rendered+ci}` : `ex_${r.item_id}`;
 
         return `<tr class="${rowCls}" id="tr-${rowId}"
                     data-search="${escH((r.product+' '+(r.code||'')+' '+r.variant).toLowerCase())}"
@@ -226,7 +260,7 @@ function renderChunk() {
             <td class="text-center">${demBadge}</td>
             <td>
                 <input type="number" class="form-control form-control-sm qty-input"
-                    value="${r.qty||0}" min="0"
+                    value="${inputQty||0}" min="0"
                     data-row="${rowId}" data-cost="${r.cost||0}"
                     oninput="onQtyChange('${rowId}', this)">
             </td>
@@ -254,6 +288,17 @@ function onQtyChange(rowId, input) {
     document.getElementById(`lt-${rowId}`).textContent = fmtRp(qty * cost);
     input.dataset.cost = cost;
     scheduleSave(rowId);
+    updateSaveBtnLabel();
+}
+
+function updateSaveBtnLabel() {
+    const newWithQty = [...document.querySelectorAll('#tableBody tr[data-type="new"]')]
+        .filter(r => parseInt(r.querySelector('.qty-input')?.value || 0) > 0).length;
+    const btn = document.querySelector('[form="editForm"]');
+    if (!btn) return;
+    btn.innerHTML = newWithQty > 0
+        ? `<i class="bi bi-check-circle me-1"></i>Save Changes <span class="badge bg-success ms-1">${newWithQty} new</span>`
+        : `<i class="bi bi-check-circle me-1"></i>Save Changes`;
 }
 
 function onCostChange(rowId, input) {
@@ -277,7 +322,7 @@ async function doSave(rowId) {
     const type    = row.dataset.type;
     const itemId  = row.dataset.itemId;
     const prodId  = row.dataset.productId;
-    const varId   = row.dataset.variantId;
+    const varId   = row.dataset.variantId || '';
     const tick    = document.getElementById(`tick-${rowId}`);
 
     try {
@@ -291,19 +336,28 @@ async function doSave(rowId) {
             const d = await res.json();
             if (d.ok) flashTick(tick, row);
         } else if (type === 'new' && qty > 0) {
-            // POST new item — merge into existing if same variant
+            // POST new item — only send variant_id if it has a value
+            const params = new URLSearchParams({product_id: prodId, quantity_ordered: qty, unit_cost: cost});
+            if (varId) params.append('product_variant_id', varId);
             const res = await fetch(`/purchasing/${PO_ID}/add-item`, {
                 method: 'POST',
                 headers: {'Content-Type':'application/x-www-form-urlencoded','X-CSRF-TOKEN':CSRF,'Accept':'application/json'},
-                body: new URLSearchParams({product_id: prodId, product_variant_id: varId, quantity_ordered: qty, unit_cost: cost})
+                body: params
             });
             const d = await res.json();
             if (d.ok) {
-                // Row is now an existing item
+                // Mark row as existing so it won't re-appear as new demand
                 row.dataset.type   = 'existing';
                 row.dataset.itemId = d.item_id;
                 row.classList.remove('row-new');
                 row.id = `tr-ex_${d.item_id}`;
+                // Update ROWS array to prevent re-render as NEW after filter/scroll
+                const ri = ROWS.findIndex(r =>
+                    r.type === 'new' &&
+                    String(r.product_id) === String(prodId) &&
+                    (String(r.variant_id||'') === String(varId))
+                );
+                if (ri !== -1) { ROWS[ri].type = 'existing'; ROWS[ri].item_id = d.item_id; }
                 flashTick(tick, row);
             }
         }
@@ -332,9 +386,29 @@ document.getElementById('tableWrap').addEventListener('scroll', function() {
     if (this.scrollTop + this.clientHeight >= this.scrollHeight - 100) renderChunk();
 });
 
-// ── Main form submit — only saves PO header fields ────────────────────
-document.getElementById('editForm').addEventListener('submit', function(e) {
-    // Variant changes are already saved via AJAX — just submit header fields
+// ── Main form submit — save any unsaved NEW rows first, then submit header ──
+document.getElementById('editForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    // Find all NEW rows with qty > 0 that haven't been saved yet
+    const unsaved = [...document.querySelectorAll('#tableBody tr[data-type="new"]')]
+        .filter(row => parseInt(row.querySelector('.qty-input')?.value || 0) > 0);
+
+    if (unsaved.length > 0) {
+        const saveBtn = document.querySelector('[form="editForm"]');
+        if (saveBtn) { saveBtn.disabled = true; saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving…'; }
+
+        // Cancel any pending debounce timers and save immediately
+        for (const row of unsaved) {
+            const rowId = row.id.replace('tr-', '');
+            clearTimeout(saveTimers[rowId]);
+            await doSave(rowId);
+        }
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '<i class="bi bi-check-circle me-1"></i>Save Changes'; }
+    }
+
+    // Now submit the form for header fields
+    this.submit();
 });
 
 // Init
