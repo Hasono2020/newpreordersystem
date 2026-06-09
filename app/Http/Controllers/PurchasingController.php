@@ -2,9 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Order;
 use App\Models\OrderItem;
-use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\PurchaseOrder;
 use App\Models\Trip;
@@ -19,74 +17,135 @@ class PurchasingController extends Controller
         $trips        = Trip::whereIn('status', ['open', 'order_closed', 'purchasing'])->orderByDesc('id')->get();
         $selectedTrip = $request->trip_id ? Trip::find($request->trip_id) : $trips->first();
 
-        // Group demand by supplier for multi-supplier support
-        $demandBySupplier = [];
-        if ($selectedTrip) {
-            $allItems = OrderItem::whereHas('order', fn($q) => $q->where('trip_id', $selectedTrip->id))
-                ->whereIn('status', ['pending', 'confirmed'])
-                ->with('product.supplier', 'variant')
-                ->get();
-
-            // Get supplier IDs that already have an ACTIVE (not yet arrived) PO for this trip
-            // If a PO is already 'arrived', the supplier can show again for new pending demand
-            $supplierIdsWithActivePO = PurchaseOrder::where('trip_id', $selectedTrip->id)
-                ->whereNotIn('status', ['cancelled', 'arrived'])
-                ->whereNotNull('supplier_id')
-                ->pluck('supplier_id')
-                ->unique()
-                ->toArray();
-
-            // Check if a no-supplier active PO exists
-            $hasNoSupplierActivePO = PurchaseOrder::where('trip_id', $selectedTrip->id)
-                ->whereNotIn('status', ['cancelled', 'arrived'])
-                ->whereNull('supplier_id')
-                ->exists();
-
-            $bySupplier = $allItems->groupBy(fn($item) => $item->product->supplier_id ?? 'no_supplier');
-
-            foreach ($bySupplier as $supplierId => $supplierItems) {
-                // Skip if supplier has an active (draft/submitted/confirmed) PO already
-                if ($supplierId === 'no_supplier' && $hasNoSupplierActivePO) continue;
-                if ($supplierId !== 'no_supplier' && in_array($supplierId, $supplierIdsWithActivePO)) continue;
-
-                $firstProduct = $supplierItems->first()->product;
-                $supplierObj  = $firstProduct->supplier;
-                $supplierName = $supplierObj?->name ?? '(No Supplier)';
-
-                $rows = [];
-                foreach ($supplierItems->groupBy('product_variant_id') as $variantId => $group) {
-                    $first = $group->first();
-                    $rows[] = [
-                        'product_id'     => $first->product->id,
-                        'product_name'   => $first->product->name,
-                        'product_code'   => $first->product->product_code,
-                        'variant_id'     => $first->variant?->id,
-                        'variant_label'  => $first->variant?->label,
-                        'total_demanded' => $group->sum('quantity'),
-                        'supplier_stock' => $first->variant?->supplier_stock ?? 0,
-                        'unit_cost'      => $first->product->price,
-                        'product'        => $first->product,
-                        'variant'        => $first->variant,
-                        'remaining'      => $first->variant ? $first->variant->remaining_stock : 0,
-                    ];
-                }
-
-                if (!empty($rows)) {
-                    $demandBySupplier[$supplierId] = [
-                        'supplier_id'   => $supplierId === 'no_supplier' ? null : $supplierId,
-                        'supplier_name' => $supplierName,
-                        'rows'          => $rows,
-                    ];
-                }
-            }
-        }
-
-        $suppliers = \App\Models\Supplier::where('is_active', true)->orderBy('name')->get();
+        // Lightweight: only load POs and pass trip info.
+        // Demand data is loaded asynchronously via demandApi() to keep page load fast.
         $purchaseOrders = $selectedTrip
-            ? PurchaseOrder::where('trip_id', $selectedTrip->id)->with('items.product', 'items.variant', 'supplier')->latest()->get()
+            ? PurchaseOrder::where('trip_id', $selectedTrip->id)
+                ->with('supplier')
+                ->withCount('items')
+                ->latest()->get()
             : collect();
 
-        return view('purchasing.index', compact('trips', 'selectedTrip', 'demandBySupplier', 'purchaseOrders', 'suppliers'));
+        return view('purchasing.index', compact('trips', 'selectedTrip', 'purchaseOrders'));
+    }
+
+    /**
+     * API: return demand grouped by supplier for a trip.
+     * Called asynchronously by the purchasing page after load.
+     */
+    public function demandApi(Request $request)
+    {
+        $trip = Trip::find($request->trip_id);
+        if (!$trip) return response()->json([]);
+
+        // Single optimised query using joins — avoids loading full Eloquent models
+        $rows = DB::table('order_items')
+            ->join('orders',           'orders.id',           '=', 'order_items.order_id')
+            ->join('products',         'products.id',         '=', 'order_items.product_id')
+            ->leftJoin('product_variants', 'product_variants.id', '=', 'order_items.product_variant_id')
+            ->leftJoin('suppliers',    'suppliers.id',        '=', 'products.supplier_id')
+            ->where('orders.trip_id', $trip->id)
+            ->whereIn('order_items.status', ['pending', 'confirmed'])
+            ->select([
+                'products.supplier_id',
+                DB::raw('COALESCE(suppliers.name, "(No Supplier)") as supplier_name'),
+                'products.id as product_id',
+                'products.name as product_name',
+                'products.product_code',
+                'product_variants.id as variant_id',
+                'product_variants.color',
+                'product_variants.size',
+                DB::raw('COALESCE(product_variants.supplier_stock, 0) as supplier_stock'),
+                DB::raw('SUM(order_items.quantity) as total_demanded'),
+            ])
+            ->groupBy([
+                'products.supplier_id', 'supplier_name',
+                'products.id', 'products.name', 'products.product_code',
+                'product_variants.id', 'product_variants.color', 'product_variants.size',
+                'product_variants.supplier_stock',
+            ])
+            ->orderBy('supplier_name')
+            ->orderBy('products.name')
+            ->get();
+
+        // Suppliers whose POs are confirmed/arrived — hide their demand entirely
+        $lockedSupplierIds = PurchaseOrder::where('trip_id', $trip->id)
+            ->whereIn('status', ['confirmed', 'arrived'])
+            ->whereNotNull('supplier_id')
+            ->pluck('supplier_id')->unique()->toArray();
+
+        $lockedNoSupplier = PurchaseOrder::where('trip_id', $trip->id)
+            ->whereIn('status', ['confirmed', 'arrived'])
+            ->whereNull('supplier_id')->exists();
+
+        // For each variant, get total quantity already in active POs for this trip.
+        // We compare this against total demand — only hide/reduce demand by what's covered.
+        $poQtyByVariant = DB::table('purchase_order_items')
+            ->join('purchase_orders', 'purchase_orders.id', '=', 'purchase_order_items.purchase_order_id')
+            ->where('purchase_orders.trip_id', $trip->id)
+            ->whereNotIn('purchase_orders.status', ['cancelled', 'arrived'])
+            ->select([
+                'purchase_order_items.product_id',
+                'purchase_order_items.product_variant_id',
+                DB::raw('SUM(purchase_order_items.quantity_ordered) as po_qty'),
+            ])
+            ->groupBy('purchase_order_items.product_id', 'purchase_order_items.product_variant_id')
+            ->get()
+            ->keyBy(fn($r) => $r->product_id . '_' . ($r->product_variant_id ?? 'null'));
+
+        // Draft/submitted POs for warning banners
+        $draftPOsRaw = PurchaseOrder::where('trip_id', $trip->id)
+            ->whereIn('status', ['draft', 'submitted'])
+            ->get(['id', 'po_number', 'supplier_id', 'status']);
+        $draftPOs = $draftPOsRaw->groupBy(fn($p) => $p->supplier_id ?? 'no_supplier');
+
+        // Group into supplier → products → variants
+        $bySupplier = [];
+        foreach ($rows as $row) {
+            $supId = $row->supplier_id ?? 'no_supplier';
+
+            // Skip if supplier is fully locked (confirmed/arrived PO)
+            if ($supId === 'no_supplier' && $lockedNoSupplier) continue;
+            if ($supId !== 'no_supplier' && in_array($supId, $lockedSupplierIds)) continue;
+
+            // Subtract PO qty from demand — only show uncovered remainder
+            $poKey       = $row->product_id . '_' . ($row->variant_id ?? 'null');
+            $poQty       = isset($poQtyByVariant[$poKey]) ? (int) $poQtyByVariant[$poKey]->po_qty : 0;
+            $netDemanded = (int) $row->total_demanded - $poQty;
+            if ($netDemanded <= 0) continue; // fully covered — skip
+
+            if (!isset($bySupplier[$supId])) {
+                $draftPOList = $draftPOs->get($supId) ?? collect();
+                // Get the single active PO for this supplier (enforced 1 per supplier)
+                $activePO = $draftPOList->first();
+                $bySupplier[$supId] = [
+                    'supplier_id'   => $supId === 'no_supplier' ? null : $supId,
+                    'supplier_name' => $row->supplier_name,
+                    'active_po'     => $activePO ? ['id'=>$activePO->id,'po_number'=>$activePO->po_number,'status'=>$activePO->status] : null,
+                    'draft_pos'     => $draftPOList->map(fn($p) => ['id'=>$p->id,'po_number'=>$p->po_number,'status'=>$p->status])->values()->all(),
+                    'rows'          => [],
+                ];
+            }
+
+            // Build variant label
+            $parts = array_filter([$row->color, $row->size]);
+            $label = $parts ? implode(' / ', $parts) : 'Default';
+
+            $bySupplier[$supId]['rows'][] = [
+                'product_id'     => $row->product_id,
+                'product_name'   => $row->product_name,
+                'product_code'   => $row->product_code ?? '',
+                'variant_id'     => $row->variant_id,
+                'variant_label'  => $label,
+                'total_demanded' => $netDemanded,  // net uncovered demand
+                'supplier_stock' => (int) $row->supplier_stock,
+            ];
+        }
+
+        // Remove suppliers with no remaining demand
+        $bySupplier = array_filter($bySupplier, fn($s) => !empty($s['rows']));
+
+        return response()->json(array_values($bySupplier));
     }
 
     public function store(Request $request)
@@ -102,25 +161,85 @@ class PurchasingController extends Controller
         ]);
 
         DB::transaction(function () use ($request, &$po) {
-            $po = PurchaseOrder::create([
-                'trip_id'     => $request->trip_id,
-                'supplier_id' => $request->supplier_id ?: null,
-                'created_by'  => Auth::id(),
-                'purchased_at'=> now()->toDateString(),
-            ]);
+            $supplierId = $request->supplier_id ?: null;
 
-            $total = 0;
-            foreach ($request->items as $item) {
-                $lineTotal = $item['unit_cost'] * $item['quantity_ordered'];
-                $po->items()->create([
-                    'product_id'         => $item['product_id'],
-                    'product_variant_id' => $item['product_variant_id'] ?? null,
-                    'quantity_ordered'   => $item['quantity_ordered'],
-                    'unit_cost'          => $item['unit_cost'],
-                    'line_total'         => $lineTotal,
+            // Enforce 1 active PO per supplier per trip — merge into existing if found
+            $existingPO = PurchaseOrder::where('trip_id', $request->trip_id)
+                ->where('supplier_id', $supplierId)
+                ->whereNotIn('status', ['cancelled', 'arrived'])
+                ->first();
+
+            if ($existingPO) {
+                $po = $existingPO; // merge into existing
+            } else {
+                $po = PurchaseOrder::create([
+                    'trip_id'      => $request->trip_id,
+                    'supplier_id'  => $supplierId,
+                    'created_by'   => Auth::id(),
+                    'purchased_at' => now()->toDateString(),
                 ]);
-                $total += $lineTotal;
             }
+
+            // Load existing PO items keyed by product+variant for dedup check
+            $existingItems = DB::table('purchase_order_items')
+                ->where('purchase_order_id', $po->id)
+                ->get()
+                ->keyBy(fn($r) => $r->product_id . '_' . ($r->product_variant_id ?? 'null'));
+
+            $newRows   = [];
+            $updateIds = []; // existing items that need qty bump
+            $now       = now();
+
+            foreach ($request->items as $item) {
+                $qty       = (int)   $item['quantity_ordered'];
+                $cost      = (float) $item['unit_cost'];
+                $variantId = $item['product_variant_id'] ?: null;
+                $key       = $item['product_id'] . '_' . ($variantId ?? 'null');
+
+                if (isset($existingItems[$key])) {
+                    // Same variant already in PO — accumulate qty to update later
+                    $updateIds[$key] = [
+                        'id'  => $existingItems[$key]->id,
+                        'qty' => ($existingItems[$key]->quantity_ordered + $qty),
+                        'cost'=> $cost ?: $existingItems[$key]->unit_cost,
+                    ];
+                } else {
+                    $lineTotal = $cost * $qty;
+                    $newRows[] = [
+                        'purchase_order_id'  => $po->id,
+                        'product_id'         => $item['product_id'],
+                        'product_variant_id' => $variantId,
+                        'quantity_ordered'   => $qty,
+                        'quantity_received'  => 0,
+                        'unit_cost'          => $cost,
+                        'line_total'         => $lineTotal,
+                        'created_at'         => $now,
+                        'updated_at'         => $now,
+                    ];
+                }
+            }
+
+            // Bulk INSERT new variant lines
+            if (!empty($newRows)) {
+                DB::table('purchase_order_items')->insert($newRows);
+            }
+
+            // Bump qty on existing lines (one query per updated line — usually very few)
+            foreach ($updateIds as $upd) {
+                $newLineTotal = $upd['qty'] * $upd['cost'];
+                DB::table('purchase_order_items')->where('id', $upd['id'])->update([
+                    'quantity_ordered' => $upd['qty'],
+                    'unit_cost'        => $upd['cost'],
+                    'line_total'       => $newLineTotal,
+                    'updated_at'       => $now,
+                ]);
+            }
+
+            // Recalculate total from all items
+            $total = DB::table('purchase_order_items')
+                ->where('purchase_order_id', $po->id)
+                ->sum('line_total');
+
             $po->update(['total_amount' => $total, 'status' => 'submitted']);
         });
 
@@ -137,7 +256,46 @@ class PurchasingController extends Controller
     {
         $purchasing->load(['items.product', 'items.variant', 'trip', 'supplier']);
         $suppliers = \App\Models\Supplier::where('is_active', true)->orderBy('name')->get();
-        return view('purchasing.edit', compact('purchasing', 'suppliers'));
+
+        // Load NEW demand not yet in this PO — same supplier, same trip, pending/confirmed items
+        // Exclude variants already in this PO
+        $existingVariantIds = $purchasing->items->pluck('product_variant_id')->filter()->toArray();
+        $existingProductIds = $purchasing->items->pluck('product_id')->toArray();
+
+        $newDemand = DB::table('order_items')
+            ->join('orders',           'orders.id',           '=', 'order_items.order_id')
+            ->join('products',         'products.id',         '=', 'order_items.product_id')
+            ->leftJoin('product_variants', 'product_variants.id', '=', 'order_items.product_variant_id')
+            ->where('orders.trip_id', $purchasing->trip_id)
+            ->where('products.supplier_id', $purchasing->supplier_id)
+            ->whereIn('order_items.status', ['pending', 'confirmed'])
+            ->when(!empty($existingVariantIds), fn($q) =>
+                $q->whereNotIn('order_items.product_variant_id', $existingVariantIds)
+            )
+            ->select([
+                'products.id as product_id',
+                'products.name as product_name',
+                'products.product_code',
+                'product_variants.id as variant_id',
+                'product_variants.color',
+                'product_variants.size',
+                DB::raw('COALESCE(product_variants.supplier_stock, 0) as supplier_stock'),
+                DB::raw('SUM(order_items.quantity) as total_demanded'),
+            ])
+            ->groupBy([
+                'products.id','products.name','products.product_code',
+                'product_variants.id','product_variants.color','product_variants.size',
+                'product_variants.supplier_stock',
+            ])
+            ->orderBy('products.name')
+            ->get()
+            ->map(function($r) {
+                $parts = array_filter([$r->color, $r->size]);
+                $r->variant_label = $parts ? implode(' / ', $parts) : 'Default';
+                return $r;
+            });
+
+        return view('purchasing.edit', compact('purchasing', 'suppliers', 'newDemand'));
     }
 
     public function update(Request $request, PurchaseOrder $purchasing)
@@ -147,10 +305,13 @@ class PurchasingController extends Controller
             'purchased_at' => 'nullable|date',
             'status'       => 'required|in:draft,submitted,confirmed,arrived',
             'notes'        => 'nullable|string',
-            'items'        => 'required|array|min:1',
-            'items.*.id'            => 'required|exists:purchase_order_items,id',
-            'items.*.quantity_ordered' => 'required|integer|min:0',
-            'items.*.unit_cost'     => 'required|numeric|min:0',
+            // new_items only — existing items are NOT submitted in the form to avoid
+            // max_input_vars truncation. Existing items are saved via updateItem() AJAX.
+            'new_items'                      => 'nullable|array',
+            'new_items.*.product_id'         => 'nullable|integer',
+            'new_items.*.product_variant_id' => 'nullable|integer',
+            'new_items.*.quantity_ordered'   => 'nullable|integer|min:1',
+            'new_items.*.unit_cost'          => 'nullable|numeric|min:0',
         ]);
 
         \DB::transaction(function () use ($request, $purchasing) {
@@ -161,23 +322,101 @@ class PurchasingController extends Controller
                 'notes'        => $request->notes,
             ]);
 
-            $total = 0;
-            foreach ($request->items as $itemData) {
-                $poItem = $purchasing->items()->find($itemData['id']);
-                if ($poItem) {
-                    $lineTotal = $itemData['unit_cost'] * $itemData['quantity_ordered'];
-                    $poItem->update([
-                        'quantity_ordered' => $itemData['quantity_ordered'],
-                        'unit_cost'        => $itemData['unit_cost'],
-                        'line_total'       => $lineTotal,
-                    ]);
-                    $total += $lineTotal;
+            // Recalculate total from existing items (unchanged)
+            $total = (float) DB::table('purchase_order_items')
+                ->where('purchase_order_id', $purchasing->id)
+                ->sum('line_total');
+
+            // Add new items from demand panel — merge qty if variant already exists in PO
+            if ($request->filled('new_items')) {
+                $existingItems = DB::table('purchase_order_items')
+                    ->where('purchase_order_id', $purchasing->id)
+                    ->get()
+                    ->keyBy(fn($r) => $r->product_id . '_' . ($r->product_variant_id ?? 'null'));
+
+                $newRows = [];
+                $now     = now();
+                foreach ($request->new_items as $ni) {
+                    if (empty($ni['product_id']) || empty($ni['quantity_ordered'])) continue;
+                    $qty       = (int)   $ni['quantity_ordered'];
+                    $cost      = (float) ($ni['unit_cost'] ?? 0);
+                    $variantId = $ni['product_variant_id'] ?: null;
+                    $key       = $ni['product_id'] . '_' . ($variantId ?? 'null');
+
+                    if (isset($existingItems[$key])) {
+                        // Merge into existing line
+                        $newQty       = $existingItems[$key]->quantity_ordered + $qty;
+                        $useCost      = $cost ?: $existingItems[$key]->unit_cost;
+                        $newLineTotal = $newQty * $useCost;
+                        DB::table('purchase_order_items')->where('id', $existingItems[$key]->id)->update([
+                            'quantity_ordered' => $newQty,
+                            'unit_cost'        => $useCost,
+                            'line_total'       => $newLineTotal,
+                            'updated_at'       => $now,
+                        ]);
+                        $total += $newLineTotal - ($existingItems[$key]->line_total ?? 0);
+                    } else {
+                        $lineTotal = $qty * $cost;
+                        $total    += $lineTotal;
+                        $newRows[] = [
+                            'purchase_order_id'  => $purchasing->id,
+                            'product_id'         => $ni['product_id'],
+                            'product_variant_id' => $variantId,
+                            'quantity_ordered'   => $qty,
+                            'quantity_received'  => 0,
+                            'unit_cost'          => $cost,
+                            'line_total'         => $lineTotal,
+                            'created_at'         => $now,
+                            'updated_at'         => $now,
+                        ];
+                    }
+                }
+                if (!empty($newRows)) {
+                    DB::table('purchase_order_items')->insert($newRows);
                 }
             }
+
             $purchasing->update(['total_amount' => $total]);
         });
 
         return redirect()->route('purchasing.show', $purchasing)->with('success', 'Purchase order updated.');
+    }
+
+    /**
+     * AJAX: update a single existing PO item inline (avoids max_input_vars for large POs)
+     */
+    public function updateItem(Request $request, PurchaseOrder $purchasing, int $itemId)
+    {
+        $request->validate([
+            'quantity_ordered' => 'required|integer|min:0',
+            'unit_cost'        => 'required|numeric|min:0',
+        ]);
+
+        $item = DB::table('purchase_order_items')
+            ->where('id', $itemId)
+            ->where('purchase_order_id', $purchasing->id)
+            ->first();
+
+        if (!$item) return response()->json(['error' => 'Item not found'], 404);
+
+        $qty       = (int)   $request->quantity_ordered;
+        $cost      = (float) $request->unit_cost;
+        $lineTotal = $qty * $cost;
+
+        DB::table('purchase_order_items')->where('id', $itemId)->update([
+            'quantity_ordered' => $qty,
+            'unit_cost'        => $cost,
+            'line_total'       => $lineTotal,
+            'updated_at'       => now(),
+        ]);
+
+        // Recalculate PO total
+        $total = DB::table('purchase_order_items')
+            ->where('purchase_order_id', $purchasing->id)
+            ->sum('line_total');
+        $purchasing->update(['total_amount' => $total]);
+
+        return response()->json(['ok' => true, 'line_total' => $lineTotal, 'po_total' => $total]);
     }
 
     public function destroy(PurchaseOrder $purchasing)

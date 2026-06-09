@@ -4,80 +4,58 @@
 
 @push('styles')
 <style>
-/* ── Sticky bottom bar ───────────────────────────── */
 .po-sticky-bar {
-    position: fixed;
-    bottom: 0; left: 0; right: 0;
-    z-index: 200;
-    background: #1e293b;
-    color: #fff;
-    padding: .75rem 1.5rem;
-    display: flex;
-    align-items: center;
-    gap: 1.5rem;
-    box-shadow: 0 -4px 16px rgba(0,0,0,.18);
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 200;
+    background: #1e293b; color: #fff;
+    padding: .65rem 1.25rem;
+    display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap;
+    box-shadow: 0 -4px 16px rgba(0,0,0,.2);
 }
-.po-sticky-bar .stat { text-align: center; }
-.po-sticky-bar .stat .val { font-size: 1.1rem; font-weight: 700; color: #38bdf8; }
-.po-sticky-bar .stat .lbl { font-size: .7rem; color: #94a3b8; text-transform: uppercase; letter-spacing: .04em; }
-.po-sticky-bar .divider { width: 1px; height: 36px; background: #334155; }
-.po-sticky-bar .ms-auto { margin-left: auto !important; }
-body { padding-bottom: 80px; }
+.po-sticky-bar .stat .val { font-size: 1rem; font-weight: 700; color: #38bdf8; }
+.po-sticky-bar .stat .lbl { font-size: .65rem; color: #94a3b8; text-transform: uppercase; letter-spacing: .04em; }
+.po-sticky-bar .divider { width: 1px; height: 32px; background: #334155; flex-shrink:0; }
+body { padding-bottom: 72px; }
 
-/* ── PO creation panel ───────────────────────────── */
-.po-panel { display: none; }
-.po-panel.active { display: block; }
-
-/* ── Accordion ───────────────────────────────────── */
-.product-group-header {
-    cursor: pointer;
-    user-select: none;
-    padding: .55rem .9rem;
-    background: #fff;
-    border: 1px solid #e5e7eb;
-    border-radius: 7px;
-    margin-bottom: 4px;
-    display: grid;
-    grid-template-columns: 18px 1fr auto;
-    align-items: center;
-    gap: .6rem;
-    transition: background .1s, border-color .1s;
+.pgh {
+    cursor: pointer; user-select: none;
+    padding: .5rem .85rem;
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 7px; margin-bottom: 4px;
+    display: flex; align-items: center; gap: .55rem;
+    transition: background .1s, border-color .1s; min-width: 0;
 }
-.product-group-header:hover { background: #f0f9ff; border-color: #bae6fd; }
-.product-group-header.open  { background: #f0f9ff; border-color: #7dd3fc; }
-.product-group-header .toggle-icon { transition: transform .2s; color: #94a3b8; font-size:.75rem; justify-self:center; }
-.product-group-header.open .toggle-icon { transform: rotate(90deg); color: #0ea5e9; }
-.product-group-header .gh-name { font-size: .83rem; font-weight: 600; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.product-group-header .gh-code { font-size: .7rem; font-family: monospace; color: #6366f1; background: #eef2ff; border-radius: 4px; padding: 1px 5px; white-space: nowrap; }
-.product-group-header .gh-meta { display: flex; align-items: center; gap: .5rem; }
-.product-group-header .gh-qty  { font-size: .78rem; font-weight: 700; color: #fff; background: #2563eb; border-radius: 12px; padding: 2px 10px; white-space: nowrap; }
-.product-group-header .gh-vars { font-size: .72rem; color: #94a3b8; white-space: nowrap; min-width: 70px; text-align: right; }
-.product-group-body { display: none; padding: .25rem 0 .5rem 1.2rem; }
-.product-group-body.open { display: block; }
+.pgh:hover  { background: #f0f9ff; border-color: #bae6fd; }
+.pgh.open   { background: #eff6ff; border-color: #93c5fd; }
+.pgh .ti    { flex-shrink:0; width:14px; font-size:.72rem; color:#94a3b8; transition:transform .18s; }
+.pgh.open .ti { transform:rotate(90deg); color:#2563eb; }
+.pgh .gn    { flex:1 1 0; font-size:.83rem; font-weight:600; color:#1e293b; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+.pgh .gc    { flex-shrink:0; font-size:.67rem; font-family:monospace; color:#6366f1; background:#eef2ff; border-radius:4px; padding:1px 5px; }
+.pgh .gv    { flex-shrink:0; font-size:.7rem; color:#9ca3af; white-space:nowrap; min-width:65px; text-align:right; }
+.pgh .gq    { flex-shrink:0; font-size:.74rem; font-weight:700; color:#fff; background:#2563eb; border-radius:20px; padding:2px 10px; white-space:nowrap; }
+.pgh .gq.muted { background:#64748b; }
+.pgb { display:none; padding: .2rem 0 .4rem 1rem; }
+.pgb.open { display:block; }
+.vrow { display:flex; align-items:center; gap:.5rem; padding:.35rem .5rem; border-radius:4px; font-size:.82rem; }
+.vrow:hover { background:#f8fafc; }
+.vrow .vl { flex:1; color:#374151; }
+.vrow .vd { width:52px; text-align:center; }
+.vrow .vg { width:48px; text-align:center; font-size:.75rem; }
+.vrow input[type=number] { width:82px; }
+.vrow .vc { width:120px; }
+.po-panel { display:none; border-top: 2px solid #3b82f6; }
+.po-panel.active { display:block; }
+.search-hidden { display:none !important; }
 
-/* ── variant row ─────────────────────────────────── */
-.variant-row { display: flex; align-items: center; gap: .5rem; padding: .4rem .5rem; border-radius: 4px; }
-.variant-row:hover { background: #f8fafc; }
-.variant-row .v-label { min-width: 180px; font-size: .83rem; }
-.variant-row .v-demand { min-width: 60px; text-align:center; }
-.variant-row .v-gap { min-width: 55px; text-align:center; font-size:.8rem; }
-.variant-row input[type=number] { width: 80px; }
-
-/* ── Summary card ────────────────────────────────── */
-.summary-card { background:#f0f9ff; border:1.5px solid #bae6fd; border-radius:10px; padding:1rem; margin-bottom:1rem; }
-.summary-card .s-val { font-size:1.25rem; font-weight:700; color:#0369a1; }
-.summary-card .s-lbl { font-size:.72rem; color:#6b7280; text-transform:uppercase; letter-spacing:.04em; }
-
-/* ── Search highlight ────────────────────────────── */
-.search-hidden { display: none !important; }
+/* Skeleton loader */
+.skel-line { height:44px; background:linear-gradient(90deg,#f0f0f0 25%,#e8e8e8 50%,#f0f0f0 75%);
+    background-size:200% 100%; animation:sk 1.2s infinite; border-radius:7px; margin-bottom:4px; }
+@keyframes sk { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
 </style>
 @endpush
 
 @section('content')
 
-{{-- Trip selector --}}
-<form class="d-flex gap-2 mb-3 align-items-center">
-    <select name="trip_id" class="form-select form-select-sm" style="width:300px;" onchange="this.form.submit()">
+<form class="d-flex gap-2 mb-3 align-items-center" id="tripForm">
+    <select name="trip_id" id="tripSelect" class="form-select form-select-sm" style="width:300px;">
         <option value="">Select trip…</option>
         @foreach($trips as $trip)
             <option value="{{ $trip->id }}" {{ $selectedTrip?->id == $trip->id ? 'selected' : '' }}>
@@ -85,261 +63,21 @@ body { padding-bottom: 80px; }
             </option>
         @endforeach
     </select>
+    <span id="loadingSpinner" class="spinner-border spinner-border-sm text-primary ms-2" style="display:none;"></span>
 </form>
 
 @if($selectedTrip)
-
-{{-- ── Main layout ── --}}
 <div class="row g-3">
-
-    {{-- LEFT: Demand grouped by supplier --}}
     <div class="col-lg-8">
-
-        @forelse($demandBySupplier as $supplierId => $group)
-        @php
-            $supplierName   = $group['supplier_name'];
-            $supplierRealId = $group['supplier_id'];
-            $rows           = $group['rows'];
-            $safeKey        = 'sup_' . ($supplierRealId ?? 'none');
-
-            // Group rows by product_id for accordion
-            $byProduct = collect($rows)->groupBy('product_id');
-            $totalQty  = collect($rows)->sum('total_demanded');
-            $totalVariants = count($rows);
-            $totalProducts = $byProduct->count();
-            $totalCost = collect($rows)->sum(fn($r) => $r['total_demanded'] * $r['unit_cost']);
-        @endphp
-
-        <div class="card mb-4" id="card-{{ $safeKey }}">
-            {{-- Supplier header --}}
-            <div class="card-header bg-white py-3">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <span class="fw-bold fs-6">{{ $supplierName }}</span>
-                        <span class="badge bg-light text-secondary border ms-2">{{ $totalProducts }} products</span>
-                        <span class="badge bg-light text-secondary border ms-1">{{ $totalVariants }} variants</span>
-                    </div>
-                    <div class="d-flex gap-2">
-                        <button class="btn btn-sm btn-outline-secondary" onclick="expandAll('{{ $safeKey }}')">
-                            <i class="bi bi-chevron-double-down me-1"></i>Expand all
-                        </button>
-                        <button class="btn btn-sm btn-outline-secondary" onclick="collapseAll('{{ $safeKey }}')">
-                            <i class="bi bi-chevron-double-up me-1"></i>Collapse all
-                        </button>
-                        <button class="btn btn-sm btn-primary" onclick="openPOPanel('{{ $safeKey }}')">
-                            <i class="bi bi-file-earmark-plus me-1"></i>Create PO
-                        </button>
-                    </div>
-                </div>
-
-                {{-- Summary strip --}}
-                <div class="d-flex gap-4 mt-2 pt-2 border-top">
-                    <div class="summary-strip-item">
-                        <div class="s-val" style="font-size:.95rem;font-weight:700;color:#0369a1;">{{ number_format($totalQty) }}</div>
-                        <div class="s-lbl" style="font-size:.68rem;color:#6b7280;text-transform:uppercase;">Total Qty</div>
-                    </div>
-                    <div class="summary-strip-item">
-                        <div class="s-val" style="font-size:.95rem;font-weight:700;color:#0369a1;">{{ $totalVariants }}</div>
-                        <div class="s-lbl" style="font-size:.68rem;color:#6b7280;text-transform:uppercase;">Variants</div>
-                    </div>
-                    <div class="summary-strip-item">
-                        <div class="s-val" style="font-size:.95rem;font-weight:700;color:#0369a1;">Rp {{ number_format($totalCost, 0, ',', '.') }}</div>
-                        <div class="s-lbl" style="font-size:.68rem;color:#6b7280;text-transform:uppercase;">Est. Cost</div>
-                    </div>
-                </div>
-
-                {{-- Search --}}
-                <div class="mt-2">
-                    <input type="text" class="form-control form-control-sm supplier-search"
-                        data-key="{{ $safeKey }}"
-                        placeholder="Search product or variant…"
-                        oninput="searchProducts(this)">
-                </div>
-            </div>
-
-            {{-- Accordion product groups --}}
-            <div class="card-body py-2" id="accordion-{{ $safeKey }}">
-                @foreach($byProduct as $productId => $productRows)
-                @php
-                    $firstRow    = $productRows->first();
-                    $productName = $firstRow['product_name'];
-                    $productCode = $firstRow['product_code'] ?? '';
-                    $groupQty    = $productRows->sum('total_demanded');
-                    $groupId     = $safeKey . '_p' . $productId;
-                @endphp
-
-                <div class="product-group mb-1" data-product-name="{{ strtolower($productName) }} {{ strtolower($productCode) }}" id="group-{{ $groupId }}">
-                    {{-- Group header --}}
-                    <div class="product-group-header" onclick="toggleGroup('{{ $groupId }}')">
-                        <i class="bi bi-chevron-right toggle-icon"></i>
-                        <span class="gh-name">{{ $productName }}</span>
-                        <div class="gh-meta">
-                            @if($productCode)
-                                <span class="gh-code">{{ $productCode }}</span>
-                            @endif
-                            <span class="gh-vars">{{ $productRows->count() }} variant(s)</span>
-                            <span class="gh-qty">{{ $groupQty }} pcs</span>
-                        </div>
-                    </div>
-
-                    {{-- Group body: variant rows --}}
-                    <div class="product-group-body" id="body-{{ $groupId }}">
-                        @foreach($productRows as $row)
-                        @php $gap = $row['supplier_stock'] - $row['total_demanded']; @endphp
-                        <div class="variant-row" data-variant="{{ strtolower($row['variant_label'] ?? '') }}">
-                            <div class="v-label text-muted">
-                                {{ $row['variant_label'] ?? 'Default' }}
-                            </div>
-                            <div class="v-demand">
-                                <span class="badge bg-primary">{{ $row['total_demanded'] }}</span>
-                                <div style="font-size:.65rem;color:#9ca3af;">demand</div>
-                            </div>
-                            <div class="v-gap">
-                                <span class="{{ $gap < 0 ? 'text-danger fw-bold' : 'text-success' }}">
-                                    {{ $gap >= 0 ? '+' : '' }}{{ $gap }}
-                                </span>
-                                <div style="font-size:.65rem;color:#9ca3af;">gap</div>
-                            </div>
-                        </div>
-                        @endforeach
-                    </div>
-                </div>
-                @endforeach
-            </div>
-
-            {{-- PO Creation panel — inline below the demand table --}}
-            <div class="po-panel border-top" id="po-panel-{{ $safeKey }}">
-                <form method="POST" action="{{ route('purchasing.store') }}" class="po-create-form"
-                      id="po-form-{{ $safeKey }}"
-                      onsubmit="return confirmPO(this)">
-                    @csrf
-                    <input type="hidden" name="trip_id"     value="{{ $selectedTrip->id }}">
-                    <input type="hidden" name="supplier_id" value="{{ $supplierRealId }}">
-
-                    <div class="card-header bg-light d-flex justify-content-between align-items-center py-2">
-                        <span class="fw-semibold text-primary"><i class="bi bi-file-earmark-plus me-1"></i>Create Purchase Order — {{ $supplierName }}</span>
-                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="closePOPanel('{{ $safeKey }}')">
-                            <i class="bi bi-x"></i> Cancel
-                        </button>
-                    </div>
-
-                    <div class="card-body">
-                        {{-- PO header fields --}}
-                        <div class="row g-2 mb-3">
-                            <div class="col-md-4">
-                                <label class="form-label small fw-semibold">Purchase Date</label>
-                                <input type="date" name="purchased_at" class="form-control form-control-sm" value="{{ date('Y-m-d') }}" required>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label small fw-semibold">Notes</label>
-                                <input type="text" name="notes" class="form-control form-control-sm" placeholder="Optional notes…">
-                            </div>
-                        </div>
-
-                        {{-- Search within PO form --}}
-                        <div class="mb-2">
-                            <input type="text" class="form-control form-control-sm po-form-search"
-                                data-form-key="{{ $safeKey }}"
-                                placeholder="Search product or variant in PO form…"
-                                oninput="searchPOForm(this)">
-                        </div>
-
-                        {{-- PO items: accordion by product --}}
-                        <div id="po-items-{{ $safeKey }}">
-                            @foreach($byProduct as $productId => $productRows)
-                            @php
-                                $firstRow    = $productRows->first();
-                                $pName       = $firstRow['product_name'];
-                                $pCode       = $firstRow['product_code'] ?? '';
-                                $pGroupQty   = $productRows->sum('total_demanded');
-                                $poGroupId   = 'po_' . $safeKey . '_p' . $productId;
-                            @endphp
-                            <div class="product-group mb-1 po-product-group"
-                                 data-product-name="{{ strtolower($pName) }} {{ strtolower($pCode) }}"
-                                 id="po-group-{{ $poGroupId }}">
-
-                                <div class="product-group-header open" onclick="toggleGroup('{{ $poGroupId }}')">
-                                    <i class="bi bi-chevron-right toggle-icon"></i>
-                                    <span class="gh-name">{{ $pName }}</span>
-                                    <div class="gh-meta">
-                                        @if($pCode)
-                                            <span class="gh-code">{{ $pCode }}</span>
-                                        @endif
-                                        <span class="gh-vars">{{ $productRows->count() }} variant(s)</span>
-                                        <span class="gh-qty po-group-qty" data-group="{{ $poGroupId }}">{{ $pGroupQty }} pcs</span>
-                                    </div>
-                                            </div>
-
-                                <div class="product-group-body open" id="body-{{ $poGroupId }}">
-                                    @foreach($productRows as $ri => $row)
-                                    @php
-                                        $flatIdx = $loop->parent->index * 1000 + $loop->index;
-                                    @endphp
-                                    <div class="variant-row po-variant-row"
-                                         data-group="{{ $poGroupId }}"
-                                         data-variant="{{ strtolower($row['variant_label'] ?? '') }}">
-                                        <input type="hidden" name="items[{{ $flatIdx }}][product_id]"         value="{{ $row['product_id'] }}">
-                                        <input type="hidden" name="items[{{ $flatIdx }}][product_variant_id]" value="{{ $row['variant_id'] ?? '' }}">
-
-                                        <div class="v-label">
-                                            <span class="small">{{ $row['variant_label'] ?? 'Default' }}</span>
-                                            <div style="font-size:.65rem;color:#9ca3af;">Stock: {{ $row['supplier_stock'] }}</div>
-                                        </div>
-
-                                        <div>
-                                            <input type="number"
-                                                name="items[{{ $flatIdx }}][quantity_ordered]"
-                                                class="form-control form-control-sm po-qty-input"
-                                                data-group="{{ $poGroupId }}"
-                                                value="{{ $row['total_demanded'] }}"
-                                                min="0" required
-                                                oninput="updateStickyBar(); updateGroupQty('{{ $poGroupId }}')">
-                                            <div style="font-size:.65rem;color:#9ca3af;text-align:center;">demand: {{ $row['total_demanded'] }}</div>
-                                        </div>
-
-                                        <div>
-                                            <input type="number"
-                                                name="items[{{ $flatIdx }}][unit_cost]"
-                                                class="form-control form-control-sm po-cost-input"
-                                                value="{{ $row['unit_cost'] }}"
-                                                step="1000" min="0" required
-                                                style="width:110px;"
-                                                oninput="updateStickyBar()">
-                                            <div style="font-size:.65rem;color:#9ca3af;text-align:center;">unit cost</div>
-                                        </div>
-
-                                        <div class="v-gap small">
-                                            @php $gap = $row['supplier_stock'] - $row['total_demanded']; @endphp
-                                            <span class="{{ $gap < 0 ? 'text-danger' : 'text-success' }}">
-                                                {{ $gap >= 0 ? '+' : '' }}{{ $gap }}
-                                            </span>
-                                            <div style="font-size:.65rem;color:#9ca3af;">gap</div>
-                                        </div>
-                                    </div>
-                                    @endforeach
-                                </div>
-                            </div>
-                            @endforeach
-                        </div>
-                    </div>
-                </form>
-            </div>
-
-        </div>{{-- end card --}}
-        @empty
-        <div class="card p-4 text-center text-muted">
-            @if($purchaseOrders->where('status', '!=', 'arrived')->count() > 0)
-                <i class="bi bi-check2-circle fs-1 mb-2 d-block text-success"></i>
-                <div class="fw-semibold">All suppliers have active Purchase Orders for this trip.</div>
-            @else
-                <i class="bi bi-inbox fs-1 mb-2 d-block"></i>
-                No active order items for this trip yet.
-            @endif
+        {{-- Demand loads here asynchronously --}}
+        <div id="demandContainer">
+            {{-- Skeleton --}}
+            @for($s=0;$s<8;$s++)
+            <div class="skel-line"></div>
+            @endfor
         </div>
-        @endforelse
     </div>
 
-    {{-- RIGHT: Existing POs --}}
     <div class="col-lg-4">
         <div class="card" style="position:sticky;top:1rem;">
             <div class="card-header bg-white py-3 fw-semibold">
@@ -352,20 +90,19 @@ body { padding-bottom: 80px; }
                     <div>
                         <div class="font-monospace small fw-semibold">{{ $po->po_number }}</div>
                         <div class="text-muted" style="font-size:.75rem;">
-                            {{ $po->supplier?->name ?? 'No supplier' }} · {{ $po->items->count() }} item(s)
+                            {{ $po->supplier?->name ?? 'No supplier' }} · {{ $po->items_count }} item(s)
                         </div>
                         <div class="text-muted" style="font-size:.75rem;">
-                            Rp {{ number_format($po->total_amount, 0, ',', '.') }}
+                            Rp {{ number_format($po->total_amount,0,',','.') }}
                         </div>
                     </div>
                     <div class="d-flex flex-column align-items-end gap-1">
-                        <span class="badge {{ match($po->status) {
-                            'arrived'   => 'bg-success',
-                            'confirmed' => 'bg-primary',
-                            'submitted' => 'bg-warning text-dark',
-                            default     => 'bg-secondary'
-                        } }}">{{ ucfirst($po->status) }}</span>
-                        <a href="{{ route('purchasing.show', $po) }}" class="btn btn-sm btn-outline-secondary py-0 px-2">View</a>
+                        <span class="badge {{ match($po->status){
+                            'arrived'=>'bg-success','confirmed'=>'bg-primary',
+                            'submitted'=>'bg-warning text-dark',default=>'bg-secondary'} }}">
+                            {{ ucfirst($po->status) }}
+                        </span>
+                        <a href="{{ route('purchasing.show',$po) }}" class="btn btn-sm btn-outline-secondary py-0 px-2">View</a>
                     </div>
                 </li>
                 @empty
@@ -374,37 +111,20 @@ body { padding-bottom: 80px; }
             </ul>
         </div>
     </div>
+</div>
 
-</div>{{-- end row --}}
-
-{{-- ── Sticky bottom bar (visible when a PO form is open) ── --}}
+{{-- Sticky bottom bar --}}
 <div class="po-sticky-bar" id="stickyBar" style="display:none;">
-    <div class="stat">
-        <div class="val" id="stickyVariants">0</div>
-        <div class="lbl">Variants</div>
-    </div>
+    <div class="stat"><div class="val" id="stkVariants">0</div><div class="lbl">Variants</div></div>
     <div class="divider"></div>
-    <div class="stat">
-        <div class="val" id="stickyQty">0</div>
-        <div class="lbl">Total Qty</div>
-    </div>
+    <div class="stat"><div class="val" id="stkQty">0</div><div class="lbl">Total Qty</div></div>
     <div class="divider"></div>
-    <div class="stat">
-        <div class="val" id="stickyCost">Rp 0</div>
-        <div class="lbl">Est. Cost</div>
-    </div>
+    <div class="stat"><div class="val" id="stkCost">Rp 0</div><div class="lbl">Purchase Cost</div></div>
     <div class="divider"></div>
-    <div class="stat">
-        <div class="val" id="stickySupplier" style="font-size:.85rem;color:#e2e8f0;">—</div>
-        <div class="lbl">Supplier</div>
-    </div>
+    <div class="stat"><div class="val" id="stkSupplier" style="font-size:.82rem;color:#e2e8f0;">—</div><div class="lbl">Supplier</div></div>
     <div class="ms-auto d-flex gap-2">
-        <button type="button" class="btn btn-outline-light btn-sm" onclick="cancelActivePO()">
-            <i class="bi bi-x me-1"></i>Cancel
-        </button>
-        <button type="button" class="btn btn-success btn-sm px-4" onclick="submitActivePO()" id="stickySubmitBtn">
-            <i class="bi bi-check-circle me-1"></i>Create Purchase Order
-        </button>
+        <button type="button" class="btn btn-outline-light btn-sm" onclick="cancelPO()"><i class="bi bi-x me-1"></i>Cancel</button>
+        <button type="button" class="btn btn-success btn-sm px-4" onclick="submitPO()"><i class="bi bi-check-circle me-1"></i>Create Purchase Order</button>
     </div>
 </div>
 
@@ -419,129 +139,308 @@ body { padding-bottom: 80px; }
 
 @push('scripts')
 <script>
-let activePOKey = null;
+'use strict';
+
+const TRIP_ID    = {{ $selectedTrip?->id ?? 'null' }};
+const CSRF_TOKEN = document.querySelector('meta[name=csrf-token]').content;
+let   DEMAND     = [];
+let   activePOKey = null;
+
+// ── On load: fetch demand asynchronously ─────────────────────────────
+if (TRIP_ID) {
+    fetchDemand(TRIP_ID);
+}
+
+// Trip selector
+document.getElementById('tripSelect').addEventListener('change', function() {
+    window.location.href = '/purchasing?trip_id=' + this.value;
+});
+
+async function fetchDemand(tripId) {
+    document.getElementById('loadingSpinner').style.display = '';
+    try {
+        const res  = await fetch(`/purchasing-demand?trip_id=${tripId}`, {
+            headers: { 'X-CSRF-TOKEN': CSRF_TOKEN, 'Accept': 'application/json' }
+        });
+        DEMAND = await res.json();
+        renderDemand();
+    } catch(e) {
+        document.getElementById('demandContainer').innerHTML =
+            '<div class="alert alert-danger">Failed to load demand data. <button class="btn btn-sm btn-outline-danger ms-2" onclick="fetchDemand('+tripId+')">Retry</button></div>';
+    } finally {
+        document.getElementById('loadingSpinner').style.display = 'none';
+    }
+}
+
+// ── Render demand from JSON ──────────────────────────────────────────
+function renderDemand() {
+    const container = document.getElementById('demandContainer');
+
+    if (!DEMAND.length) {
+        container.innerHTML = `<div class="card p-4 text-center text-muted">
+            <i class="bi bi-check2-circle fs-1 mb-2 d-block text-success"></i>
+            <div class="fw-semibold">All demand is covered by confirmed Purchase Orders.</div>
+        </div>`;
+        return;
+    }
+
+    container.innerHTML = DEMAND.map(group => {
+        const key        = 'sup_' + (group.supplier_id ?? 'none');
+        const byProduct  = groupByProduct(group.rows);
+        const totalQty   = group.rows.reduce((s,r) => s + r.total_demanded, 0);
+        const totalVars  = group.rows.length;
+        const totalProds = Object.keys(byProduct).length;
+
+        const hasDraftPOs = group.active_po !== null && group.active_po !== undefined;
+        const draftWarn = hasDraftPOs ? `
+            <div class="mt-2 p-2 rounded d-flex align-items-center gap-2"
+                 style="background:#fff7ed;border:1px solid #fed7aa;font-size:.75rem;color:#92400e;">
+                <i class="bi bi-info-circle-fill text-warning"></i>
+                <span>New demand will be added to existing PO
+                <a href="/purchasing/${group.active_po.id}"><strong>${escH(group.active_po.po_number)}</strong></a>
+                (<span class="badge ${group.active_po.status==='submitted'?'bg-warning text-dark':'bg-secondary'}">${cap(group.active_po.status)}</span>).
+                Click <strong>Add to ${escH(group.active_po.po_number)}</strong> to review and include new items.</span>
+            </div>` : '';
+
+        const accordionHtml = Object.entries(byProduct).map(([productId, rows]) => {
+            const first   = rows[0];
+            const groupQty = rows.reduce((s,r) => s + r.total_demanded, 0);
+            const gId     = key + '_p' + productId;
+            return `<div class="product-group" id="group-${gId}"
+                         data-group-id="${gId}"
+                         data-product-name="${escH((first.product_name+' '+(first.product_code||'')).toLowerCase())}">
+                <div class="pgh" onclick="toggleDemandGroup('${gId}')">
+                    <i class="bi bi-chevron-right ti"></i>
+                    <span class="gn">${escH(first.product_name)}</span>
+                    ${first.product_code ? `<span class="gc">${escH(first.product_code)}</span>` : ''}
+                    <span class="gv">${rows.length} var.</span>
+                    <span class="gq">${groupQty}</span>
+                </div>
+                <div class="pgb" id="body-${gId}" data-loaded="0"
+                     data-rows="${escAttr(JSON.stringify(rows))}"></div>
+            </div>`;
+        }).join('');
+
+        return `<div class="card mb-4" id="card-${key}" data-supplier-key="${key}" data-supplier-name="${escH(group.supplier_name)}">
+            <div class="card-header bg-white py-3">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <div>
+                        <span class="fw-bold">${escH(group.supplier_name)}</span>
+                        <span class="badge bg-light text-secondary border ms-2">${totalProds} products</span>
+                        <span class="badge bg-light text-secondary border ms-1">${totalVars} variants</span>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="expandAll('${key}')">
+                            <i class="bi bi-chevron-double-down me-1"></i>Expand all
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="collapseAll('${key}')">
+                            <i class="bi bi-chevron-double-up me-1"></i>Collapse
+                        </button>
+                        ${group.active_po
+                            ? `<a href="/purchasing/${group.active_po.id}/edit" class="btn btn-sm btn-warning">
+                                <i class="bi bi-pencil me-1"></i>Add to ${escH(group.active_po.po_number)}
+                              </a>`
+                            : `<button class="btn btn-sm btn-primary" onclick="openPOPanel('${key}')">
+                                <i class="bi bi-file-earmark-plus me-1"></i>Create PO
+                              </button>`
+                        }
+                    </div>
+                </div>
+                <div class="d-flex gap-4 mt-2 pt-2 border-top flex-wrap">
+                    <div><div class="fw-bold" style="color:#0369a1;">${totalQty.toLocaleString('id-ID')}</div><div style="font-size:.67rem;color:#6b7280;text-transform:uppercase;">Total Qty</div></div>
+                    <div><div class="fw-bold" style="color:#0369a1;">${totalVars}</div><div style="font-size:.67rem;color:#6b7280;text-transform:uppercase;">Variants</div></div>
+                </div>
+                ${draftWarn}
+                <div class="mt-2">
+                    <input type="text" class="form-control form-control-sm"
+                        placeholder="Search product or variant…"
+                        oninput="searchAccordion('${key}', this.value)">
+                </div>
+            </div>
+            <div class="card-body py-2" id="accordion-${key}">${accordionHtml}</div>
+            <div class="po-panel" id="po-panel-${key}">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center py-2">
+                    <span class="fw-semibold text-primary"><i class="bi bi-file-earmark-plus me-1"></i>Create PO — ${escH(group.supplier_name)}</span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="closePOPanel('${key}')"><i class="bi bi-x"></i> Cancel</button>
+                </div>
+                <div class="card-body" id="po-body-${key}"></div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────
+function groupByProduct(rows) {
+    const g = {};
+    rows.forEach(r => { if (!g[r.product_id]) g[r.product_id] = []; g[r.product_id].push(r); });
+    return g;
+}
+function escH(s)    { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escAttr(s) { return String(s||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function cap(s)     { return s ? s[0].toUpperCase()+s.slice(1) : s; }
 
 // ── Accordion ────────────────────────────────────────────────────────
-function toggleGroup(groupId) {
-    const header = document.querySelector(`[onclick="toggleGroup('${groupId}')"]`);
+function toggleDemandGroup(groupId) {
+    const header = document.querySelector(`#group-${groupId} .pgh`);
     const body   = document.getElementById(`body-${groupId}`);
     if (!header || !body) return;
-    const isOpen = body.classList.contains('open');
-    body.classList.toggle('open', !isOpen);
-    header.classList.toggle('open', !isOpen);
+    const opening = !body.classList.contains('open');
+    body.classList.toggle('open', opening);
+    header.classList.toggle('open', opening);
+    if (opening && body.dataset.loaded === '0') {
+        const rows = JSON.parse(body.dataset.rows || '[]');
+        body.innerHTML = rows.map(r => {
+            const gap    = r.supplier_stock - r.total_demanded;
+            const gapCls = gap < 0 ? 'text-danger fw-bold' : 'text-success';
+            return `<div class="vrow">
+                <span class="vl">${escH(r.variant_label||'Default')}</span>
+                <span class="vd"><span class="badge bg-primary">${r.total_demanded}</span></span>
+                <span class="vg ${gapCls}">${gap>=0?'+':''}${gap}</span>
+            </div>`;
+        }).join('');
+        body.dataset.loaded = '1';
+    }
+}
+function expandAll(k) {
+    document.querySelectorAll(`#accordion-${k} .product-group`).forEach(g => {
+        const body = document.getElementById(`body-${g.dataset.groupId}`);
+        if (body && !body.classList.contains('open')) toggleDemandGroup(g.dataset.groupId);
+    });
+}
+function collapseAll(k) {
+    document.querySelectorAll(`#accordion-${k} .pgh.open`).forEach(h => h.click());
 }
 
-function expandAll(supKey) {
-    document.querySelectorAll(`#accordion-${supKey} .product-group-body`).forEach(b => b.classList.add('open'));
-    document.querySelectorAll(`#accordion-${supKey} .product-group-header`).forEach(h => h.classList.add('open'));
-}
-
-function collapseAll(supKey) {
-    document.querySelectorAll(`#accordion-${supKey} .product-group-body`).forEach(b => b.classList.remove('open'));
-    document.querySelectorAll(`#accordion-${supKey} .product-group-header`).forEach(h => h.classList.remove('open'));
-}
-
-// ── PO Panel open/close ───────────────────────────────────────────────
+// ── PO Panel ─────────────────────────────────────────────────────────
 function openPOPanel(key) {
     if (activePOKey && activePOKey !== key) closePOPanel(activePOKey);
     activePOKey = key;
     const panel = document.getElementById(`po-panel-${key}`);
-    if (panel) panel.classList.add('active');
-    // scroll to panel
-    setTimeout(() => panel?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+    const body  = document.getElementById(`po-body-${key}`);
+    if (!panel) return;
+    if (body && body.dataset.built !== '1') { buildPOForm(key, body); body.dataset.built = '1'; }
+    panel.classList.add('active');
+    setTimeout(() => panel.scrollIntoView({ behavior:'smooth', block:'start' }), 60);
+    document.getElementById('stkSupplier').textContent = document.getElementById(`card-${key}`)?.dataset?.supplierName || '—';
     document.getElementById('stickyBar').style.display = 'flex';
-    // set supplier name in bar
-    const card = document.getElementById(`card-${key}`);
-    const supName = card?.querySelector('.fw-bold.fs-6')?.textContent?.trim() || '—';
-    document.getElementById('stickySupplier').textContent = supName;
     updateStickyBar();
 }
 
-function closePOPanel(key) {
-    const panel = document.getElementById(`po-panel-${key}`);
-    if (panel) panel.classList.remove('active');
-    if (activePOKey === key) {
-        activePOKey = null;
-        document.getElementById('stickyBar').style.display = 'none';
+function buildPOForm(key, container) {
+    const group = DEMAND.find(g => 'sup_'+(g.supplier_id??'none') === key);
+    if (!group) return;
+    const byProduct = groupByProduct(group.rows);
+    let html = `<form method="POST" action="/purchasing" id="po-form-${key}" onsubmit="return confirmPO()">
+        <input type="hidden" name="_token" value="${CSRF_TOKEN}">
+        <input type="hidden" name="trip_id" value="${TRIP_ID}">
+        <input type="hidden" name="supplier_id" value="${group.supplier_id??''}">
+        <div class="row g-2 mb-3">
+            <div class="col-md-3"><label class="form-label small fw-semibold">Purchase Date</label>
+                <input type="date" name="purchased_at" class="form-control form-control-sm" value="${new Date().toISOString().slice(0,10)}" required></div>
+            <div class="col-md-5"><label class="form-label small fw-semibold">Notes</label>
+                <input type="text" name="notes" class="form-control form-control-sm" placeholder="Optional…"></div>
+        </div>
+        <div class="mb-2">
+            <input type="text" class="form-control form-control-sm" placeholder="Search product in PO form…"
+                oninput="searchPOAccordion('${key}', this.value)">
+        </div>
+        <div id="po-accordion-${key}">`;
+
+    let fi = 0;
+    for (const [productId, rows] of Object.entries(byProduct)) {
+        const first  = rows[0];
+        const gQty   = rows.reduce((s,r) => s+r.total_demanded, 0);
+        const pgId   = `po_${key}_p${productId}`;
+        html += `<div class="product-group po-pg" id="pg-${pgId}"
+                      data-product-name="${escH((first.product_name+' '+(first.product_code||'')).toLowerCase())}">
+            <div class="pgh open" onclick="togglePOGroup('${pgId}')">
+                <i class="bi bi-chevron-right ti"></i>
+                <span class="gn">${escH(first.product_name)}</span>
+                ${first.product_code ? `<span class="gc">${escH(first.product_code)}</span>` : ''}
+                <span class="gv">${rows.length} var.</span>
+                <span class="gq muted po-gq" id="pogq-${pgId}">${gQty}</span>
+            </div>
+            <div class="pgb open" id="pob-${pgId}">`;
+        rows.forEach(r => {
+            html += `<div class="vrow">
+                <span class="vl">${escH(r.variant_label||'Default')}<br>
+                    <span style="font-size:.68rem;color:#9ca3af">Stock: ${r.supplier_stock}</span></span>
+                <input type="hidden" name="items[${fi}][product_id]" value="${r.product_id}">
+                <input type="hidden" name="items[${fi}][product_variant_id]" value="${r.variant_id??''}">
+                <div>
+                    <input type="number" name="items[${fi}][quantity_ordered]"
+                        class="form-control form-control-sm po-qty" data-group="${pgId}"
+                        value="${r.total_demanded}" min="0" required
+                        oninput="updateStickyBar();updatePOGroupQty('${pgId}')">
+                    <div style="font-size:.65rem;color:#9ca3af;text-align:center;">demand:${r.total_demanded}</div>
+                </div>
+                <div class="vc">
+                    <input type="number" name="items[${fi}][unit_cost]"
+                        class="form-control form-control-sm po-cost"
+                        value="0" step="1000" min="0" required placeholder="Supplier cost"
+                        oninput="updateStickyBar()">
+                    <div style="font-size:.65rem;color:#9ca3af;text-align:center;">unit cost</div>
+                </div>
+            </div>`;
+            fi++;
+        });
+        html += `</div></div>`;
     }
+    html += `</div></form>`;
+    container.innerHTML = html;
 }
 
-function cancelActivePO() {
-    if (activePOKey) closePOPanel(activePOKey);
+function togglePOGroup(pgId) {
+    const h = document.querySelector(`#pg-${pgId} .pgh`);
+    const b = document.getElementById(`pob-${pgId}`);
+    if (!h||!b) return;
+    const open = !b.classList.contains('open');
+    b.classList.toggle('open', open); h.classList.toggle('open', open);
+}
+function updatePOGroupQty(pgId) {
+    const t = [...document.querySelectorAll(`.po-qty[data-group="${pgId}"]`)].reduce((s,i)=>s+(parseInt(i.value)||0),0);
+    const el = document.getElementById(`pogq-${pgId}`); if(el) el.textContent = t;
+}
+function closePOPanel(key) {
+    document.getElementById(`po-panel-${key}`)?.classList.remove('active');
+    if (activePOKey === key) { activePOKey = null; document.getElementById('stickyBar').style.display = 'none'; }
+}
+function cancelPO() { if (activePOKey) closePOPanel(activePOKey); }
+function submitPO() { if (activePOKey) document.getElementById(`po-form-${activePOKey}`)?.requestSubmit(); }
+function confirmPO() {
+    return confirm(`Create PO for ${document.getElementById('stkSupplier').textContent}?\n\nTotal Qty: ${document.getElementById('stkQty').textContent}\nCost: ${document.getElementById('stkCost').textContent}\n\nOK to confirm.`);
 }
 
-function submitActivePO() {
-    if (!activePOKey) return;
-    const form = document.getElementById(`po-form-${activePOKey}`);
-    if (form) form.requestSubmit();
-}
-
-function confirmPO(form) {
-    const qty  = document.getElementById('stickyQty').textContent;
-    const cost = document.getElementById('stickyCost').textContent;
-    const sup  = document.getElementById('stickySupplier').textContent;
-    return confirm(`Create PO for ${sup}?\n\nTotal Qty: ${qty}\nEst. Cost: ${cost}\n\nClick OK to confirm.`);
-}
-
-// ── Sticky bar live update ────────────────────────────────────────────
+// ── Sticky bar ────────────────────────────────────────────────────────
 function updateStickyBar() {
     if (!activePOKey) return;
-    const form     = document.getElementById(`po-form-${activePOKey}`);
-    if (!form) return;
-    const qtyInputs  = form.querySelectorAll('.po-qty-input');
-    const costInputs = form.querySelectorAll('.po-cost-input');
-    let totalQty = 0, totalCost = 0, variants = 0;
-    qtyInputs.forEach((q, i) => {
-        const qty  = parseInt(q.value) || 0;
-        const cost = parseFloat(costInputs[i]?.value) || 0;
-        totalQty  += qty;
-        totalCost += qty * cost;
-        if (qty > 0) variants++;
-    });
-    document.getElementById('stickyVariants').textContent = variants;
-    document.getElementById('stickyQty').textContent      = totalQty.toLocaleString('id-ID');
-    document.getElementById('stickyCost').textContent     = 'Rp ' + Math.round(totalCost).toLocaleString('id-ID');
+    const qs = document.querySelectorAll(`#po-form-${activePOKey} .po-qty`);
+    const cs = document.querySelectorAll(`#po-form-${activePOKey} .po-cost`);
+    let tQ=0, tC=0, tV=0;
+    qs.forEach((q,i) => { const v=parseInt(q.value)||0; tQ+=v; tC+=v*(parseFloat(cs[i]?.value)||0); if(v>0)tV++; });
+    document.getElementById('stkVariants').textContent = tV;
+    document.getElementById('stkQty').textContent      = tQ.toLocaleString('id-ID');
+    document.getElementById('stkCost').textContent     = 'Rp '+Math.round(tC).toLocaleString('id-ID');
 }
 
-// ── Group qty badge update ────────────────────────────────────────────
-function updateGroupQty(groupId) {
-    const inputs = document.querySelectorAll(`.po-qty-input[data-group="${groupId}"]`);
-    let total = 0;
-    inputs.forEach(i => total += parseInt(i.value) || 0);
-    const badge = document.querySelector(`.po-group-qty[data-group="${groupId}"]`);
-    if (badge) badge.textContent = total + ' pcs';
-}
-
-// ── Search in demand view ─────────────────────────────────────────────
-function searchProducts(input) {
-    const key = input.dataset.key;
-    const q   = input.value.trim().toLowerCase();
-    document.querySelectorAll(`#accordion-${key} .product-group`).forEach(group => {
-        const name = group.dataset.productName || '';
-        const match = !q || name.includes(q);
-        group.classList.toggle('search-hidden', !match);
+// ── Search ────────────────────────────────────────────────────────────
+function searchAccordion(k, q) {
+    q = q.trim().toLowerCase();
+    document.querySelectorAll(`#accordion-${k} .product-group`).forEach(g => {
+        const match = !q || (g.dataset.productName||'').includes(q);
+        g.classList.toggle('search-hidden', !match);
         if (match && q) {
-            // auto-expand matching groups
-            const id = group.id.replace('group-', '');
-            document.getElementById(`body-${id}`)?.classList.add('open');
-            document.querySelector(`[onclick="toggleGroup('${id}')"]`)?.classList.add('open');
+            const b = document.getElementById(`body-${g.dataset.groupId}`);
+            const h = g.querySelector('.pgh');
+            if (b && !b.classList.contains('open')) { b.classList.add('open'); h?.classList.add('open'); }
+            if (b && b.dataset.loaded==='0') toggleDemandGroup(g.dataset.groupId);
         }
     });
 }
-
-// ── Search in PO form ─────────────────────────────────────────────────
-function searchPOForm(input) {
-    const key = input.dataset.formKey;
-    const q   = input.value.trim().toLowerCase();
-    document.querySelectorAll(`#po-items-${key} .po-product-group`).forEach(group => {
-        const name  = group.dataset.productName || '';
-        const match = !q || name.includes(q);
-        group.classList.toggle('search-hidden', !match);
-        if (match && q) {
-            const id = group.id.replace('po-group-', '');
-            document.getElementById(`body-${id}`)?.classList.add('open');
-            document.querySelector(`[onclick="toggleGroup('${id}')"]`)?.classList.add('open');
-        }
+function searchPOAccordion(k, q) {
+    q = q.trim().toLowerCase();
+    document.querySelectorAll(`#po-accordion-${k} .po-pg`).forEach(g => {
+        g.classList.toggle('search-hidden', !(!q || (g.dataset.productName||'').includes(q)));
     });
 }
 </script>
