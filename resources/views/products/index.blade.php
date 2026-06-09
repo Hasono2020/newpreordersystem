@@ -191,7 +191,9 @@
                     <td class="text-center">{{ $product->order_items_count }}</td>
                     <td>
                         <a href="{{ route('products.show', $product) }}" class="btn btn-sm btn-outline-primary">View</a>
+@if(auth()->user()->hasPermission('products.edit'))
                         <a href="{{ route('products.edit', $product) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
+                        @endif
                     </td>
                 </tr>
                 @empty
