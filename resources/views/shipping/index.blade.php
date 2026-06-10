@@ -17,8 +17,7 @@
     </form>
 
     @if(auth()->user()->isAdmin())
-    @if(auth()->user()->hasPermission('shipping.delete'))
-<div class="dropdown">
+    <div class="dropdown">
         <button class="btn btn-sm btn-outline-danger dropdown-toggle" data-bs-toggle="dropdown">
             <i class="bi bi-trash3 me-1"></i>Delete
         </button>
@@ -34,6 +33,7 @@
     </div>
     @endif
 
+    @if(auth()->user()->isAdmin() || auth()->user()->hasPermission('shipping.import'))
     <div class="dropdown">
         <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
             <i class="bi bi-arrow-down-up me-1"></i>Import / Export
@@ -41,18 +41,21 @@
         <ul class="dropdown-menu dropdown-menu-end" style="min-width:240px;">
             <li><h6 class="dropdown-header">Export</h6></li>
             <li><a class="dropdown-item" href="{{ route('shipping.export') }}"><i class="bi bi-download me-2 text-success"></i>Export all as Excel</a></li>
+            @if(auth()->user()->hasPermission('shipping.import'))
             <li><hr class="dropdown-divider"></li>
             <li><h6 class="dropdown-header">Import</h6></li>
             <li><a class="dropdown-item" href="{{ route('shipping.template') }}"><i class="bi bi-file-earmark-spreadsheet me-2 text-secondary"></i>Download template (.xlsx)</a></li>
             <li><button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#importModal"><i class="bi bi-upload me-2 text-primary"></i>Import from Excel</button></li>
+            @endif
         </ul>
     </div>
+    @endif
 
 @if(auth()->user()->hasPermission('shipping.create'))
     <a href="{{ route('shipping.create') }}" class="btn btn-sm btn-primary">
         <i class="bi bi-plus-lg me-1"></i>Add Area
     </a>
-@endif
+    @endif
 </div>
 
 {{-- Info --}}
@@ -94,7 +97,7 @@
                     <td class="text-nowrap">
                         <a href="{{ route('shipping.show', $area) }}" class="btn btn-sm btn-outline-primary">View</a>
 @if(auth()->user()->hasPermission('shipping.edit'))
-                        <a href="{{ route('shipping.edit', \$area) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
+                        <a href="{{ route('shipping.edit', $area) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
                         @endif
                         @if(auth()->user()->isAdmin())
                         <form method="POST" action="{{ route('shipping.destroy', $area) }}" class="d-inline"
@@ -130,7 +133,6 @@
                 </select>
             </form>
         </div>
-@endif
         <div>{{ $areas->links() }}</div>
     </div>
 </div>

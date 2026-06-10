@@ -8,12 +8,12 @@
         <i class="bi bi-arrow-left me-1"></i>Back
     </a>
 @if(auth()->user()->hasPermission('customers.edit'))
-    <a href="{{ route('customers.edit', \$customer) }}" class="btn btn-sm btn-outline-secondary">
+    <a href="{{ route('customers.edit', $customer) }}" class="btn btn-sm btn-outline-secondary">
         <i class="bi bi-pencil me-1"></i>Edit
     </a>
     @endif
 @if(auth()->user()->hasPermission('orders.create'))
-    <a href="{{ route('orders.create', ['customer_id' => \$customer->id]) }}" class="btn btn-sm btn-primary">
+    <a href="{{ route('orders.create', ['customer_id' => $customer->id]) }}" class="btn btn-sm btn-primary">
         <i class="bi bi-plus-lg me-1"></i>New Order
     </a>
     @endif

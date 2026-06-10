@@ -35,7 +35,9 @@
         <div class="card">
             <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
                 <span class="fw-semibold">Recent Orders</span>
+@if(auth()->user()->hasPermission('orders.create'))
                 <a href="{{ route('orders.create') }}" class="btn btn-sm btn-primary"><i class="bi bi-plus-lg me-1"></i>New Order</a>
+                @endif
             </div>
             <div class="table-responsive">
                 <table class="table table-hover mb-0">
@@ -67,7 +69,9 @@
         <div class="card">
             <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
                 <span class="fw-semibold">Active Trips</span>
+@if(auth()->user()->hasPermission('trips.edit'))
                 <a href="{{ route('trips.create') }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-plus-lg"></i></a>
+                @endif
             </div>
             <ul class="list-group list-group-flush">
                 @forelse($activeTrips as $trip)

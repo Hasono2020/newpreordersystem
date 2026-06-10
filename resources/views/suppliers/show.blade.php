@@ -4,9 +4,11 @@
 
 @section('content')
 <div class="d-flex gap-2 mb-3">
+@if(auth()->user()->hasPermission('suppliers.edit'))
     <a href="{{ route('suppliers.edit', $supplier) }}" class="btn btn-sm btn-outline-secondary">
         <i class="bi bi-pencil me-1"></i>Edit
     </a>
+    @endif
 </div>
 
 <div class="row g-3 mb-4">

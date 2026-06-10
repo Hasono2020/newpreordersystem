@@ -41,6 +41,7 @@
     </div>
     <div class="col-auto d-flex gap-2">
         {{-- Import/Export dropdown --}}
+        @if(auth()->user()->hasPermission('customers.import'))
         <div class="dropdown">
             <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
                 <i class="bi bi-arrow-down-up me-1"></i>Import / Export
@@ -53,20 +54,18 @@
                     </a>
                 </li>
                 <li><hr class="dropdown-divider"></li>
-                @if(auth()->user()->hasPermission('customers.import'))
-                <li><hr class="dropdown-divider"></li>
                 <li><h6 class="dropdown-header">Import</h6></li>
                 <li>
                     <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#importModal">
                         <i class="bi bi-upload me-2 text-primary"></i>Import from Excel
                     </button>
                 </li>
-                @endif
             </ul>
         </div>
+
+        @endif
         @if(auth()->user()->isAdmin())
         {{-- Bulk delete dropdown --}}
-@if(auth()->user()->hasPermission('customers.delete'))
         <div class="dropdown">
             <button class="btn btn-sm btn-outline-danger dropdown-toggle" data-bs-toggle="dropdown">
                 <i class="bi bi-trash3 me-1"></i>Delete
@@ -85,7 +84,6 @@
                 </li>
             </ul>
         </div>
-@endif
         @endif
 @if(auth()->user()->hasPermission('customers.create'))
         <a href="{{ route('customers.create') }}" class="btn btn-primary btn-sm">
@@ -175,7 +173,9 @@
                     <td>{{ $customer->orders_count }}</td>
                     <td>
                         <a href="{{ route('customers.show', $customer) }}" class="btn btn-sm btn-outline-primary">View</a>
+@if(auth()->user()->hasPermission('customers.edit'))
                         <a href="{{ route('customers.edit', $customer) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
+                        @endif
                         @if(auth()->user()->isAdmin())
                         <form method="POST" action="{{ route('customers.destroy', $customer) }}" class="d-inline"
                             onsubmit="return confirm('Delete {{ $customer->name }}? This also deletes all their orders.')">

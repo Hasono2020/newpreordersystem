@@ -7,9 +7,11 @@
     <a href="{{ route('shipping.index') }}" class="btn btn-sm btn-outline-secondary">
         <i class="bi bi-arrow-left me-1"></i>Back
     </a>
+@if(auth()->user()->hasPermission('shipping.edit'))
     <a href="{{ route('shipping.edit', $shipping) }}" class="btn btn-sm btn-outline-secondary">
         <i class="bi bi-pencil me-1"></i>Edit
     </a>
+    @endif
     <h5 class="mb-0 ms-2 fw-bold">{{ $shipping->name }}</h5>
     <span class="badge {{ $shipping->is_active ? 'bg-success' : 'bg-secondary' }} ms-1">
         {{ $shipping->is_active ? 'Active' : 'Inactive' }}

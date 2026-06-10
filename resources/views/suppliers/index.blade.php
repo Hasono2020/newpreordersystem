@@ -68,7 +68,7 @@
                     <td>
                         <a href="{{ route('suppliers.show', $supplier) }}" class="btn btn-sm btn-outline-primary">View</a>
 @if(auth()->user()->hasPermission('suppliers.edit'))
-                        <a href="{{ route('suppliers.edit', \$supplier) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
+                        <a href="{{ route('suppliers.edit', $supplier) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
                         @endif
 @if(auth()->user()->hasPermission('suppliers.delete'))
                         <form method="POST" action="{{ route('suppliers.destroy', $supplier) }}" class="d-inline"
@@ -76,6 +76,7 @@
                             @csrf @method('DELETE')
                             <button class="btn btn-sm btn-outline-danger">×</button>
                         </form>
+                        @endif
                     </td>
                 </tr>
                 @empty
