@@ -73,7 +73,14 @@ Route::middleware('auth')->group(function () {
     Route::get('customers/{customer}/combined-invoice', [OrderController::class, 'combinedInvoice'])->name('orders.combined-invoice');
 
     // Promos
-    Route::resource('promos', PromoController::class)->except(['show']);
+    Route::get('promos', [PromoController::class, 'index'])->name('promos.index');
+    Route::middleware('perm:promos.edit')->group(function () {
+        Route::get('promos/create', [PromoController::class, 'create'])->name('promos.create');
+        Route::post('promos', [PromoController::class, 'store'])->name('promos.store');
+        Route::get('promos/{promo}/edit', [PromoController::class, 'edit'])->name('promos.edit');
+        Route::put('promos/{promo}', [PromoController::class, 'update'])->name('promos.update');
+        Route::delete('promos/{promo}', [PromoController::class, 'destroy'])->name('promos.destroy');
+    });
 
     // Purchasing
     Route::get('purchasing', [PurchasingController::class, 'index'])->name('purchasing.index');
@@ -87,7 +94,7 @@ Route::middleware('auth')->group(function () {
     Route::post('purchasing/{purchasing}/add-item', [PurchasingController::class, 'addItem'])->name('purchasing.item.add');
     Route::delete('purchasing/{purchasing}/item/{item}', [PurchasingController::class, 'deleteItem'])->name('purchasing.item.delete');
     Route::delete('purchasing/{purchasing}', [PurchasingController::class, 'destroy'])->name('purchasing.destroy');
-    Route::post('purchasing/{purchasing}/arrival', [PurchasingController::class, 'confirmArrival'])->middleware('perm:purchasing.edit')->name('purchasing.arrival');
+    Route::post('purchasing/{purchasing}/arrival', [PurchasingController::class, 'confirmArrival'])->name('purchasing.arrival');
 
     // Shipping Areas
     Route::get('shipping/template', [ShippingAreaController::class, 'template'])->name('shipping.template');

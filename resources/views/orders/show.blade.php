@@ -5,19 +5,17 @@
 @section('content')
 <div class="d-flex gap-2 mb-3 flex-wrap">
     <a href="{{ route('orders.index') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Back</a>
-@if(auth()->user()->hasPermission('orders.edit'))
+@if(auth()->user()->hasPermission('orders.edit') && (auth()->user()->isAdmin() || $order->created_by === auth()->id()))
     <a href="{{ route('orders.edit', $order) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil me-1"></i>Edit</a>
     @endif
     <a href="{{ route('orders.invoice', $order) }}" class="btn btn-sm btn-outline-primary" target="_blank">
         <i class="bi bi-printer me-1"></i>Print Invoice
     </a>
     @if(auth()->user()->isAdmin())
-@if(auth()->user()->hasPermission('orders.delete'))
     <form method="POST" action="{{ route('orders.destroy', $order) }}" onsubmit="return confirm('Delete this order?')">
         @csrf @method('DELETE')
         <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
     </form>
-    @endif
     @endif
 </div>
 

@@ -40,7 +40,7 @@
         </form>
     </div>
     <div class="col-auto d-flex gap-2">
-        @if(auth()->user()->hasPermission('orders.delete'))
+        @if(auth()->user()->isAdmin())
         <div class="dropdown">
             <button class="btn btn-sm btn-outline-danger dropdown-toggle" data-bs-toggle="dropdown">
                 <i class="bi bi-trash3 me-1"></i>Delete
@@ -101,7 +101,7 @@
             </ul>
         </div>
         @endif
-@if(auth()->user()->hasPermission('orders.create'))
+        @if(auth()->user()->hasPermission('orders.create'))
         <a href="{{ route('orders.create') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>New Order</a>
         @endif
     </div>

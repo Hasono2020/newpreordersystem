@@ -162,6 +162,7 @@ class OrderController extends Controller
 
     public function edit(Order $order)
     {
+        $this->authorizeOrderWrite($order, 'edit');
         $order->load([
             'customer',
             'trip.products.variants',
@@ -177,6 +178,7 @@ class OrderController extends Controller
 
     public function update(Request $request, Order $order)
     {
+        $this->authorizeOrderWrite($order, 'edit');
         $request->validate([
             'shipping_area_id' => 'nullable|exists:shipping_areas,id',
             'notes'            => 'nullable|string',
@@ -245,7 +247,7 @@ class OrderController extends Controller
 
     public function destroy(Order $order)
     {
-        $this->adminOnly('delete orders');
+        $this->authorizeOrderWrite($order, 'delete');
         $order->delete();
         return redirect()->route('orders.index')->with('success', 'Order deleted.');
     }
@@ -254,6 +256,7 @@ class OrderController extends Controller
 
     public function updateItem(Request $request, Order $order, OrderItem $item)
     {
+        $this->authorizeOrderWrite($order, 'edit');
         // Bug 2 fix: ensure item belongs to this order
         abort_if($item->order_id !== $order->id, 404, 'Item does not belong to this order.');
 
