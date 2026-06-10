@@ -53,16 +53,20 @@
                     </a>
                 </li>
                 <li><hr class="dropdown-divider"></li>
+                @if(auth()->user()->hasPermission('customers.import'))
+                <li><hr class="dropdown-divider"></li>
                 <li><h6 class="dropdown-header">Import</h6></li>
                 <li>
                     <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#importModal">
                         <i class="bi bi-upload me-2 text-primary"></i>Import from Excel
                     </button>
                 </li>
+                @endif
             </ul>
         </div>
         @if(auth()->user()->isAdmin())
         {{-- Bulk delete dropdown --}}
+@if(auth()->user()->hasPermission('customers.delete'))
         <div class="dropdown">
             <button class="btn btn-sm btn-outline-danger dropdown-toggle" data-bs-toggle="dropdown">
                 <i class="bi bi-trash3 me-1"></i>Delete
@@ -81,10 +85,13 @@
                 </li>
             </ul>
         </div>
+@endif
         @endif
+@if(auth()->user()->hasPermission('customers.create'))
         <a href="{{ route('customers.create') }}" class="btn btn-primary btn-sm">
             <i class="bi bi-plus-lg me-1"></i>Add Customer
         </a>
+        @endif
     </div>
 </div>
 

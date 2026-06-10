@@ -592,6 +592,9 @@ class PurchasingController extends Controller
      */
     public function confirmArrival(Request $request, PurchaseOrder $purchasing)
     {
+        if (!Auth::user()->hasPermission('purchasing.edit')) {
+            abort(403, 'Only purchasing staff can confirm arrivals.');
+        }
         $request->validate([
             'items'                      => 'required|array',
             'items.*.id'                 => 'required|exists:purchase_order_items,id',

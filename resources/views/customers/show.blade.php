@@ -7,12 +7,16 @@
     <a href="{{ route('customers.index') }}" class="btn btn-sm btn-outline-secondary">
         <i class="bi bi-arrow-left me-1"></i>Back
     </a>
-    <a href="{{ route('customers.edit', $customer) }}" class="btn btn-sm btn-outline-secondary">
+@if(auth()->user()->hasPermission('customers.edit'))
+    <a href="{{ route('customers.edit', \$customer) }}" class="btn btn-sm btn-outline-secondary">
         <i class="bi bi-pencil me-1"></i>Edit
     </a>
-    <a href="{{ route('orders.create', ['customer_id' => $customer->id]) }}" class="btn btn-sm btn-primary">
+    @endif
+@if(auth()->user()->hasPermission('orders.create'))
+    <a href="{{ route('orders.create', ['customer_id' => \$customer->id]) }}" class="btn btn-sm btn-primary">
         <i class="bi bi-plus-lg me-1"></i>New Order
     </a>
+    @endif
     <a href="{{ route('orders.index', ['search' => $customer->name]) }}" class="btn btn-sm btn-outline-info ms-auto">
         <i class="bi bi-receipt me-1"></i>View Orders
     </a>

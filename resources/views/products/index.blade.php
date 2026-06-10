@@ -36,7 +36,8 @@
     </div>
     <div class="col-auto d-flex gap-2">
         <div class="dropdown">
-            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+            @if(auth()->user()->hasPermission('products.import'))
+            <div class="dropdown"><button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
                 <i class="bi bi-arrow-down-up me-1"></i>Import / Export
             </button>
             <ul class="dropdown-menu dropdown-menu-end" style="min-width:240px;">
@@ -62,6 +63,7 @@
         </div>
     <div class="col-auto d-flex gap-2">
         @if(auth()->user()->isAdmin())
+@if(auth()->user()->hasPermission('products.delete'))
         <div class="dropdown">
             <button class="btn btn-sm btn-outline-danger dropdown-toggle" data-bs-toggle="dropdown">
                 <i class="bi bi-trash3 me-1"></i>Delete
@@ -80,6 +82,7 @@
                 </li>
             </ul>
         </div>
+@endif
         @endif
         <a href="{{ route('products.create') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>Add Product</a>
     </div>

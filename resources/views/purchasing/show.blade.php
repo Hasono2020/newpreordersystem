@@ -72,12 +72,13 @@ body { padding-bottom: 0; }
 
     {{-- Actions --}}
     <div class="ms-auto d-flex gap-2 align-items-center">
-        @if($purchasing->status !== 'arrived')
+        @if($purchasing->status !== 'arrived' && auth()->user()->hasPermission('purchasing.edit'))
         <a href="{{ route('purchasing.edit', $purchasing) }}"
            class="btn btn-sm btn-outline-light py-1">
             <i class="bi bi-pencil me-1"></i><span class="d-none d-md-inline">Edit PO</span>
         </a>
         @endif
+        @if(auth()->user()->hasPermission('purchasing.edit'))
         <form method="POST" action="{{ route('purchasing.destroy', $purchasing) }}"
             onsubmit="return confirm('Delete this purchase order?')">
             @csrf @method('DELETE')
@@ -85,7 +86,8 @@ body { padding-bottom: 0; }
                 <i class="bi bi-trash3 me-1"></i><span class="d-none d-md-inline">Delete</span>
             </button>
         </form>
-        @if($purchasing->status !== 'arrived')
+        @endif
+        @if($purchasing->status !== 'arrived' && auth()->user()->hasPermission('purchasing.edit'))
         <button type="button" class="btn btn-sm btn-success py-1 px-3" onclick="submitArrival()">
             <i class="bi bi-check-circle me-1"></i>Confirm Arrival
         </button>
@@ -186,9 +188,13 @@ body { padding-bottom: 0; }
                 <i class="bi bi-info-circle me-1"></i>
                 Orders not covered will be marked <strong>Sold Out</strong>.
             </span>
+            @if(auth()->user()->hasPermission('purchasing.edit'))
             <button type="button" class="btn btn-success" onclick="submitArrival()">
                 <i class="bi bi-check-circle me-1"></i>Confirm Arrival & Allocate
             </button>
+            @else
+            <span class="text-muted small"><i class="bi bi-lock me-1"></i>Only purchasing staff can confirm arrivals.</span>
+            @endif
         </div>
         @endif
     </form>

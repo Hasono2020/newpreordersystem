@@ -40,7 +40,7 @@
         </form>
     </div>
     <div class="col-auto d-flex gap-2">
-        @if(auth()->user()->isAdmin())
+        @if(auth()->user()->hasPermission('orders.delete'))
         <div class="dropdown">
             <button class="btn btn-sm btn-outline-danger dropdown-toggle" data-bs-toggle="dropdown">
                 <i class="bi bi-trash3 me-1"></i>Delete
@@ -66,9 +66,11 @@
             </ul>
         </div>
         @endif
+        @if(auth()->user()->hasPermission('orders.export') || auth()->user()->hasPermission('orders.import'))
         <div class="dropdown">
             <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
-                <i class="bi bi-arrow-down-up me-1"></i>Import / Export
+                <i class="bi bi-arrow-down-up me-1"></i>
+                @if(auth()->user()->hasPermission('orders.import')) Import / Export @else Export @endif
             </button>
             <ul class="dropdown-menu dropdown-menu-end" style="min-width:240px;">
                 <li><h6 class="dropdown-header">Export</h6></li>
@@ -82,6 +84,7 @@
                         <i class="bi bi-download me-2 text-info"></i>Export order items as Excel
                     </a>
                 </li>
+                @if(auth()->user()->hasPermission('orders.import'))
                 <li><hr class="dropdown-divider"></li>
                 <li><h6 class="dropdown-header">Import</h6></li>
                 <li>
@@ -94,9 +97,13 @@
                         <i class="bi bi-upload me-2 text-primary"></i>Import orders from Excel
                     </button>
                 </li>
+                @endif
             </ul>
         </div>
+        @endif
+@if(auth()->user()->hasPermission('orders.create'))
         <a href="{{ route('orders.create') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>New Order</a>
+        @endif
     </div>
 </div>
 

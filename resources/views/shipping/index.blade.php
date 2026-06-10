@@ -17,7 +17,8 @@
     </form>
 
     @if(auth()->user()->isAdmin())
-    <div class="dropdown">
+    @if(auth()->user()->hasPermission('shipping.delete'))
+<div class="dropdown">
         <button class="btn btn-sm btn-outline-danger dropdown-toggle" data-bs-toggle="dropdown">
             <i class="bi bi-trash3 me-1"></i>Delete
         </button>
@@ -47,9 +48,11 @@
         </ul>
     </div>
 
+@if(auth()->user()->hasPermission('shipping.create'))
     <a href="{{ route('shipping.create') }}" class="btn btn-sm btn-primary">
         <i class="bi bi-plus-lg me-1"></i>Add Area
     </a>
+@endif
 </div>
 
 {{-- Info --}}
@@ -90,7 +93,9 @@
                     </td>
                     <td class="text-nowrap">
                         <a href="{{ route('shipping.show', $area) }}" class="btn btn-sm btn-outline-primary">View</a>
-                        <a href="{{ route('shipping.edit', $area) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
+@if(auth()->user()->hasPermission('shipping.edit'))
+                        <a href="{{ route('shipping.edit', \$area) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
+                        @endif
                         @if(auth()->user()->isAdmin())
                         <form method="POST" action="{{ route('shipping.destroy', $area) }}" class="d-inline"
                             onsubmit="return confirm('Delete {{ $area->name }}?')">
@@ -125,6 +130,7 @@
                 </select>
             </form>
         </div>
+@endif
         <div>{{ $areas->links() }}</div>
     </div>
 </div>

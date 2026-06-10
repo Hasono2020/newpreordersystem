@@ -15,7 +15,8 @@
         </form>
     </div>
     <div class="col-auto d-flex gap-2">
-        <div class="dropdown">
+        @if(auth()->user()->hasPermission('suppliers.delete'))
+<div class="dropdown">
             <button class="btn btn-sm btn-outline-danger dropdown-toggle" data-bs-toggle="dropdown">
                 <i class="bi bi-trash3 me-1"></i>Delete
             </button>
@@ -29,9 +30,12 @@
                 </button></li>
             </ul>
         </div>
+@endif
+@if(auth()->user()->hasPermission('suppliers.create'))
         <a href="{{ route('suppliers.create') }}" class="btn btn-primary btn-sm">
             <i class="bi bi-plus-lg me-1"></i>Add Supplier
         </a>
+@endif
     </div>
 </div>
 
@@ -63,7 +67,10 @@
                     </td>
                     <td>
                         <a href="{{ route('suppliers.show', $supplier) }}" class="btn btn-sm btn-outline-primary">View</a>
-                        <a href="{{ route('suppliers.edit', $supplier) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
+@if(auth()->user()->hasPermission('suppliers.edit'))
+                        <a href="{{ route('suppliers.edit', \$supplier) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
+                        @endif
+@if(auth()->user()->hasPermission('suppliers.delete'))
                         <form method="POST" action="{{ route('suppliers.destroy', $supplier) }}" class="d-inline"
                             onsubmit="return confirm('Delete {{ $supplier->name }}? Products linked to this supplier will be unlinked.')">
                             @csrf @method('DELETE')

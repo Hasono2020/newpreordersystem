@@ -10,6 +10,7 @@
             'orders.edit'    => 'Edit orders',
             'orders.delete'  => 'Delete orders',
             'orders.import'  => 'Import orders',
+            'orders.export'  => 'Export orders',
         ],
         'Customers'  => [
             'customers.view'    => 'View customers',
@@ -23,6 +24,20 @@
             'products.create' => 'Add products',
             'products.edit'   => 'Edit products',
             'products.delete' => 'Delete products',
+            'products.import' => 'Import/Export products',
+        ],
+        'Suppliers'  => [
+            'suppliers.view'   => 'View suppliers',
+            'suppliers.create' => 'Add suppliers',
+            'suppliers.edit'   => 'Edit suppliers',
+            'suppliers.delete' => 'Delete suppliers',
+        ],
+        'Shipping Areas' => [
+            'shipping.view'   => 'View shipping areas',
+            'shipping.create' => 'Add areas',
+            'shipping.edit'   => 'Edit areas',
+            'shipping.delete' => 'Delete areas',
+            'shipping.import' => 'Import/Export areas',
         ],
         'Purchasing' => [
             'purchasing.view' => 'View purchasing',
@@ -34,12 +49,13 @@
             'payments.void'   => 'Void payments',
         ],
         'Reports & Settings' => [
-            'invoices.view'  => 'View invoices',
-            'trips.view'     => 'View trips',
-            'trips.edit'     => 'Manage trips',
-            'reports.view'   => 'View reports',
-            'settings.view'  => 'View settings',
-            'settings.edit'  => 'Edit settings',
+            'invoices.view'   => 'View invoices',
+            'trips.view'      => 'View trips',
+            'trips.edit'      => 'Manage trips',
+            'trips.new_order' => 'Create orders from trip',
+            'reports.view'    => 'View reports',
+            'settings.view'   => 'View settings',
+            'settings.edit'   => 'Edit settings',
         ],
     ];
 @endphp

@@ -12,8 +12,12 @@
         <button type="submit" class="btn btn-outline-danger btn-sm"><i class="bi bi-trash3 me-1"></i>Delete</button>
     </form>
     @endif
+@if(auth()->user()->hasPermission('orders.create'))
     <a href="{{ route('orders.create', ['trip_id' => $trip->id]) }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>New Order</a>
+    @endif
+@if(auth()->user()->hasPermission('products.create'))
     <a href="{{ route('products.create', ['trip_id' => $trip->id]) }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-tags me-1"></i>Add Product</a>
+    @endif
     <a href="{{ route('purchasing.index', ['trip_id' => $trip->id]) }}" class="btn btn-outline-info btn-sm"><i class="bi bi-box-seam me-1"></i>Purchasing</a>
 </div>
 
@@ -37,7 +41,9 @@
         <div class="card">
             <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
                 <span class="fw-semibold">Products ({{ $trip->products->count() }})</span>
+@if(auth()->user()->hasPermission('products.create'))
                 <a href="{{ route('products.create', ['trip_id' => $trip->id]) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-plus-lg"></i></a>
+                @endif
             </div>
             <ul class="list-group list-group-flush">
                 @forelse($trip->products as $product)
@@ -72,7 +78,9 @@
         <div class="card">
             <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
                 <span class="fw-semibold">Orders ({{ $trip->orders->count() }})</span>
+@if(auth()->user()->hasPermission('orders.create'))
                 <a href="{{ route('orders.create', ['trip_id' => $trip->id]) }}" class="btn btn-sm btn-primary"><i class="bi bi-plus-lg me-1"></i>New</a>
+                @endif
             </div>
             <div class="table-responsive">
                 <table class="table table-hover mb-0 small">
