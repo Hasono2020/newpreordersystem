@@ -143,6 +143,7 @@ body { padding-bottom: 72px; }
 
 const TRIP_ID    = {{ $selectedTrip?->id ?? 'null' }};
 const CSRF_TOKEN = document.querySelector('meta[name=csrf-token]').content;
+const CAN_PURCHASE_EDIT = {{ auth()->user()->hasPermission('purchasing.edit') ? 'true' : 'false' }};
 let   DEMAND     = [];
 let   activePOKey = null;
 
@@ -240,9 +241,9 @@ function renderDemand() {
                             ? `<button class="btn btn-sm btn-warning" onclick="syncAndEdit(${group.active_po.id}, '${escH(group.active_po.po_number)}')">
                                 <i class="bi bi-pencil me-1"></i>Add to ${escH(group.active_po.po_number)}
                               </button>`
-                            : `<button class="btn btn-sm btn-primary" onclick="openPOPanel('${key}')">
+                            : ` + (${JSON.stringify(false)} || !window._canPurchEdit ? '' : CAN_PURCHASE_EDIT ? `<button class="btn btn-sm btn-primary" onclick="openPOPanel('${key}')">
                                 <i class="bi bi-file-earmark-plus me-1"></i>Create PO
-                              </button>`
+                              </button>` : '')
                         }
                     </div>
                 </div>

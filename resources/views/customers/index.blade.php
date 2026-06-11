@@ -41,6 +41,7 @@
     </div>
     <div class="col-auto d-flex gap-2">
         {{-- Import/Export dropdown --}}
+        @if(auth()->user()->hasPermission('customers.import'))
         <div class="dropdown">
             <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
                 <i class="bi bi-arrow-down-up me-1"></i>Import / Export
@@ -61,6 +62,7 @@
                 </li>
             </ul>
         </div>
+        @endif
         @if(auth()->user()->isAdmin())
         {{-- Bulk delete dropdown --}}
         <div class="dropdown">
@@ -82,9 +84,11 @@
             </ul>
         </div>
         @endif
+@if(auth()->user()->hasPermission('customers.create'))
         <a href="{{ route('customers.create') }}" class="btn btn-primary btn-sm">
             <i class="bi bi-plus-lg me-1"></i>Add Customer
         </a>
+        @endif
     </div>
 </div>
 

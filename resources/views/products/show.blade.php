@@ -7,9 +7,11 @@
     <a href="{{ route('products.index') }}" class="btn btn-sm btn-outline-secondary">
         <i class="bi bi-arrow-left me-1"></i>Back
     </a>
+@if(auth()->user()->hasPermission('products.edit'))
     <a href="{{ route('products.edit', $product) }}" class="btn btn-sm btn-outline-secondary">
         <i class="bi bi-pencil me-1"></i>Edit
     </a>
+    @endif
     <span class="badge {{ $product->status === 'active' ? 'bg-success' : 'bg-secondary' }} align-self-center">
         {{ ucfirst($product->status) }}
     </span>

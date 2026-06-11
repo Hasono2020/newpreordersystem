@@ -66,9 +66,11 @@
             </ul>
         </div>
         @endif
+        @if(auth()->user()->hasPermission('orders.export') || auth()->user()->hasPermission('orders.import'))
         <div class="dropdown">
             <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
-                <i class="bi bi-arrow-down-up me-1"></i>Import / Export
+                <i class="bi bi-arrow-down-up me-1"></i>
+                @if(auth()->user()->hasPermission('orders.import')) Import / Export @else Export @endif
             </button>
             <ul class="dropdown-menu dropdown-menu-end" style="min-width:240px;">
                 <li><h6 class="dropdown-header">Export</h6></li>
@@ -96,7 +98,10 @@
                 </li>
             </ul>
         </div>
+        @endif
+@if(auth()->user()->hasPermission('orders.create'))
         <a href="{{ route('orders.create') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>New Order</a>
+        @endif
     </div>
 </div>
 
