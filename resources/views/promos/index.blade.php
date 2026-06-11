@@ -46,11 +46,11 @@
                     @endif
                     <th>Name</th>
                     <th>Trip</th>
-                    <th>Type</th>
                     <th>Min Items</th>
-                    <th>Min Amount</th>
-                    <th>Discount</th>
-                    <th>Free Shipping</th>
+                    <th>Discount/Item</th>
+                    <th>Flat Discount</th>
+                    <th>Shipping Subsidy</th>
+                    <th>Customer Types</th>
                     <th>Status</th>
                     <th></th>
                 </tr>
@@ -65,25 +65,35 @@
                     @endif
                     <td class="fw-semibold">{{ $promo->name }}</td>
                     <td class="text-muted small">{{ $promo->trip?->name ?? 'All trips' }}</td>
+                    <td>{{ $promo->min_items }}</td>
                     <td>
-                        <span class="badge bg-light text-dark border">{{ ucfirst($promo->type ?? '—') }}</span>
-                    </td>
-                    <td>{{ $promo->min_items ?? '—' }}</td>
-                    <td>{{ $promo->min_amount ? 'Rp '.number_format($promo->min_amount, 0, ',', '.') : '—' }}</td>
-                    <td>
-                        @if($promo->discount_pct)
-                            <span class="text-success fw-semibold">{{ $promo->discount_pct }}%</span>
-                        @elseif($promo->discount_amount)
-                            <span class="text-success fw-semibold">Rp {{ number_format($promo->discount_amount, 0, ',', '.') }}</span>
+                        @if($promo->discount_per_item > 0)
+                            <span class="text-success fw-semibold">Rp {{ number_format($promo->discount_per_item, 0, ',', '.') }}</span>
                         @else
-                            —
+                            <span class="text-muted">—</span>
                         @endif
                     </td>
                     <td>
-                        @if($promo->free_shipping)
-                            <span class="badge bg-success">Yes</span>
+                        @if($promo->discount_flat > 0)
+                            <span class="text-success fw-semibold">Rp {{ number_format($promo->discount_flat, 0, ',', '.') }}</span>
                         @else
                             <span class="text-muted">—</span>
+                        @endif
+                    </td>
+                    <td>
+                        @if($promo->max_shipping_subsidy > 0)
+                            <span class="text-info fw-semibold">Rp {{ number_format($promo->max_shipping_subsidy, 0, ',', '.') }}</span>
+                        @else
+                            <span class="text-muted">—</span>
+                        @endif
+                    </td>
+                    <td>
+                        @if($promo->eligible_customer_types)
+                            @foreach($promo->eligible_customer_types as $t)
+                                <span class="badge bg-light text-dark border" style="font-size:.7rem;">{{ $t }}</span>
+                            @endforeach
+                        @else
+                            <span class="text-muted small">All</span>
                         @endif
                     </td>
                     <td>

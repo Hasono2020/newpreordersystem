@@ -5,8 +5,8 @@
 @section('content')
 
 {{-- Toolbar --}}
-<div class="d-flex gap-2 mb-3 flex-wrap align-items-center justify-content-between">
-    <form class="d-flex gap-2 grow" method="GET" action="{{ route('shipping.index') }}">
+<div class="d-flex gap-2 mb-3 flex-wrap align-items-center">
+    <form class="d-flex gap-2 me-auto" method="GET" action="{{ route('shipping.index') }}">
         <input type="hidden" name="per_page" value="{{ $perPage }}">
         <input type="text" name="search" class="form-control form-control-sm" style="max-width:240px;"
             placeholder="Search area or province…" value="{{ request('search') }}">
@@ -195,4 +195,4 @@ function deleteAll() {
 }
 </script>
 @endpush
-@endsectionc
+@endsection

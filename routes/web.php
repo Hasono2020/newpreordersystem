@@ -145,17 +145,20 @@ Route::get('admin/clean-permissions', function() {
     /** @var \App\Models\User|null $u */
     $u = \Illuminate\Support\Facades\Auth::user();
     if (!$u?->isAdmin()) abort(403);
-    $cleaned = 0;
+    $results = [];
     foreach (\App\Models\User::all() as $user) {
         $customs = $user->permissions ?? [];
-        if (empty($customs)) continue;
+        if (empty($customs)) { $results[] = "{$user->name}: no overrides"; continue; }
         $defaults = \App\Models\User::roleDefaults($user->role);
+        $before = count($customs);
         $trueOverrides = array_filter($customs, fn($val, $perm) =>
             (bool)($defaults[$perm] ?? false) !== (bool)$val,
             ARRAY_FILTER_USE_BOTH
         );
-        $user->update(['permissions' => empty($trueOverrides) ? null : $trueOverrides]);
-        $cleaned++;
+        $newPerms = empty($trueOverrides) ? null : $trueOverrides;
+        $user->update(['permissions' => $newPerms]);
+        $after = count($trueOverrides);
+        $results[] = "{$user->name} ({$user->role}): {$before} → {$after} overrides | kept: " . implode(', ', array_keys($trueOverrides));
     }
-    return "Cleaned $cleaned user(s). <a href='/staff'>Back to staff</a>";
+    return implode('<br>', $results) . '<br><br><a href="/staff">Back to staff</a>';
 })->middleware(['web','auth']);
