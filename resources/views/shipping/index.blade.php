@@ -5,8 +5,8 @@
 @section('content')
 
 {{-- Toolbar --}}
-<div class="d-flex gap-2 mb-3 flex-wrap align-items-center">
-    <form class="d-flex gap-2 flex-grow-1" method="GET" action="{{ route('shipping.index') }}">
+<div class="d-flex gap-2 mb-3 flex-wrap align-items-center justify-content-between">
+    <form class="d-flex gap-2 grow" method="GET" action="{{ route('shipping.index') }}">
         <input type="hidden" name="per_page" value="{{ $perPage }}">
         <input type="text" name="search" class="form-control form-control-sm" style="max-width:240px;"
             placeholder="Search area or province…" value="{{ request('search') }}">
@@ -90,13 +90,8 @@
                     </td>
                     <td class="text-nowrap">
                         <a href="{{ route('shipping.show', $area) }}" class="btn btn-sm btn-outline-primary">View</a>
+                        @if(auth()->user()->hasPermission('shipping.edit'))
                         <a href="{{ route('shipping.edit', $area) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
-                        @if(auth()->user()->isAdmin())
-                        <form method="POST" action="{{ route('shipping.destroy', $area) }}" class="d-inline"
-                            onsubmit="return confirm('Delete {{ $area->name }}?')">
-                            @csrf @method('DELETE')
-                            <button class="btn btn-sm btn-outline-danger">×</button>
-                        </form>
                         @endif
                     </td>
                 </tr>
@@ -200,4 +195,4 @@ function deleteAll() {
 }
 </script>
 @endpush
-@endsection
+@endsectionc

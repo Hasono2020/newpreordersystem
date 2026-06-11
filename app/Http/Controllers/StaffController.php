@@ -63,27 +63,25 @@ class StaffController extends Controller
             'permissions' => 'nullable|array',
         ]);
 
-        // Build custom permission overrides
-        // Store only permissions that DIFFER from role defaults
-        // Also store any permissions not in role defaults (new/custom permissions)
+        // Build custom permission overrides (only store true differences from role defaults)
         $customPerms = null;
         if ($request->has('permissions')) {
             $roleDefaults = User::roleDefaults($data['role']);
             $overrides    = [];
 
-            // Check all known permissions (role defaults + any submitted)
+            // Check ALL known permissions (role defaults + any extra submitted)
             $allPerms = array_unique(array_merge(
                 array_keys($roleDefaults),
                 array_keys($request->permissions ?? [])
             ));
 
             foreach ($allPerms as $perm) {
-                $default   = $roleDefaults[$perm] ?? false;
-                $submitted = isset($request->permissions[$perm]);
-                if ((bool)$submitted !== (bool)$default) {
+                $default   = (bool) ($roleDefaults[$perm] ?? false);
+                $submitted = (bool) isset($request->permissions[$perm]);
+                // Only store if it genuinely differs from role default
+                if ($submitted !== $default) {
                     $overrides[$perm] = $submitted;
                 }
-                // If submitted matches default, don't store (keeps JSON clean)
             }
             $customPerms = empty($overrides) ? null : $overrides;
         }

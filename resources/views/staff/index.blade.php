@@ -33,8 +33,11 @@
     @php
         $defaults = \App\Models\User::roleDefaults($user->role);
         $customs  = $user->permissions ?? [];
-        // Only count overrides that actually differ from role defaults
-        $trueOverrides = array_filter($customs, fn($val, $perm) => ($defaults[$perm] ?? false) !== $val, ARRAY_FILTER_USE_BOTH);
+        // Only count entries that genuinely differ from role defaults
+        $trueOverrides = array_filter($customs, fn($val, $perm) =>
+            (bool)($defaults[$perm] ?? false) !== (bool)$val,
+            ARRAY_FILTER_USE_BOTH
+        );
         $hasOverrides = !empty($trueOverrides);
     @endphp
     <div class="col-12">

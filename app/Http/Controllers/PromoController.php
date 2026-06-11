@@ -3,8 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\PromoRule;
-use App\Models\Trip;
 use Illuminate\Http\Request;
+use App\Models\Trip;
 
 class PromoController extends Controller
 {
@@ -75,6 +75,19 @@ class PromoController extends Controller
     {
         $promo->delete();
         return redirect()->route('promos.index')->with('success', 'Promo rule deleted.');
+    }
+
+    public function bulkDestroy(Request $request)
+    {
+        if ($request->boolean('delete_all')) {
+            PromoRule::query()->delete();
+            return redirect()->route('promos.index')->with('success', 'All promo rules deleted.');
+        }
+        $ids = $request->input('ids', []);
+        if (!empty($ids)) {
+            PromoRule::whereIn('id', $ids)->delete();
+        }
+        return redirect()->route('promos.index')->with('success', count($ids).' promo rule(s) deleted.');
     }
 
     private function parseCodeList(string $raw): ?array

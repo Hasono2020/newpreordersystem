@@ -63,12 +63,9 @@
                     </td>
                     <td>
                         <a href="{{ route('suppliers.show', $supplier) }}" class="btn btn-sm btn-outline-primary">View</a>
+                        @if(auth()->user()->hasPermission('suppliers.edit'))
                         <a href="{{ route('suppliers.edit', $supplier) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
-                        <form method="POST" action="{{ route('suppliers.destroy', $supplier) }}" class="d-inline"
-                            onsubmit="return confirm('Delete {{ $supplier->name }}? Products linked to this supplier will be unlinked.')">
-                            @csrf @method('DELETE')
-                            <button class="btn btn-sm btn-outline-danger">×</button>
-                        </form>
+                        @endif
                     </td>
                 </tr>
                 @empty

@@ -168,13 +168,8 @@
                     <td>{{ $customer->orders_count }}</td>
                     <td>
                         <a href="{{ route('customers.show', $customer) }}" class="btn btn-sm btn-outline-primary">View</a>
+                        @if(auth()->user()->hasPermission('customers.edit'))
                         <a href="{{ route('customers.edit', $customer) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
-                        @if(auth()->user()->isAdmin())
-                        <form method="POST" action="{{ route('customers.destroy', $customer) }}" class="d-inline"
-                            onsubmit="return confirm('Delete {{ $customer->name }}? This also deletes all their orders.')">
-                            @csrf @method('DELETE')
-                            <button type="submit" class="btn btn-sm btn-outline-danger">×</button>
-                        </form>
                         @endif
                     </td>
                 </tr>

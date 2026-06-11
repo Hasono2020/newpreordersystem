@@ -73,6 +73,7 @@ Route::middleware('auth')->group(function () {
     Route::get('customers/{customer}/combined-invoice', [OrderController::class, 'combinedInvoice'])->name('orders.combined-invoice');
 
     // Promos
+    Route::delete('promos-bulk', [PromoController::class, 'bulkDestroy'])->middleware('perm:promos.edit')->name('promos.bulk-destroy');
     Route::get('promos', [PromoController::class, 'index'])->name('promos.index');
     Route::middleware('perm:promos.edit')->group(function () {
         Route::get('promos/create', [PromoController::class, 'create'])->name('promos.create');
@@ -138,3 +139,23 @@ Route::middleware('auth')->group(function () {
     Route::get('api/shipping/calc', [OrderController::class, 'calcShipping'])->name('api.shipping.calc');
     Route::get('api/shipping/areas', [ShippingAreaController::class, 'apiList'])->name('api.shipping.areas');
 });
+
+// TEMP: clean stale permission overrides for all users
+Route::get('admin/clean-permissions', function() {
+    /** @var \App\Models\User|null $u */
+    $u = \Illuminate\Support\Facades\Auth::user();
+    if (!$u?->isAdmin()) abort(403);
+    $cleaned = 0;
+    foreach (\App\Models\User::all() as $user) {
+        $customs = $user->permissions ?? [];
+        if (empty($customs)) continue;
+        $defaults = \App\Models\User::roleDefaults($user->role);
+        $trueOverrides = array_filter($customs, fn($val, $perm) =>
+            (bool)($defaults[$perm] ?? false) !== (bool)$val,
+            ARRAY_FILTER_USE_BOTH
+        );
+        $user->update(['permissions' => empty($trueOverrides) ? null : $trueOverrides]);
+        $cleaned++;
+    }
+    return "Cleaned $cleaned user(s). <a href='/staff'>Back to staff</a>";
+})->middleware(['web','auth']);
