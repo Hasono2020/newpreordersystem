@@ -77,7 +77,7 @@ class User extends Authenticatable
                 'shipping.import'  => false,
                 'purchasing.view'  => true,  'purchasing.edit'  => false,
                 'payments.view'    => true,  'payments.record'  => true,
-                'payments.void'    => true,
+                'payments.void'    => false,
                 'invoices.view'    => true,
                 'trips.view'       => true,  'trips.edit'       => false,
                 'trips.new_order'  => false,

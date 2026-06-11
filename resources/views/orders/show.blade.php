@@ -201,7 +201,7 @@
                                 @endif
                             </td>
                             <td>
-                                @if(!$payment->isVoided() && auth()->user()->isAdmin())
+                                @if(!$payment->isVoided() && auth()->user()->hasPermission('payments.void'))
                                 <button type="button" class="btn btn-xs btn-outline-danger py-0 px-1"
                                     style="font-size:.75rem;"
                                     onclick="showVoidModal({{ $payment->id }}, {{ $payment->amount }})">
