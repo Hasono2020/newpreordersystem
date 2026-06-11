@@ -40,7 +40,7 @@
         </form>
     </div>
     <div class="col-auto d-flex gap-2">
-        @if(auth()->user()->isAdmin())
+        @if(auth()->user()->hasPermission('orders.delete'))
         <div class="dropdown">
             <button class="btn btn-sm btn-outline-danger dropdown-toggle" data-bs-toggle="dropdown">
                 <i class="bi bi-trash3 me-1"></i>Delete
@@ -161,11 +161,13 @@
     </div>
 </div>
 
+@if(auth()->user()->hasPermission('orders.delete'))
 <form method="POST" action="{{ route('orders.bulk-destroy') }}" id="bulkDeleteForm">
     @csrf
     <input type="hidden" name="action" id="bulkAction">
     <input type="hidden" name="trip_id" value="{{ request('trip_id') }}">
 </form>
+@endif
 
 <div class="card">
     <div class="table-responsive">
@@ -173,7 +175,9 @@
             <thead class="table-light">
                 <tr>
                     @if(auth()->user()->isAdmin())
+@if(auth()->user()->hasPermission('orders.delete'))
                     <th style="width:36px;"><input type="checkbox" id="selectAll" class="form-check-input"></th>
+                    @endif
                     @endif
                     <th>Order #</th><th>Customer</th><th>Trip</th><th>Subtotal</th><th>Discount</th><th>Total</th><th>Paid</th><th>Balance</th><th>Status</th><th></th>
                 </tr>
@@ -182,7 +186,9 @@
                 @forelse($orders as $order)
                 <tr>
                     @if(auth()->user()->isAdmin())
+@if(auth()->user()->hasPermission('orders.delete'))
                     <td><input type="checkbox" name="order_ids[]" value="{{ $order->id }}" class="form-check-input order-checkbox" form="bulkDeleteForm"></td>
+                    @endif
                     @endif
                     <td class="font-monospace small">{{ $order->order_number }}</td>
                     <td>
