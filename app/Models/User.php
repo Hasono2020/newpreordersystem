@@ -76,6 +76,7 @@ class User extends Authenticatable
                 'invoices.view'    => true,
                 'trips.view'       => true,  'trips.edit'       => false,
                 'reports.view'     => true,
+                'promos.edit'      => false,
                 'settings.view'    => false, 'settings.edit'    => false,
             ],
             'purchasing' => [
@@ -93,6 +94,7 @@ class User extends Authenticatable
                 'invoices.view'    => false,
                 'trips.view'       => true,  'trips.edit'       => false,
                 'reports.view'     => false,
+                'promos.edit'      => false,
                 'settings.view'    => false, 'settings.edit'    => false,
             ],
             'staff' => [
@@ -110,6 +112,7 @@ class User extends Authenticatable
                 'invoices.view'    => true,
                 'trips.view'       => true,  'trips.edit'       => false,
                 'reports.view'     => false,
+                'promos.edit'      => false,
                 'settings.view'    => false, 'settings.edit'    => false,
             ],
             'viewer' => [
@@ -127,6 +130,7 @@ class User extends Authenticatable
                 'invoices.view'    => true,
                 'trips.view'       => true,  'trips.edit'       => false,
                 'reports.view'     => true,
+                'promos.edit'      => false,
                 'settings.view'    => false, 'settings.edit'    => false,
             ],
             default => [],

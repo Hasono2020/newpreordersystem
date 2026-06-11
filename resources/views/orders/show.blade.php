@@ -5,7 +5,7 @@
 @section('content')
 <div class="d-flex gap-2 mb-3 flex-wrap">
     <a href="{{ route('orders.index') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Back</a>
-@if(auth()->user()->hasPermission('orders.edit') && (auth()->user()->isAdmin() || $order->created_by === auth()->id()))
+@if(auth()->user()->hasPermission('orders.edit') && (auth()->user()->isAdmin() || auth()->user()->role !== 'staff' || $order->created_by === auth()->id()))
     <a href="{{ route('orders.edit', $order) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil me-1"></i>Edit</a>
     @endif
     <a href="{{ route('orders.invoice', $order) }}" class="btn btn-sm btn-outline-primary" target="_blank">
@@ -201,7 +201,7 @@
                                 @endif
                             </td>
                             <td>
-                                @if(!$payment->isVoided() && auth()->user()->hasPermission('payments.void'))
+                                @if(!$payment->isVoided() && auth()->user()->isAdmin())
                                 <button type="button" class="btn btn-xs btn-outline-danger py-0 px-1"
                                     style="font-size:.75rem;"
                                     onclick="showVoidModal({{ $payment->id }}, {{ $payment->amount }})">

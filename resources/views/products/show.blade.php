@@ -7,11 +7,9 @@
     <a href="{{ route('products.index') }}" class="btn btn-sm btn-outline-secondary">
         <i class="bi bi-arrow-left me-1"></i>Back
     </a>
-@if(auth()->user()->hasPermission('products.edit'))
     <a href="{{ route('products.edit', $product) }}" class="btn btn-sm btn-outline-secondary">
         <i class="bi bi-pencil me-1"></i>Edit
     </a>
-    @endif
     <span class="badge {{ $product->status === 'active' ? 'bg-success' : 'bg-secondary' }} align-self-center">
         {{ ucfirst($product->status) }}
     </span>
@@ -44,7 +42,6 @@
         </div>
 
         {{-- Add Variant --}}
-        @if(auth()->user()->hasPermission('products.edit'))
         <div class="card p-3">
             <div class="fw-semibold mb-3">Add Variant</div>
             <form method="POST" action="{{ route('products.variants.store', $product) }}">
@@ -55,7 +52,6 @@
                 <button type="submit" class="btn btn-sm btn-primary w-100">Add Variant</button>
             </form>
         </div>
-        @endif
     </div>
 
     <div class="col-lg-8">
@@ -74,9 +70,10 @@
                             <td>Rp {{ number_format($variant->final_price, 0, ',', '.') }}</td>
                             <td>
                                 @if($variant->allocated_qty > 0)
+                                    {{-- Locked after allocation --}}
                                     <span class="badge bg-success">{{ $variant->supplier_stock }}</span>
                                     <span class="text-muted small ms-1" title="Stock locked after allocation">🔒</span>
-                                @elseif(auth()->user()->hasPermission('products.edit'))
+                                @else
                                     <form method="POST" action="{{ route('products.variants.update', [$product, $variant]) }}" class="d-inline">
                                         @csrf @method('PATCH')
                                         <input type="hidden" name="color" value="{{ $variant->color }}">
@@ -87,8 +84,6 @@
                                             <button type="submit" class="btn btn-outline-secondary btn-sm">✓</button>
                                         </div>
                                     </form>
-                                @else
-                                    <span class="badge bg-light text-dark border">{{ $variant->supplier_stock }}</span>
                                 @endif
                             </td>
                             <td>
@@ -103,11 +98,13 @@
                             </td>
                             <td>
                                 @php $hasOrders = $variant->orderItems()->exists(); @endphp
-                                @if(!$hasOrders && $variant->allocated_qty == 0 && auth()->user()->isAdmin())
+                                @if(!$hasOrders && $variant->allocated_qty == 0 && auth()->user()->hasPermission('products.edit'))
                                     <form method="POST" action="{{ route('products.variants.destroy', [$product, $variant]) }}"
                                         onsubmit="return confirm('Delete this variant? This cannot be undone.')">
                                         @csrf @method('DELETE')
-                                        <button type="submit" class="btn btn-sm btn-outline-danger">×</button>
+                                        <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2" title="Delete variant">
+                                            <i class="bi bi-trash3" style="font-size:.75rem;"></i>
+                                        </button>
                                     </form>
                                 @else
                                     <span class="text-muted small" title="Cannot delete — variant has orders">—</span>

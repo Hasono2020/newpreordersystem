@@ -160,9 +160,24 @@ class OrderController extends Controller
         return view('orders.show', compact('order', 'shippingAreas', 'appliedPromo'));
     }
 
+    /**
+     * Can the current user write this order?
+     * Admin: any. Staff: own only. Other roles: any if permission granted.
+     */
+    private function canWriteOrder(Order $order, string $perm = 'orders.edit'): bool
+    {
+        /** @var \App\Models\User $user */
+        $user = \Illuminate\Support\Facades\Auth::user();
+        if (!$user) return false;
+        if ($user->isAdmin()) return true;
+        if (!$user->hasPermission($perm)) return false;
+        if ($user->role === 'staff' && $order->created_by !== $user->id) return false;
+        return true;
+    }
+
     public function edit(Order $order)
     {
-        $this->authorizeOrderWrite($order, 'edit');
+        if (!$this->canWriteOrder($order, 'orders.edit')) abort(403, "You don't have permission to edit this order.");
         $order->load([
             'customer',
             'trip.products.variants',
@@ -178,7 +193,6 @@ class OrderController extends Controller
 
     public function update(Request $request, Order $order)
     {
-        $this->authorizeOrderWrite($order, 'edit');
         $request->validate([
             'shipping_area_id' => 'nullable|exists:shipping_areas,id',
             'notes'            => 'nullable|string',
@@ -247,7 +261,7 @@ class OrderController extends Controller
 
     public function destroy(Order $order)
     {
-        $this->authorizeOrderWrite($order, 'delete');
+        $this->adminOnly('delete orders');
         $order->delete();
         return redirect()->route('orders.index')->with('success', 'Order deleted.');
     }
@@ -256,7 +270,6 @@ class OrderController extends Controller
 
     public function updateItem(Request $request, Order $order, OrderItem $item)
     {
-        $this->authorizeOrderWrite($order, 'edit');
         // Bug 2 fix: ensure item belongs to this order
         abort_if($item->order_id !== $order->id, 404, 'Item does not belong to this order.');
 

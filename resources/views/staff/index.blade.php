@@ -33,7 +33,9 @@
     @php
         $defaults = \App\Models\User::roleDefaults($user->role);
         $customs  = $user->permissions ?? [];
-        $hasOverrides = !empty($customs);
+        // Only count overrides that actually differ from role defaults
+        $trueOverrides = array_filter($customs, fn($val, $perm) => ($defaults[$perm] ?? false) !== $val, ARRAY_FILTER_USE_BOTH);
+        $hasOverrides = !empty($trueOverrides);
     @endphp
     <div class="col-12">
         <div class="card {{ !$user->is_active ? 'opacity-50' : '' }}">
@@ -68,7 +70,7 @@
                         <span class="role-badge role-{{ $user->role }}">{{ ucfirst($user->role) }}</span>
                         @if($hasOverrides)
                             <div style="font-size:.68rem;color:#6366f1;margin-top:2px;">
-                                <i class="bi bi-sliders me-1"></i>{{ count($customs) }} custom override(s)
+                                <i class="bi bi-sliders me-1"></i>{{ count($trueOverrides) }} custom override(s)
                             </div>
                         @endif
                     </div>

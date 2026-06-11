@@ -5,9 +5,7 @@
 @section('content')
 <div class="d-flex justify-content-between mb-3">
     <p class="text-muted mb-0 small">Promos are applied automatically based on item count and customer type when an order is saved.</p>
-@if(auth()->user()->hasPermission('promos.edit'))
     <a href="{{ route('promos.create') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>Add Rule</a>
-    @endif
 </div>
 
 <div class="card">
@@ -40,15 +38,11 @@
                         @endif
                     </td>
                     <td>
-@if(auth()->user()->hasPermission('promos.edit'))
                         <a href="{{ route('promos.edit', $promo) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
-                        @endif
-@if(auth()->user()->hasPermission('promos.edit'))
                         <form method="POST" action="{{ route('promos.destroy', $promo) }}" class="d-inline" onsubmit="return confirm('Delete?')">
                             @csrf @method('DELETE')
                             <button type="submit" class="btn btn-sm btn-outline-danger">×</button>
                         </form>
-                        @endif
                     </td>
                 </tr>
                 @empty
