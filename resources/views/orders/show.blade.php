@@ -17,7 +17,6 @@
         <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
     </form>
     @endif
-    @endif
 </div>
 
 <div class="row g-3">
