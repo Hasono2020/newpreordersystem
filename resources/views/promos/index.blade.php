@@ -82,7 +82,7 @@
                     </td>
                     <td>
                         @if($promo->max_shipping_subsidy > 0)
-                            <span class="text-info fw-semibold">Rp {{ number_format($promo->max_shipping_subsidy, 0, ',', '.') }}</span>
+                            <span class="fw-semibold text-secondary">Rp {{ number_format($promo->max_shipping_subsidy, 0, ',', '.') }}</span>
                         @else
                             <span class="text-muted">—</span>
                         @endif
@@ -90,7 +90,15 @@
                     <td>
                         @if($promo->eligible_customer_types)
                             @foreach($promo->eligible_customer_types as $t)
-                                <span class="badge bg-light text-dark border" style="font-size:.7rem;">{{ $t }}</span>
+                            @php
+                                $badgeClass = match($t) {
+                                    'reseller'          => 'bg-primary',
+                                    'selected_customer' => 'bg-warning text-dark',
+                                    'customer'          => 'bg-success',
+                                    default             => 'bg-light text-dark border',
+                                };
+                            @endphp
+                                <span class="badge {{ $badgeClass }}" style="font-size:.7rem;">{{ $t }}</span>
                             @endforeach
                         @else
                             <span class="text-muted small">All</span>

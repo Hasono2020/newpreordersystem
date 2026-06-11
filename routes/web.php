@@ -147,18 +147,19 @@ Route::get('admin/clean-permissions', function() {
     if (!$u?->isAdmin()) abort(403);
     $results = [];
     foreach (\App\Models\User::all() as $user) {
-        $customs = $user->permissions ?? [];
-        if (empty($customs)) { $results[] = "{$user->name}: no overrides"; continue; }
+        $customs  = $user->permissions ?? [];
         $defaults = \App\Models\User::roleDefaults($user->role);
-        $before = count($customs);
-        $trueOverrides = array_filter($customs, fn($val, $perm) =>
-            (bool)($defaults[$perm] ?? false) !== (bool)$val,
-            ARRAY_FILTER_USE_BOTH
-        );
-        $newPerms = empty($trueOverrides) ? null : $trueOverrides;
-        $user->update(['permissions' => $newPerms]);
-        $after = count($trueOverrides);
-        $results[] = "{$user->name} ({$user->role}): {$before} → {$after} overrides | kept: " . implode(', ', array_keys($trueOverrides));
+        $before   = count($customs);
+        // Keep only entries that truly differ from (now complete) role defaults
+        $kept = [];
+        foreach ($customs as $perm => $val) {
+            $default = array_key_exists($perm, $defaults) ? (bool)$defaults[$perm] : null;
+            if ($default === null || (bool)$val !== $default) {
+                $kept[$perm] = $val;
+            }
+        }
+        $user->update(['permissions' => empty($kept) ? null : $kept]);
+        $results[] = "{$user->name} ({$user->role}): {$before} → " . count($kept) . " | kept: " . implode(', ', array_keys($kept));
     }
     return implode('<br>', $results) . '<br><br><a href="/staff">Back to staff</a>';
 })->middleware(['web','auth']);
