@@ -138,7 +138,7 @@ class User extends Authenticatable
                 'products.edit'    => false, 'products.delete'  => false,
                 'purchasing.view'  => true,  'purchasing.edit'  => false,
                 'payments.view'    => false, 'payments.record'  => false,
-                'payments.void'    => false,
+                'payments.void'    => true,
                 'invoices.view'    => true,
                 'trips.view'       => true,  'trips.edit'       => false,
                 'reports.view'     => true,
