@@ -44,6 +44,7 @@
         </div>
 
         {{-- Add Variant --}}
+        @if(auth()->user()->hasPermission('products.edit'))
         <div class="card p-3">
             <div class="fw-semibold mb-3">Add Variant</div>
             <form method="POST" action="{{ route('products.variants.store', $product) }}">
@@ -54,6 +55,7 @@
                 <button type="submit" class="btn btn-sm btn-primary w-100">Add Variant</button>
             </form>
         </div>
+        @endif
     </div>
 
     <div class="col-lg-8">
@@ -75,7 +77,7 @@
                                     {{-- Locked after allocation --}}
                                     <span class="badge bg-success">{{ $variant->supplier_stock }}</span>
                                     <span class="text-muted small ms-1" title="Stock locked after allocation">🔒</span>
-                                @else
+                                @elseif(auth()->user()->hasPermission('products.edit'))
                                     <form method="POST" action="{{ route('products.variants.update', [$product, $variant]) }}" class="d-inline">
                                         @csrf @method('PATCH')
                                         <input type="hidden" name="color" value="{{ $variant->color }}">
@@ -86,6 +88,8 @@
                                             <button type="submit" class="btn btn-outline-secondary btn-sm">✓</button>
                                         </div>
                                     </form>
+                                @else
+                                    <span class="badge bg-light text-dark border">{{ $variant->supplier_stock }}</span>
                                 @endif
                             </td>
                             <td>

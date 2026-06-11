@@ -15,6 +15,7 @@
         </form>
     </div>
     <div class="col-auto d-flex gap-2">
+        @if(auth()->user()->hasPermission('suppliers.delete'))
         <div class="dropdown">
             <button class="btn btn-sm btn-outline-danger dropdown-toggle" data-bs-toggle="dropdown">
                 <i class="bi bi-trash3 me-1"></i>Delete
@@ -29,9 +30,12 @@
                 </button></li>
             </ul>
         </div>
+        @endif
+        @if(auth()->user()->hasPermission('suppliers.create'))
         <a href="{{ route('suppliers.create') }}" class="btn btn-primary btn-sm">
             <i class="bi bi-plus-lg me-1"></i>Add Supplier
         </a>
+        @endif
     </div>
 </div>
 
@@ -40,14 +44,18 @@
         <table class="table table-hover mb-0">
             <thead class="table-light">
                 <tr>
+@if(auth()->user()->hasPermission('suppliers.delete'))
                     <th style="width:36px;"><input type="checkbox" id="selectAll" class="form-check-input"></th>
+                    @endif
                     <th>Name</th><th>Contact</th><th>Phone</th><th>Country</th><th>Products</th><th>POs</th><th>Status</th><th></th>
                 </tr>
             </thead>
             <tbody>
                 @forelse($suppliers as $supplier)
                 <tr>
+@if(auth()->user()->hasPermission('suppliers.delete'))
                     <td><input type="checkbox" class="form-check-input row-check" value="{{ $supplier->id }}"></td>
+                    @endif
                     <td class="fw-semibold">{{ $supplier->name }}</td>
                     <td class="text-muted small">{{ $supplier->contact_person ?? '—' }}</td>
                     <td class="text-muted small">{{ $supplier->phone ?? '—' }}</td>

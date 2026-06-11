@@ -241,7 +241,7 @@ function renderDemand() {
                             ? `<button class="btn btn-sm btn-warning" onclick="syncAndEdit(${group.active_po.id}, '${escH(group.active_po.po_number)}')">
                                 <i class="bi bi-pencil me-1"></i>Add to ${escH(group.active_po.po_number)}
                               </button>`
-                            : ` + (${JSON.stringify(false)} || !window._canPurchEdit ? '' : CAN_PURCHASE_EDIT ? `<button class="btn btn-sm btn-primary" onclick="openPOPanel('${key}')">
+                            : (CAN_PURCHASE_EDIT ? `<button class="btn btn-sm btn-primary" onclick="openPOPanel('${key}')">
                                 <i class="bi bi-file-earmark-plus me-1"></i>Create PO
                               </button>` : '')
                         }

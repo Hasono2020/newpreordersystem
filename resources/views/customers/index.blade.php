@@ -142,9 +142,11 @@
         <table class="table table-hover mb-0">
             <thead class="table-light">
                 <tr>
+@if(auth()->user()->hasPermission('customers.delete'))
                     <th style="width:36px;">
                         <input type="checkbox" id="selectAll" class="form-check-input">
                     </th>
+                    @endif
                     <th>Name</th>
                     <th>Phone</th>
                     <th>Type</th>
@@ -155,9 +157,11 @@
             <tbody>
                 @forelse($customers as $customer)
                 <tr>
+@if(auth()->user()->hasPermission('customers.delete'))
                     <td>
                         <input type="checkbox" class="form-check-input customer-cb" value="{{ $customer->id }}">
                     </td>
+                    @endif
                     <td class="fw-semibold">{{ $customer->name }}</td>
                     <td class="text-muted small">{{ $customer->phone ?? '—' }}</td>
                     <td>
