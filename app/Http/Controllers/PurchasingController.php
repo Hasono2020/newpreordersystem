@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\OrderItem;
 use App\Models\ProductVariant;
 use App\Models\PurchaseOrder;
 use App\Models\Trip;
@@ -692,63 +691,90 @@ class PurchasingController extends Controller
         }
         $request->validate([
             'items'                      => 'required|array',
-            'items.*.id'                 => 'required|exists:purchase_order_items,id',
+            'items.*.id'                 => 'required|integer',
             'items.*.quantity_received'  => 'required|integer|min:0',
         ]);
 
+        set_time_limit(300); // allow up to 5 minutes for large POs
+
         DB::transaction(function () use ($request, $purchasing) {
+
+            // ── Step 1: load ALL PO items in ONE query ──────────────────
+            $poItemIds = collect($request->items)->pluck('id')->all();
+            $poItems   = DB::table('purchase_order_items')
+                ->whereIn('id', $poItemIds)
+                ->where('purchase_order_id', $purchasing->id)
+                ->get()
+                ->keyBy('id');
+
+            // ── Step 2: load ALL pending order items for this trip in ONE query ──
+            $allPending = DB::table('order_items')
+                ->join('orders', 'orders.id', '=', 'order_items.order_id')
+                ->where('orders.trip_id', $purchasing->trip_id)
+                ->whereIn('order_items.status', ['pending', 'confirmed'])
+                ->orderBy('orders.ordered_at', 'asc')
+                ->orderBy('order_items.id', 'asc')
+                ->select(
+                    'order_items.id', 'order_items.order_id', 'order_items.product_id',
+                    'order_items.product_variant_id', 'order_items.quantity',
+                    'order_items.unit_price', 'order_items.line_total'
+                )
+                ->get()
+                ->groupBy(fn($r) => $r->product_variant_id
+                    ? 'v_'.$r->product_variant_id
+                    : 'p_'.$r->product_id
+                );
+
+            // ── Step 3: FIFO allocation entirely in PHP memory ──────────
             $affectedOrderIds = [];
+            $arrivedIds       = [];
+            $soldOutIds       = [];
+            $partialUpdates   = [];
+            $orderItemInserts = [];
+            $variantStockInc  = [];
+            $variantIds       = [];
+            $processedItemIds = [];
+
+            $now = now();
 
             foreach ($request->items as $itemData) {
-                $poItem = $purchasing->items()->find($itemData['id']);
-                $poItem->update(['quantity_received' => $itemData['quantity_received']]);
+                $poItem = $poItems->get($itemData['id']);
+                if (!$poItem) continue;
 
-                // Bug 3 fix: INCREMENT supplier_stock, don't overwrite
-                // Multiple POs may deliver to the same variant
+                $received = (int) $itemData['quantity_received'];
+
                 if ($poItem->product_variant_id) {
-                    ProductVariant::where('id', $poItem->product_variant_id)
-                        ->increment('supplier_stock', $itemData['quantity_received']);
+                    $variantStockInc[$poItem->product_variant_id] =
+                        ($variantStockInc[$poItem->product_variant_id] ?? 0) + $received;
+                    $variantIds[$poItem->product_variant_id] = true;
                 }
 
-                // FIFO: get pending order items oldest first
-                $pendingItems = OrderItem::where(function ($q) use ($poItem) {
-                        if ($poItem->product_variant_id) {
-                            $q->where('product_variant_id', $poItem->product_variant_id);
-                        } else {
-                            $q->where('product_id', $poItem->product_id)
-                              ->whereNull('product_variant_id');
-                        }
-                    })
-                    ->whereIn('status', ['pending', 'confirmed'])
-                    ->whereHas('order', fn($q) => $q->where('trip_id', $purchasing->trip_id))
-                    ->join('orders', 'order_items.order_id', '=', 'orders.id')
-                    ->orderBy('orders.ordered_at', 'asc')
-                    ->orderBy('order_items.id', 'asc')
-                    ->select('order_items.*')
-                    ->get();
+                $key = $poItem->product_variant_id
+                    ? 'v_'.$poItem->product_variant_id
+                    : 'p_'.$poItem->product_id;
+                $pending   = $allPending->get($key, collect());
+                $remaining = $received;
 
-                $remaining = (int) $itemData['quantity_received'];
-
-                foreach ($pendingItems as $orderItem) {
+                foreach ($pending as $orderItem) {
+                    if (isset($processedItemIds[$orderItem->id])) continue;
+                    $processedItemIds[$orderItem->id] = true;
                     $affectedOrderIds[] = $orderItem->order_id;
 
                     if ($remaining <= 0) {
-                        $orderItem->update(['status' => 'sold_out']);
+                        $soldOutIds[] = $orderItem->id;
                     } elseif ($orderItem->quantity <= $remaining) {
                         $remaining -= $orderItem->quantity;
-                        $orderItem->update(['status' => 'arrived']);
+                        $arrivedIds[] = $orderItem->id;
                     } else {
-                        $arrivedQty  = $remaining;
-                        $soldOutQty  = $orderItem->quantity - $remaining;
-                        $remaining   = 0;
+                        $arrivedQty = $remaining;
+                        $soldOutQty = $orderItem->quantity - $remaining;
+                        $remaining  = 0;
 
-                        $orderItem->update([
+                        $partialUpdates[$orderItem->id] = [
                             'quantity'   => $arrivedQty,
                             'line_total' => $orderItem->unit_price * $arrivedQty,
-                            'status'     => 'arrived',
-                        ]);
-
-                        OrderItem::create([
+                        ];
+                        $orderItemInserts[] = [
                             'order_id'           => $orderItem->order_id,
                             'product_id'         => $orderItem->product_id,
                             'product_variant_id' => $orderItem->product_variant_id,
@@ -757,30 +783,67 @@ class PurchasingController extends Controller
                             'line_total'         => $orderItem->unit_price * $soldOutQty,
                             'status'             => 'sold_out',
                             'notes'              => 'Partial — only '.$arrivedQty.' of '.($arrivedQty + $soldOutQty).' available (FIFO)',
-                        ]);
+                            'created_at'         => $now,
+                            'updated_at'         => $now,
+                        ];
                     }
                 }
+            }
 
-                // Update allocated_qty from actual arrived items
-                if ($poItem->product_variant_id) {
-                    $allocatedQty = OrderItem::where('product_variant_id', $poItem->product_variant_id)
-                        ->whereHas('order', fn($q) => $q->where('trip_id', $purchasing->trip_id))
-                        ->where('status', 'arrived')
-                        ->sum('quantity');
-
-                    ProductVariant::where('id', $poItem->product_variant_id)
-                        ->update(['allocated_qty' => $allocatedQty]);
+            // ── Step 4: apply all updates in bulk ───────────────────────
+            foreach (array_chunk($request->items, 200, true) as $chunk) {
+                foreach ($chunk as $itemData) {
+                    DB::table('purchase_order_items')
+                        ->where('id', $itemData['id'])
+                        ->update(['quantity_received' => (int)$itemData['quantity_received'], 'updated_at' => $now]);
                 }
+            }
+
+            foreach (array_chunk($arrivedIds, 1000) as $chunk) {
+                DB::table('order_items')->whereIn('id', $chunk)->update(['status' => 'arrived', 'updated_at' => $now]);
+            }
+            foreach (array_chunk($soldOutIds, 1000) as $chunk) {
+                DB::table('order_items')->whereIn('id', $chunk)->update(['status' => 'sold_out', 'updated_at' => $now]);
+            }
+            foreach ($partialUpdates as $id => $upd) {
+                DB::table('order_items')->where('id', $id)->update([
+                    'quantity'   => $upd['quantity'],
+                    'line_total' => $upd['line_total'],
+                    'status'     => 'arrived',
+                    'updated_at' => $now,
+                ]);
+            }
+            foreach (array_chunk($orderItemInserts, 500) as $chunk) {
+                DB::table('order_items')->insert($chunk);
+            }
+
+            // ── Step 5: supplier_stock + allocated_qty ──────────────────
+            foreach ($variantStockInc as $variantId => $inc) {
+                ProductVariant::where('id', $variantId)->increment('supplier_stock', $inc);
+            }
+            foreach (array_keys($variantIds) as $variantId) {
+                $allocatedQty = DB::table('order_items')
+                    ->join('orders', 'orders.id', '=', 'order_items.order_id')
+                    ->where('orders.trip_id', $purchasing->trip_id)
+                    ->where('order_items.product_variant_id', $variantId)
+                    ->where('order_items.status', 'arrived')
+                    ->sum('order_items.quantity');
+                ProductVariant::where('id', $variantId)->update(['allocated_qty' => $allocatedQty]);
             }
 
             $purchasing->update(['status' => 'arrived']);
 
-            // Bug 4 fix: recalculate totals for ALL affected orders after FIFO
-            $promoService = app(\App\Services\PromoService::class);
-            foreach (array_unique($affectedOrderIds) as $orderId) {
-                $affectedOrder = \App\Models\Order::find($orderId);
-                if ($affectedOrder) {
-                    $calc = $promoService->recalculate($affectedOrder->fresh());
+            // ── Step 6: recalculate affected orders (batch-loaded) ──────
+            $promoService    = app(\App\Services\PromoService::class);
+            $uniqueOrderIds  = array_values(array_unique($affectedOrderIds));
+
+            foreach (array_chunk($uniqueOrderIds, 300) as $orderIdChunk) {
+                $orders = \App\Models\Order::with(['items.product', 'items.variant', 'customer', 'shippingArea'])
+                    ->whereIn('id', $orderIdChunk)
+                    ->get();
+
+                foreach ($orders as $affectedOrder) {
+                    $calc = $promoService->recalculate($affectedOrder);
                     $affectedOrder->update([
                         'subtotal'             => $calc['subtotal'],
                         'discount_amount'      => $calc['discount_amount'],

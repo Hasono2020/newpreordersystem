@@ -33,6 +33,32 @@ body { padding-bottom: 0; }
 .skeleton { background: linear-gradient(90deg,#f0f0f0 25%,#e0e0e0 50%,#f0f0f0 75%);
     background-size: 200% 100%; animation: skel 1.2s infinite; border-radius:4px; height:16px; }
 @keyframes skel { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+/* ── Sticky bottom action bar ─────────────────── */
+.po-actionbar {
+    position: sticky; bottom: 0; z-index: 90;
+    background: #fff;
+    border-top: 1px solid #e5e7eb;
+    box-shadow: 0 -4px 16px rgba(0,0,0,.06);
+    padding: .85rem 1rem;
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: .75rem;
+    margin: 0 -1px;
+}
+.btn-confirm-arrival {
+    background: #16a34a; border-color: #16a34a; color: #fff;
+    font-weight: 600; padding: .5rem 1.5rem;
+    transition: background .15s, transform .1s, box-shadow .15s;
+    box-shadow: 0 2px 8px rgba(22,163,74,.25);
+}
+.btn-confirm-arrival:hover {
+    background: #15803d; border-color: #15803d; color:#fff;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(22,163,74,.35);
+}
+.btn-confirm-arrival:active { transform: translateY(0); }
+/* compact version for sticky header */
+.btn-confirm-arrival.sm { padding: .35rem 1rem; font-size:.85rem; box-shadow:none; }
 </style>
 @endpush
 
@@ -88,7 +114,7 @@ body { padding-bottom: 0; }
         </form>
         @endif
         @if($purchasing->status !== 'arrived' && auth()->user()->hasPermission('purchasing.edit'))
-        <button type="button" class="btn btn-sm btn-success py-1 px-3" onclick="submitArrival()">
+        <button type="button" class="btn btn-sm btn-confirm-arrival sm" onclick="submitArrival()">
             <i class="bi bi-check-circle me-1"></i>Confirm Arrival
         </button>
         @endif
@@ -183,14 +209,14 @@ body { padding-bottom: 0; }
         </div>
 
         @if($purchasing->status !== 'arrived')
-        <div class="card-footer bg-white d-flex justify-content-between align-items-center py-3">
+        <div class="po-actionbar">
             <span class="small text-muted">
                 <i class="bi bi-info-circle me-1"></i>
-                Orders not covered will be marked <strong>Sold Out</strong>.
+                Orders not covered by received stock will be marked <strong>Sold Out</strong> (FIFO allocation).
             </span>
             @if(auth()->user()->hasPermission('purchasing.edit'))
-            <button type="button" class="btn btn-success" onclick="submitArrival()">
-                <i class="bi bi-check-circle me-1"></i>Confirm Arrival & Allocate
+            <button type="button" class="btn btn-confirm-arrival" onclick="submitArrival()">
+                <i class="bi bi-check-circle me-1"></i>Confirm Arrival
             </button>
             @else
             <span class="text-muted small"><i class="bi bi-lock me-1"></i>Only purchasing staff can confirm arrivals.</span>

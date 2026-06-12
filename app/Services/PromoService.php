@@ -11,14 +11,19 @@ class PromoService
      * Find the best applicable promo for a customer type, trip, item count,
      * considering only eligible (non-excluded) items.
      */
+    private array $ruleCache = [];
+
     public function getBestPromo(string $customerType, int $tripId, $activeItems): ?array
     {
-        $rules = PromoRule::where('is_active', true)
-            ->where(function ($q) use ($tripId) {
-                $q->where('trip_id', $tripId)->orWhereNull('trip_id');
-            })
-            ->orderByDesc('min_items')
-            ->get();
+        if (!isset($this->ruleCache[$tripId])) {
+            $this->ruleCache[$tripId] = PromoRule::where('is_active', true)
+                ->where(function ($q) use ($tripId) {
+                    $q->where('trip_id', $tripId)->orWhereNull('trip_id');
+                })
+                ->orderByDesc('min_items')
+                ->get();
+        }
+        $rules = $this->ruleCache[$tripId];
 
         $best        = null;
         $bestDiscount = -1;
@@ -65,7 +70,7 @@ class PromoService
      */
     public function recalculate(\App\Models\Order $order): array
     {
-        $order->load('items.product', 'items.variant', 'customer', 'shippingArea');
+        $order->loadMissing('items.product', 'items.variant', 'customer', 'shippingArea');
 
         $activeItems = $order->items->whereNotIn('status', ['cancelled', 'sold_out']);
         $subtotal    = $activeItems->sum('line_total');
