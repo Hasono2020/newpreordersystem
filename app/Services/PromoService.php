@@ -13,7 +13,7 @@ class PromoService
      */
     private array $ruleCache = [];
 
-    public function getBestPromo(string $customerType, int $tripId, $activeItems): ?array
+    public function getBestPromo(string $customerType, int $tripId, \Illuminate\Support\Collection $activeItems): ?array
     {
         if (!isset($this->ruleCache[$tripId])) {
             $this->ruleCache[$tripId] = PromoRule::where('is_active', true)
@@ -55,7 +55,7 @@ class PromoService
     /**
      * Calculate total weight in grams from active order items.
      */
-    public function calcTotalWeightGram($activeItems): int
+    public function calcTotalWeightGram(\Illuminate\Support\Collection $activeItems): int
     {
         $total = 0;
         foreach ($activeItems as $item) {
