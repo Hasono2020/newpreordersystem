@@ -163,11 +163,17 @@ async function fetchDemand(tripId) {
         const res  = await fetch(`/purchasing-demand?trip_id=${tripId}&_=${Date.now()}`, {
             headers: { 'X-CSRF-TOKEN': CSRF_TOKEN, 'Accept': 'application/json' }
         });
+        if (!res.ok) {
+            const text = await res.text();
+            document.getElementById('demandContainer').innerHTML =
+                `<div class="alert alert-danger"><strong>Server error ${res.status}:</strong><br><pre style="font-size:.75rem;max-height:200px;overflow:auto;">${text.substring(0,1000)}</pre><button class="btn btn-sm btn-outline-danger mt-2" onclick="fetchDemand(${tripId})">Retry</button></div>`;
+            return;
+        }
         DEMAND = await res.json();
         renderDemand();
     } catch(e) {
         document.getElementById('demandContainer').innerHTML =
-            '<div class="alert alert-danger">Failed to load demand data. <button class="btn btn-sm btn-outline-danger ms-2" onclick="fetchDemand('+tripId+')">Retry</button></div>';
+            `<div class="alert alert-danger">Failed: ${e.message} <button class="btn btn-sm btn-outline-danger ms-2" onclick="fetchDemand(${tripId})">Retry</button></div>`;
     } finally {
         document.getElementById('loadingSpinner').style.display = 'none';
     }
