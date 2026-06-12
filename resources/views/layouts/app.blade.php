@@ -194,9 +194,11 @@
         <a href="{{ route('dashboard') }}" class="nav-link {{ request()->routeIs('dashboard') ? 'active' : '' }}" onclick="closeSidebar()">
             <i class="bi bi-speedometer2"></i> Dashboard
         </a>
+        @if(auth()->user()->isAdmin())
         <a href="{{ route('reports.index') }}" class="nav-link {{ request()->routeIs('reports.*') ? 'active' : '' }}" onclick="closeSidebar()">
             <i class="bi bi-bar-chart-line"></i> Reports
         </a>
+        @endif
 
         <div class="nav-section">Orders</div>
         <a href="{{ route('trips.index') }}" class="nav-link {{ request()->routeIs('trips.*') ? 'active' : '' }}" onclick="closeSidebar()">

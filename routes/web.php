@@ -104,7 +104,8 @@ Route::middleware('auth')->group(function () {
     Route::delete('shipping/bulk-destroy', [ShippingAreaController::class, 'bulkDestroy'])->name('shipping.bulk-destroy');
     Route::resource('shipping', ShippingAreaController::class);
 
-    // Reports & Export
+    // Reports (admin only)
+    Route::middleware('perm:reports.view')->group(function () {
     Route::get('reports', [ReportController::class, 'index'])->name('reports.index');
     Route::get('reports/export/orders', [ReportController::class, 'exportOrders'])->name('reports.export.orders');
     Route::get('reports/export/items', [ReportController::class, 'exportOrderItems'])->name('reports.export.items');
@@ -113,6 +114,7 @@ Route::middleware('auth')->group(function () {
     Route::get('reports/import/orders/template', [ReportController::class, 'orderImportTemplate'])->name('reports.import.orders.template');
     Route::post('reports/import/orders', [ReportController::class, 'importOrders'])->name('reports.import.orders');
     Route::post('reports/import/customers', [ReportController::class, 'importCustomers'])->name('reports.import.customers');
+    });
 
     // Suppliers
     Route::delete('suppliers/bulk-destroy', [SupplierController::class, 'bulkDestroy'])->name('suppliers.bulk-destroy');
