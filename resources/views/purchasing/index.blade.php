@@ -282,7 +282,19 @@ function groupByProduct(rows) {
 function escH(s)    { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 // Sync PO with latest demand server-side, then redirect to Edit PO
-function syncAndEdit(poId, poNumber) {
+function createOrSyncAll(supplierId, supplierName) {
+    if (!confirm(`Create or sync PO for "${supplierName}" with ALL current demand?\n\nThis will create a new PO (or update the existing one) with all variants set to their current demanded quantities.\n\nYou can set unit costs on the next screen.`)) return;
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '/purchasing/create-or-sync-all';
+    form.innerHTML = `
+        <input type="hidden" name="_token" value="${CSRF_TOKEN}">
+        <input type="hidden" name="trip_id" value="${TRIP_ID}">
+        <input type="hidden" name="supplier_id" value="${supplierId ?? ''}">
+    `;
+    document.body.appendChild(form);
+    form.submit();
+}
     if (!confirm(`Update "${poNumber}" with all current demand?\n\nItem quantities will be updated to match total orders. You can then set unit costs.`)) return;
     const form = document.createElement('form');
     form.method = 'POST';
