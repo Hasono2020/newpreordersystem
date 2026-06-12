@@ -309,9 +309,9 @@ function closeSidebar() {
 window.addEventListener('resize', () => {
     if (window.innerWidth > 991) closeSidebar();
 });
-// Auto-dismiss alerts after 5 seconds
+// Auto-dismiss flash-message alerts after 5 seconds (only dismissible ones, not info/guide boxes)
 document.addEventListener('DOMContentLoaded', () => {
-    document.querySelectorAll('.alert').forEach(el => {
+    document.querySelectorAll('.alert.alert-dismissible').forEach(el => {
         setTimeout(() => {
             const bsAlert = bootstrap.Alert.getOrCreateInstance(el);
             bsAlert?.close();
