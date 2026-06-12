@@ -111,7 +111,7 @@ class User extends Authenticatable
                 'customers.import' => true,
                 'products.view'    => true,  'products.create'  => true,
                 'products.edit'    => true,  'products.delete'  => false,
-                'products.import'  => false,
+                'products.import'  => true,  'products.export'  => true,
                 'suppliers.view'   => true,  'suppliers.create' => true,
                 'suppliers.edit'   => true,  'suppliers.delete' => false,
                 'shipping.view'    => true,  'shipping.create'  => true,
