@@ -669,12 +669,131 @@ class PurchasingController extends Controller
 
     public function destroy(PurchaseOrder $purchasing)
     {
-        \DB::transaction(function () use ($purchasing) {
+        $wasArrived = $purchasing->status === 'arrived';
+
+        \DB::transaction(function () use ($purchasing, $wasArrived) {
+
+            // If the PO was already arrived, reverse the FIFO allocation first
+            if ($wasArrived) {
+                set_time_limit(300);
+
+                // Load this PO's items (product/variant + received qty)
+                $poItems = DB::table('purchase_order_items')
+                    ->where('purchase_order_id', $purchasing->id)
+                    ->get();
+
+                $variantIds        = [];
+                $productNoVariant  = [];
+                $stockToSubtract   = []; // variant_id => qty_received
+
+                foreach ($poItems as $pi) {
+                    if ($pi->product_variant_id) {
+                        $variantIds[$pi->product_variant_id] = true;
+                        $stockToSubtract[$pi->product_variant_id] =
+                            ($stockToSubtract[$pi->product_variant_id] ?? 0) + (int)$pi->quantity_received;
+                    } else {
+                        $productNoVariant[$pi->product_id] = true;
+                    }
+                }
+
+                $tripId = $purchasing->trip_id;
+
+                // ── 1) Delete the sold_out split rows FIFO created ──────────
+                // These are identified by the "Partial — only" notes marker.
+                $splitQuery = DB::table('order_items')
+                    ->join('orders', 'orders.id', '=', 'order_items.order_id')
+                    ->where('orders.trip_id', $tripId)
+                    ->where('order_items.status', 'sold_out')
+                    ->where('order_items.notes', 'like', 'Partial — only%');
+
+                if ($variantIds) {
+                    $splitQuery->whereIn('order_items.product_variant_id', array_keys($variantIds));
+                }
+                $splitIds = $splitQuery->pluck('order_items.id')->all();
+                if ($splitIds) {
+                    DB::table('order_items')->whereIn('id', $splitIds)->delete();
+                }
+
+                // ── 2) Restore arrived/sold_out items back to confirmed ─────
+                // Collect affected order ids first (for recalculation)
+                $affectedQuery = DB::table('order_items')
+                    ->join('orders', 'orders.id', '=', 'order_items.order_id')
+                    ->where('orders.trip_id', $tripId)
+                    ->whereIn('order_items.status', ['arrived', 'sold_out']);
+
+                if ($variantIds || $productNoVariant) {
+                    $affectedQuery->where(function ($q) use ($variantIds, $productNoVariant) {
+                        if ($variantIds) {
+                            $q->whereIn('order_items.product_variant_id', array_keys($variantIds));
+                        }
+                        if ($productNoVariant) {
+                            $q->orWhere(function ($q2) use ($productNoVariant) {
+                                $q2->whereNull('order_items.product_variant_id')
+                                   ->whereIn('order_items.product_id', array_keys($productNoVariant));
+                            });
+                        }
+                    });
+                }
+
+                $affectedOrderIds = $affectedQuery->pluck('orders.id')->unique()->values()->all();
+                $restoreIds       = $affectedQuery->pluck('order_items.id')->all();
+
+                if ($restoreIds) {
+                    foreach (array_chunk($restoreIds, 1000) as $chunk) {
+                        DB::table('order_items')->whereIn('id', $chunk)
+                            ->update(['status' => 'confirmed', 'updated_at' => now()]);
+                    }
+                }
+
+                // ── 3) Subtract supplier_stock + recalc allocated_qty ───────
+                foreach ($stockToSubtract as $variantId => $qty) {
+                    DB::table('product_variants')->where('id', $variantId)
+                        ->update([
+                            'supplier_stock' => DB::raw('GREATEST(0, supplier_stock - '.(int)$qty.')'),
+                        ]);
+                }
+                foreach (array_keys($variantIds) as $variantId) {
+                    $allocatedQty = DB::table('order_items')
+                        ->join('orders', 'orders.id', '=', 'order_items.order_id')
+                        ->where('orders.trip_id', $tripId)
+                        ->where('order_items.product_variant_id', $variantId)
+                        ->where('order_items.status', 'arrived')
+                        ->sum('order_items.quantity');
+                    DB::table('product_variants')->where('id', $variantId)
+                        ->update(['allocated_qty' => $allocatedQty]);
+                }
+
+                // ── 4) Recalculate affected order totals ────────────────────
+                $promoService = app(\App\Services\PromoService::class);
+                foreach (array_chunk($affectedOrderIds, 300) as $orderIdChunk) {
+                    $orders = \App\Models\Order::with(['items.product', 'items.variant', 'customer', 'shippingArea'])
+                        ->whereIn('id', $orderIdChunk)->get();
+                    foreach ($orders as $affectedOrder) {
+                        $calc = $promoService->recalculate($affectedOrder);
+                        $affectedOrder->update([
+                            'subtotal'             => $calc['subtotal'],
+                            'discount_amount'      => $calc['discount_amount'],
+                            'shipping_fee'         => $calc['shipping_fee'],
+                            'shipping_discount'    => $calc['shipping_discount'],
+                            'shipping_weight_gram' => $calc['shipping_weight_gram'],
+                            'shipping_kg_charged'  => $calc['shipping_kg_charged'],
+                            'total_amount'         => $calc['total_amount'],
+                        ]);
+                    }
+                }
+            }
+
+            // Finally delete the PO and its items
             $purchasing->items()->delete();
             $purchasing->delete();
         });
+
+        $msg = $wasArrived
+            ? 'Purchase order deleted. Stock allocation reversed — affected orders restored to confirmed.'
+            : 'Purchase order deleted.';
+
         return redirect()->route('purchasing.index', ['trip_id' => $purchasing->trip_id])
-            ->with('success', 'Purchase order deleted.');
+            ->with('success', $msg);
     }
 
     /**
