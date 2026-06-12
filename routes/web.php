@@ -96,6 +96,7 @@ Route::middleware('auth')->group(function () {
     Route::delete('purchasing/{purchasing}/item/{item}', [PurchasingController::class, 'deleteItem'])->name('purchasing.item.delete');
     Route::delete('purchasing/{purchasing}', [PurchasingController::class, 'destroy'])->name('purchasing.destroy');
     Route::post('purchasing/{purchasing}/arrival', [PurchasingController::class, 'confirmArrival'])->name('purchasing.arrival');
+    Route::post('purchasing/create-or-sync-all', [PurchasingController::class, 'createOrSyncAll'])->name('purchasing.create-or-sync-all')->middleware('perm:purchasing.edit');
 
     // Shipping Areas
     Route::get('shipping/template', [ShippingAreaController::class, 'template'])->name('shipping.template');
