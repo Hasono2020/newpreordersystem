@@ -34,13 +34,23 @@ trait HandlesXlsx
                 $reader->close();
             }
 
-            // ── Sheet data via XMLReader ───────────────────────────────────
-            $sheetXml = $zip->getFromName('xl/worksheets/sheet1.xml');
+            // ── Sheet data via XMLReader (stream directly from zip) ────────
             $zip->close();
-            if (!$sheetXml) return [];
 
-            $reader   = new \XMLReader();
-            $reader->XML($sheetXml);
+            $reader = new \XMLReader();
+            // Stream straight from the zip entry — avoids loading the whole
+            // sheet XML (can be 100s of MB for 10k+ rows) into a PHP string.
+            $opened = @$reader->open('zip://' . $path . '#xl/worksheets/sheet1.xml');
+            if (!$opened) {
+                // Fallback: re-open zip and read into memory (older PHP/zip configs)
+                $zip2 = new \ZipArchive();
+                if ($zip2->open($path) !== true) return [];
+                $sheetXml = $zip2->getFromName('xl/worksheets/sheet1.xml');
+                $zip2->close();
+                if (!$sheetXml) return [];
+                $reader = new \XMLReader();
+                $reader->XML($sheetXml);
+            }
             $rowData  = [];
             $rowIdx   = 0;
             $colIdx   = 0;

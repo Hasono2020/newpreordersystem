@@ -84,6 +84,7 @@
                         <i class="bi bi-download me-2 text-info"></i>Export order items as Excel
                     </a>
                 </li>
+                @if(auth()->user()->hasPermission('orders.import'))
                 <li><hr class="dropdown-divider"></li>
                 <li><h6 class="dropdown-header">Import</h6></li>
                 <li>
@@ -96,6 +97,7 @@
                         <i class="bi bi-upload me-2 text-primary"></i>Import orders from Excel
                     </button>
                 </li>
+                @endif
             </ul>
         </div>
         @endif

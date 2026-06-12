@@ -59,8 +59,8 @@ Route::middleware('auth')->group(function () {
     // Orders
     Route::get('orders-export', [ReportController::class, 'exportOrders'])->name('orders.export');
     Route::get('orders-items-export', [ReportController::class, 'exportOrderItems'])->name('orders.items.export');
-    Route::get('orders-import-template', [ReportController::class, 'orderImportTemplate'])->name('orders.import.template');
-    Route::post('orders-import', [ReportController::class, 'importOrders'])->name('orders.import');
+    Route::get('orders-import-template', [ReportController::class, 'orderImportTemplate'])->middleware('perm:orders.import')->name('orders.import.template');
+    Route::post('orders-import', [ReportController::class, 'importOrders'])->middleware('perm:orders.import')->name('orders.import');
     Route::post('orders/bulk-destroy', [OrderController::class, 'bulkDestroy'])->middleware('perm:orders.delete')->name('orders.bulk-destroy');
     Route::resource('orders', OrderController::class);
     Route::post('orders/{order}/items', [OrderController::class, 'addItem'])->name('orders.items.add');

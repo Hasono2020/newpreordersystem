@@ -4,16 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Models\Customer;
 use App\Models\Order;
-use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\ShippingArea;
 use App\Models\Trip;
-use App\Models\Payment;
-use App\Services\PromoService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Response;
 
 class ReportController extends Controller
 {
@@ -228,6 +224,12 @@ class ReportController extends Controller
             'file'    => 'required|file|max:51200',
             'trip_id' => 'required|exists:trips,id',
         ]);
+
+        // Large imports (10k+ rows) need more time and memory
+        @set_time_limit(600);
+        @ini_set('memory_limit', '1024M');
+        // Disable query log to avoid memory bloat on big batch imports
+        DB::connection()->disableQueryLog();
 
         $trip = Trip::findOrFail($request->trip_id);
         $rows = $this->readXlsx($request->file('file')->getRealPath());
@@ -611,6 +613,8 @@ class ReportController extends Controller
     public function importCustomers(Request $request)
     {
         set_time_limit(300); // allow up to 5 minutes for large files
+        @ini_set('memory_limit', '1024M');
+        DB::connection()->disableQueryLog();
 
         $request->validate(['file' => 'required|file|max:10240']);
 
