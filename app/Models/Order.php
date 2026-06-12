@@ -27,6 +27,12 @@ class Order extends Model
 
     public function getActiveItemsCountAttribute(): int
     {
+        // Use the loaded items collection if available to avoid an extra query (N+1)
+        if ($this->relationLoaded('items')) {
+            return $this->items
+                ->whereNotIn('status', ['cancelled', 'sold_out'])
+                ->sum('quantity');
+        }
         return $this->items()->whereNotIn('status', ['cancelled', 'sold_out'])->sum('quantity');
     }
 

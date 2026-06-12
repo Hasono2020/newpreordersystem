@@ -243,14 +243,8 @@
                 @else
                     <div class="alert alert-light border py-2 px-3 mb-3 small text-muted">
                         <i class="bi bi-tag me-1"></i>No promo applied
-                        @php
-                            $itemCount = $order->items->whereNotIn('status',['cancelled','sold_out'])->sum('quantity');
-                            $nextRule  = \App\Models\PromoRule::where('is_active', true)
-                                ->where(fn($q) => $q->where('trip_id', $order->trip_id)->orWhereNull('trip_id'))
-                                ->where('min_items', '>', $itemCount)
-                                ->orderBy('min_items')->first();
-                        @endphp
                         @if($nextRule)
+                            @php $itemCount = $order->items->whereNotIn('status',['cancelled','sold_out'])->sum('quantity'); @endphp
                             — needs {{ $nextRule->min_items - $itemCount }} more item(s) for <strong>{{ $nextRule->name }}</strong>
                         @endif
                     </div>
@@ -305,7 +299,7 @@
                         <label class="form-label small fw-semibold">Shipping Area</label>
                         <select name="shipping_area_id" class="form-select form-select-sm">
                             <option value="">— None —</option>
-                            @foreach(\App\Models\ShippingArea::where('is_active',true)->orderBy('name')->get() as $area)
+                            @foreach($shippingAreas as $area)
                                 <option value="{{ $area->id }}" {{ $order->shipping_area_id == $area->id ? 'selected' : '' }}>
                                     {{ $area->name }}{{ $area->province ? ' ('.$area->province.')' : '' }}
                                     — Rp {{ number_format($area->price_per_kg, 0, ',', '.') }}/kg

@@ -157,7 +157,17 @@ class OrderController extends Controller
             $activeItems
         );
 
-        return view('orders.show', compact('order', 'shippingAreas', 'appliedPromo'));
+        // Next promo tier hint (moved out of the Blade view to avoid a query in the template)
+        $nextRule = null;
+        if (!$appliedPromo) {
+            $itemCount = $activeItems->sum('quantity');
+            $nextRule  = \App\Models\PromoRule::where('is_active', true)
+                ->where(fn($q) => $q->where('trip_id', $order->trip_id)->orWhereNull('trip_id'))
+                ->where('min_items', '>', $itemCount)
+                ->orderBy('min_items')->first();
+        }
+
+        return view('orders.show', compact('order', 'shippingAreas', 'appliedPromo', 'nextRule'));
     }
 
     /**
