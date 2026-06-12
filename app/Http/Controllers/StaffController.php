@@ -78,6 +78,8 @@ class StaffController extends Controller
             foreach ($allPerms as $perm) {
                 $default   = (bool) ($roleDefaults[$perm] ?? false);
                 $submitted = (bool) isset($request->permissions[$perm]);
+                // Skip empty string values — treat as "not submitted"
+                if (isset($request->permissions[$perm]) && $request->permissions[$perm] === '') continue;
                 // Only store if it genuinely differs from role default
                 if ($submitted !== $default) {
                     $overrides[$perm] = $submitted;

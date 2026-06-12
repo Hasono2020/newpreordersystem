@@ -155,6 +155,8 @@ Route::get('admin/clean-permissions', function() {
         // Keep only entries that truly differ from (now complete) role defaults
         $kept = [];
         foreach ($customs as $perm => $val) {
+            // Treat empty string as invalid/no override — discard it
+            if ($val === '' || $val === null) continue;
             $default = array_key_exists($perm, $defaults) ? (bool)$defaults[$perm] : null;
             if ($default === null || (bool)$val !== $default) {
                 $kept[$perm] = $val;
