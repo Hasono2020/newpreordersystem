@@ -245,6 +245,9 @@ function renderDemand() {
                                 <i class="bi bi-file-earmark-plus me-1"></i>Create PO
                               </button>` : '')
                         }
+                        ${CAN_PURCHASE_EDIT ? `<button class="btn btn-sm btn-success" onclick="createOrSyncAll(${group.supplier_id ?? 'null'}, '${escH(group.supplier_name)}')" title="Create or sync PO with all demand in one click">
+                            <i class="bi bi-lightning-fill me-1"></i>${group.active_po ? 'Sync All' : 'Create All'}
+                          </button>` : ''}
                     </div>
                 </div>
                 <div class="d-flex gap-4 mt-2 pt-2 border-top flex-wrap">

@@ -87,6 +87,7 @@ Route::middleware('auth')->group(function () {
     Route::get('purchasing', [PurchasingController::class, 'index'])->name('purchasing.index');
     Route::get('purchasing-demand', [PurchasingController::class, 'demandApi'])->name('purchasing.demand');
     Route::post('purchasing', [PurchasingController::class, 'store'])->name('purchasing.store');
+    Route::post('purchasing/create-or-sync-all', [PurchasingController::class, 'createOrSyncAll'])->name('purchasing.create-or-sync-all')->middleware('perm:purchasing.edit');
     Route::get('purchasing/{purchasing}', [PurchasingController::class, 'show'])->name('purchasing.show');
     Route::get('purchasing/{purchasing}/edit', [PurchasingController::class, 'edit'])->middleware('perm:purchasing.edit')->name('purchasing.edit');
     Route::put('purchasing/{purchasing}', [PurchasingController::class, 'update'])->middleware('perm:purchasing.edit')->name('purchasing.update');
@@ -96,7 +97,6 @@ Route::middleware('auth')->group(function () {
     Route::delete('purchasing/{purchasing}/item/{item}', [PurchasingController::class, 'deleteItem'])->name('purchasing.item.delete');
     Route::delete('purchasing/{purchasing}', [PurchasingController::class, 'destroy'])->name('purchasing.destroy');
     Route::post('purchasing/{purchasing}/arrival', [PurchasingController::class, 'confirmArrival'])->name('purchasing.arrival');
-    Route::post('purchasing/create-or-sync-all', [PurchasingController::class, 'createOrSyncAll'])->name('purchasing.create-or-sync-all')->middleware('perm:purchasing.edit');
 
     // Shipping Areas
     Route::get('shipping/template', [ShippingAreaController::class, 'template'])->name('shipping.template');

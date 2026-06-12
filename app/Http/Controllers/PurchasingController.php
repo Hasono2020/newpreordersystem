@@ -439,6 +439,101 @@ class PurchasingController extends Controller
         return response()->json(['ok' => true, 'line_total' => $lineTotal, 'po_total' => $total]);
     }
 
+
+        /**
+     * One-click: create or merge into existing PO for a supplier,
+     * syncing all current demand for that supplier+trip in one shot.
+     * Redirects to the Edit PO page so unit costs can be set.
+     */
+    public function createOrSyncAll(Request $request)
+    {
+        $request->validate([
+            'trip_id'     => 'required|exists:trips,id',
+            'supplier_id' => 'nullable|exists:suppliers,id',
+        ]);
+
+        $supplierId = $request->supplier_id ?: null;
+        $tripId     = $request->trip_id;
+
+        $demand = DB::table('order_items')
+            ->join('orders',   'orders.id',   '=', 'order_items.order_id')
+            ->join('products', 'products.id', '=', 'order_items.product_id')
+            ->where('orders.trip_id', $tripId)
+            ->where('products.supplier_id', $supplierId)
+            ->whereIn('order_items.status', ['pending', 'confirmed'])
+            ->selectRaw('order_items.product_variant_id, products.id as product_id, SUM(order_items.quantity) as total_qty')
+            ->groupBy('order_items.product_variant_id', 'products.id')
+            ->get();
+
+        if ($demand->isEmpty()) {
+            return back()->with('error', 'No uncovered demand found for this supplier.');
+        }
+
+        $po = DB::transaction(function () use ($demand, $supplierId, $tripId) {
+            $po = PurchaseOrder::where('trip_id', $tripId)
+                ->where('supplier_id', $supplierId)
+                ->whereNotIn('status', ['cancelled', 'arrived'])
+                ->first();
+
+            if (!$po) {
+                $po = PurchaseOrder::create([
+                    'trip_id'      => $tripId,
+                    'supplier_id'  => $supplierId,
+                    'created_by'   => Auth::id(),
+                    'purchased_at' => now()->toDateString(),
+                    'status'       => 'draft',
+                ]);
+            }
+
+            $existing = DB::table('purchase_order_items')
+                ->where('purchase_order_id', $po->id)
+                ->get()
+                ->keyBy(fn($r) => $r->product_id . '_' . ($r->product_variant_id ?? 'null'));
+
+            $inserts = [];
+            $now     = now();
+
+            foreach ($demand as $d) {
+                $totalQty = (int) $d->total_qty;
+                $key      = $d->product_id . '_' . ($d->product_variant_id ?? 'null');
+
+                if (isset($existing[$key])) {
+                    $item = $existing[$key];
+                    if ($item->quantity_ordered != $totalQty) {
+                        DB::table('purchase_order_items')->where('id', $item->id)->update([
+                            'quantity_ordered' => $totalQty,
+                            'line_total'       => $totalQty * $item->unit_cost,
+                            'updated_at'       => $now,
+                        ]);
+                    }
+                } else {
+                    $inserts[] = [
+                        'purchase_order_id'  => $po->id,
+                        'product_id'         => $d->product_id,
+                        'product_variant_id' => $d->product_variant_id,
+                        'quantity_ordered'   => $totalQty,
+                        'quantity_received'  => 0,
+                        'unit_cost'          => 0,
+                        'line_total'         => 0,
+                        'created_at'         => $now,
+                        'updated_at'         => $now,
+                    ];
+                }
+            }
+
+            if ($inserts) DB::table('purchase_order_items')->insert($inserts);
+
+            $total = DB::table('purchase_order_items')
+                ->where('purchase_order_id', $po->id)->sum('line_total');
+            $po->update(['total_amount' => $total]);
+
+            return $po;
+        });
+
+        return redirect()->route('purchasing.edit', $po)
+            ->with('success', 'PO ready — set unit costs and click Save Changes.');
+    }
+
     /**
      * Sync PO items to match current total demand for this supplier+trip.
      * Called when staff clicks "Add to PO" from purchasing index.
