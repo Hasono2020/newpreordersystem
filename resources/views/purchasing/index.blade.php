@@ -295,6 +295,7 @@ function syncAndEdit(poId, poNumber) {
     form.action = `/purchasing/${poId}/sync-demand`;
     form.innerHTML = `<input type="hidden" name="_token" value="${document.querySelector('meta[name=csrf-token]').content}">`;
     document.body.appendChild(form);
+    showProcessing('Syncing purchase order with current demand. Please do not close this page.');
     form.submit();
 }
 
@@ -309,6 +310,7 @@ function createOrSyncAll(supplierId, supplierName) {
         <input type="hidden" name="supplier_id" value="${supplierId ?? ''}">
     `;
     document.body.appendChild(form);
+    showProcessing('Creating purchase order from all demand. This may take a moment for large suppliers. Please do not close this page.');
     form.submit();
 }
 function escAttr(s) { return String(s||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }

@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\ProductVariant;
 use App\Models\PurchaseOrder;
 use App\Models\Trip;
 use Illuminate\Http\Request;
@@ -675,7 +674,9 @@ class PurchasingController extends Controller
 
             // If the PO was already arrived, reverse the FIFO allocation first
             if ($wasArrived) {
-                set_time_limit(300);
+                @set_time_limit(600);
+                @ini_set('memory_limit', '1024M');
+                DB::connection()->disableQueryLog();
 
                 // Load this PO's items (product/variant + received qty)
                 $poItems = DB::table('purchase_order_items')
@@ -733,13 +734,34 @@ class PurchasingController extends Controller
                 }
 
                 $affectedOrderIds = $affectedQuery->pluck('orders.id')->unique()->values()->all();
-                $restoreIds       = $affectedQuery->pluck('order_items.id')->all();
 
-                if ($restoreIds) {
-                    foreach (array_chunk($restoreIds, 1000) as $chunk) {
-                        DB::table('order_items')->whereIn('id', $chunk)
-                            ->update(['status' => 'confirmed', 'updated_at' => now()]);
-                    }
+                // Orders that had sold_out items will change total when restored,
+                // so only those need recalculation (arrived->confirmed doesn't change total).
+                $soldOutOrderIds = (clone $affectedQuery)
+                    ->where('order_items.status', 'sold_out')
+                    ->pluck('orders.id')->unique()->values()->all();
+
+                // Restore items based on their order's payment status:
+                //   fully paid -> confirmed,  unpaid/partial -> pending
+                $paidOrderIds = DB::table('orders')
+                    ->whereIn('id', $affectedOrderIds)
+                    ->where('payment_status', 'paid')
+                    ->pluck('id')->all();
+
+                $confirmIds = $paidOrderIds
+                    ? (clone $affectedQuery)->whereIn('orders.id', $paidOrderIds)->pluck('order_items.id')->all()
+                    : [];
+                $pendingIds = (clone $affectedQuery)
+                    ->when($paidOrderIds, fn($q) => $q->whereNotIn('orders.id', $paidOrderIds))
+                    ->pluck('order_items.id')->all();
+
+                foreach (array_chunk($confirmIds, 1000) as $chunk) {
+                    DB::table('order_items')->whereIn('id', $chunk)
+                        ->update(['status' => 'confirmed', 'updated_at' => now()]);
+                }
+                foreach (array_chunk($pendingIds, 1000) as $chunk) {
+                    DB::table('order_items')->whereIn('id', $chunk)
+                        ->update(['status' => 'pending', 'updated_at' => now()]);
                 }
 
                 // ── 3) Reset supplier_stock + allocated_qty to 0 ───────────
@@ -751,9 +773,10 @@ class PurchasingController extends Controller
                         ->update(['supplier_stock' => 0, 'allocated_qty' => 0]);
                 }
 
-                // ── 4) Recalculate affected order totals ────────────────────
+                // ── 4) Recalculate ONLY orders whose totals changed ─────────
+                // (orders that had sold_out items restored)
                 $promoService = app(\App\Services\PromoService::class);
-                foreach (array_chunk($affectedOrderIds, 300) as $orderIdChunk) {
+                foreach (array_chunk($soldOutOrderIds, 300) as $orderIdChunk) {
                     $orders = \App\Models\Order::with(['items.product', 'items.variant', 'customer', 'shippingArea'])
                         ->whereIn('id', $orderIdChunk)->get();
                     foreach ($orders as $affectedOrder) {
@@ -796,13 +819,23 @@ class PurchasingController extends Controller
         if (!Auth::user()->hasPermission('purchasing.edit')) {
             abort(403, 'Only purchasing staff can confirm arrivals.');
         }
+
+        // Items are sent as a single JSON field (avoids max_input_vars limit
+        // on large POs). Fall back to the old array format if present.
+        if ($request->filled('items_json')) {
+            $items = json_decode($request->input('items_json'), true) ?: [];
+            $request->merge(['items' => $items]);
+        }
+
         $request->validate([
             'items'                      => 'required|array',
             'items.*.id'                 => 'required|integer',
             'items.*.quantity_received'  => 'required|integer|min:0',
         ]);
 
-        set_time_limit(300); // allow up to 5 minutes for large POs
+        @set_time_limit(600);
+        @ini_set('memory_limit', '1024M');
+        DB::connection()->disableQueryLog();
 
         DB::transaction(function () use ($request, $purchasing) {
 
@@ -834,6 +867,7 @@ class PurchasingController extends Controller
 
             // ── Step 3: FIFO allocation entirely in PHP memory ──────────
             $affectedOrderIds = [];
+            $ordersNeedingRecalc = [];
             $arrivedIds       = [];
             $soldOutIds       = [];
             $partialUpdates   = [];
@@ -869,13 +903,18 @@ class PurchasingController extends Controller
 
                     if ($remaining <= 0) {
                         $soldOutIds[] = $orderItem->id;
+                        // Item became sold_out -> order total changes -> needs recalc
+                        $ordersNeedingRecalc[$orderItem->order_id] = true;
                     } elseif ($orderItem->quantity <= $remaining) {
                         $remaining -= $orderItem->quantity;
                         $arrivedIds[] = $orderItem->id;
+                        // pending -> arrived: still counted in total, NO recalc needed
                     } else {
                         $arrivedQty = $remaining;
                         $soldOutQty = $orderItem->quantity - $remaining;
                         $remaining  = 0;
+                        // Partial split -> order total changes -> needs recalc
+                        $ordersNeedingRecalc[$orderItem->order_id] = true;
 
                         $partialUpdates[$orderItem->id] = [
                             'quantity'   => $arrivedQty,
@@ -898,11 +937,20 @@ class PurchasingController extends Controller
             }
 
             // ── Step 4: apply all updates in bulk ───────────────────────
-            foreach (array_chunk($request->items, 200, true) as $chunk) {
+            // Bulk-update quantity_received via single CASE query per chunk
+            foreach (array_chunk($request->items, 500, true) as $chunk) {
+                $ids = []; $cases = '';
                 foreach ($chunk as $itemData) {
-                    DB::table('purchase_order_items')
-                        ->where('id', $itemData['id'])
-                        ->update(['quantity_received' => (int)$itemData['quantity_received'], 'updated_at' => $now]);
+                    $id  = (int) $itemData['id'];
+                    $qty = (int) $itemData['quantity_received'];
+                    $cases .= "WHEN {$id} THEN {$qty} ";
+                    $ids[] = $id;
+                }
+                if ($ids) {
+                    $idList = implode(',', $ids);
+                    DB::update("UPDATE purchase_order_items
+                        SET quantity_received = CASE id {$cases} END, updated_at = ?
+                        WHERE id IN ({$idList})", [$now]);
                 }
             }
 
@@ -924,29 +972,56 @@ class PurchasingController extends Controller
                 DB::table('order_items')->insert($chunk);
             }
 
-            // ── Step 5: supplier_stock + allocated_qty ──────────────────
-            // SET stock to the received quantity (not increment) so repeated
-            // arrival cycles don't accumulate stale stock.
-            foreach ($variantStockInc as $variantId => $received) {
-                ProductVariant::where('id', $variantId)->update(['supplier_stock' => $received]);
+            // ── Step 5: supplier_stock + allocated_qty (batched) ────────
+            // SET stock to received qty (not increment) so repeated cycles
+            // don't accumulate. Bulk CASE updates instead of per-variant queries.
+            $stockVariantIds = array_keys($variantStockInc);
+            foreach (array_chunk($stockVariantIds, 500) as $chunk) {
+                $cases = '';
+                foreach ($chunk as $vid) {
+                    $rec = (int) $variantStockInc[$vid];
+                    $cases .= "WHEN {$vid} THEN {$rec} ";
+                }
+                $idList = implode(',', $chunk);
+                DB::update("UPDATE product_variants
+                    SET supplier_stock = CASE id {$cases} END
+                    WHERE id IN ({$idList})");
             }
-            foreach (array_keys($variantIds) as $variantId) {
-                $allocatedQty = DB::table('order_items')
+
+            // allocated_qty for ALL affected variants in ONE grouped query
+            $variantIdList = array_keys($variantIds);
+            if ($variantIdList) {
+                $allocatedByVariant = DB::table('order_items')
                     ->join('orders', 'orders.id', '=', 'order_items.order_id')
                     ->where('orders.trip_id', $purchasing->trip_id)
-                    ->where('order_items.product_variant_id', $variantId)
+                    ->whereIn('order_items.product_variant_id', $variantIdList)
                     ->where('order_items.status', 'arrived')
-                    ->sum('order_items.quantity');
-                ProductVariant::where('id', $variantId)->update(['allocated_qty' => $allocatedQty]);
+                    ->groupBy('order_items.product_variant_id')
+                    ->selectRaw('order_items.product_variant_id, SUM(order_items.quantity) as qty')
+                    ->pluck('qty', 'product_variant_id');
+
+                foreach (array_chunk($variantIdList, 500) as $chunk) {
+                    $cases = '';
+                    foreach ($chunk as $vid) {
+                        $qty = (int) ($allocatedByVariant[$vid] ?? 0);
+                        $cases .= "WHEN {$vid} THEN {$qty} ";
+                    }
+                    $idList = implode(',', $chunk);
+                    DB::update("UPDATE product_variants
+                        SET allocated_qty = CASE id {$cases} END
+                        WHERE id IN ({$idList})");
+                }
             }
 
             $purchasing->update(['status' => 'arrived']);
 
-            // ── Step 6: recalculate affected orders (batch-loaded) ──────
+            // ── Step 6: recalculate ONLY orders whose totals changed ────
+            // pending->arrived doesn't change a total (still counted), so we
+            // only recalc orders that had a sold_out or partial-split item.
             $promoService    = app(\App\Services\PromoService::class);
-            $uniqueOrderIds  = array_values(array_unique($affectedOrderIds));
+            $recalcOrderIds  = array_keys($ordersNeedingRecalc);
 
-            foreach (array_chunk($uniqueOrderIds, 300) as $orderIdChunk) {
+            foreach (array_chunk($recalcOrderIds, 300) as $orderIdChunk) {
                 $orders = \App\Models\Order::with(['items.product', 'items.variant', 'customer', 'shippingArea'])
                     ->whereIn('id', $orderIdChunk)
                     ->get();

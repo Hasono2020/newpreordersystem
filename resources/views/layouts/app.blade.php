@@ -155,6 +155,26 @@
         /* ── Utilities ───────────────────────────────────── */
         .badge-status { font-size: .75rem; }
 
+        /* ── Processing overlay ──────────────────────────── */
+        #processingOverlay {
+            position: fixed; inset: 0; z-index: 99999;
+            background: rgba(15, 23, 42, .55);
+            backdrop-filter: blur(2px);
+            display: flex; align-items: center; justify-content: center;
+        }
+        #processingOverlay .processing-box {
+            background: #fff; border-radius: 14px;
+            padding: 2rem 2.5rem; text-align: center;
+            box-shadow: 0 10px 40px rgba(0,0,0,.25);
+            max-width: 90vw; width: 360px;
+        }
+        #processingOverlay .processing-title {
+            font-size: 1.1rem; font-weight: 700; color: #1e293b; margin-bottom: .35rem;
+        }
+        #processingOverlay .processing-msg {
+            font-size: .85rem; color: #64748b; line-height: 1.5;
+        }
+
         /* ── Mobile card layout for tables with .responsive-cards (≤768px) ── */
         @media (max-width: 768px) {
             .responsive-cards thead { display: none; }
@@ -220,6 +240,15 @@
     @stack('styles')
 </head>
 <body>
+
+{{-- Full-screen processing overlay (blocks interaction during heavy operations) --}}
+<div id="processingOverlay" style="display:none;">
+    <div class="processing-box">
+        <div class="spinner-border text-primary mb-3" style="width:3rem;height:3rem;"></div>
+        <div class="processing-title">Processing…</div>
+        <div class="processing-msg" id="processingMsg">Please wait. Do not close or navigate away from this page.</div>
+    </div>
+</div>
 
 {{-- Sidebar overlay (mobile tap-to-close) --}}
 <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
@@ -358,6 +387,26 @@ document.addEventListener('DOMContentLoaded', () => {
             bsAlert?.close();
         }, 5000);
     });
+});
+
+// ── Processing overlay (blocks interaction during heavy operations) ──
+let _processingActive = false;
+function showProcessing(msg) {
+    _processingActive = true;
+    const ov = document.getElementById('processingOverlay');
+    if (msg) document.getElementById('processingMsg').textContent = msg;
+    ov.style.display = 'flex';
+}
+function hideProcessing() {
+    _processingActive = false;
+    document.getElementById('processingOverlay').style.display = 'none';
+}
+// Warn if the user tries to leave while processing
+window.addEventListener('beforeunload', function (e) {
+    if (_processingActive) {
+        e.preventDefault();
+        e.returnValue = '';
+    }
 });
 </script>
 @stack('scripts')

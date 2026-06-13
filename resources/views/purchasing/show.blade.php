@@ -106,7 +106,7 @@ body { padding-bottom: 0; }
         @endif
         @if(auth()->user()->hasPermission('purchasing.edit'))
         <form method="POST" action="{{ route('purchasing.destroy', $purchasing) }}"
-            onsubmit="return confirm('Delete this purchase order?')">
+            onsubmit="if(confirm('Delete this purchase order?')){ showProcessing('Deleting purchase order and reversing stock allocation. Please do not close this page.'); return true; } return false;">
             @csrf @method('DELETE')
             <button type="submit" class="btn btn-sm btn-outline-danger py-1">
                 <i class="bi bi-trash3 me-1"></i><span class="d-none d-md-inline">Delete</span>
@@ -296,6 +296,7 @@ function filterItems(q) {
 
 function submitArrival() {
     if (confirm('Confirm arrival and run FIFO allocation?\n\nThis will update all order item statuses.')) {
+        showProcessing('Confirming arrival and allocating stock (FIFO). This may take a moment for large orders. Please do not close this page.');
         document.getElementById('arrivalForm').submit();
     }
 }
