@@ -322,29 +322,57 @@ const supplierDropdown = document.getElementById('supplierDropdown');
 const supplierResults  = document.getElementById('supplierResults');
 const supplierCard     = document.getElementById('selectedSupplierCard');
 
-supplierSearch.addEventListener('input', function () {
-    clearTimeout(supplierTimeout);
-    const q = this.value.trim();
-    supplierTimeout = setTimeout(() => {
-        fetch(`/api/suppliers/search?q=${encodeURIComponent(q)}`)
-            .then(r => r.json())
-            .then(data => {
-                supplierResults.innerHTML = '';
-                if (!data.length) {
-                    supplierResults.innerHTML = '<div style="padding:.6rem 1rem;color:#94a3b8;font-size:.85rem;">No suppliers found</div>';
-                } else {
-                    data.forEach(s => {
-                        const d = document.createElement('div');
-                        d.style.cssText = 'padding:.55rem 1rem;cursor:pointer;border-bottom:1px solid #f3f4f6;font-size:.875rem;';
-                        d.innerHTML = `<div style="font-weight:600;">${s.name}</div><div style="font-size:.75rem;color:#6b7280;">${s.country || ''}${s.phone ? ' · '+s.phone : ''}</div>`;
-                        d.addEventListener('mousedown', () => selectSupplier(s));
-                        supplierResults.appendChild(d);
-                    });
-                }
-                supplierDropdown.style.display = 'block';
-            });
-    }, 200);
+// Preloaded suppliers — filter instantly in-browser, no API round-trips
+const ALL_SUPPLIERS = @json($suppliers);
+let supplierHighlight = -1;
+let supplierFiltered  = [];
+
+function renderSupplierList(list) {
+    supplierResults.innerHTML = '';
+    supplierFiltered = list;
+    supplierHighlight = -1;
+    if (!list.length) {
+        supplierResults.innerHTML = '<div style="padding:.6rem 1rem;color:#94a3b8;font-size:.85rem;">No suppliers found</div>';
+        return;
+    }
+    list.forEach((s, i) => {
+        const d = document.createElement('div');
+        d.dataset.idx = i;
+        d.style.cssText = 'padding:.55rem 1rem;cursor:pointer;border-bottom:1px solid #f3f4f6;font-size:.875rem;';
+        d.innerHTML = `<div style="font-weight:600;">${s.name}</div><div style="font-size:.75rem;color:#6b7280;">${s.country || ''}${s.phone ? ' · '+s.phone : ''}</div>`;
+        d.addEventListener('mousedown', () => selectSupplier(s));
+        d.addEventListener('mouseover', () => setHighlight(i));
+        supplierResults.appendChild(d);
+    });
+}
+function setHighlight(i) {
+    supplierHighlight = i;
+    [...supplierResults.children].forEach((el, idx) => { el.style.background = (idx === i) ? '#eaf1fb' : ''; });
+}
+function filterSuppliers(q) {
+    q = (q || '').trim().toLowerCase();
+    if (!q) return ALL_SUPPLIERS;
+    return ALL_SUPPLIERS.filter(s =>
+        s.name.toLowerCase().includes(q) ||
+        (s.country || '').toLowerCase().includes(q) ||
+        (s.phone || '').toLowerCase().includes(q));
+}
+supplierSearch.addEventListener('focus', function () {
+    renderSupplierList(filterSuppliers(this.value));
+    supplierDropdown.style.display = 'block';
 });
+supplierSearch.addEventListener('input', function () {
+    renderSupplierList(filterSuppliers(this.value));
+    supplierDropdown.style.display = 'block';
+});
+supplierSearch.addEventListener('keydown', function (e) {
+    if (supplierDropdown.style.display === 'none') return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); setHighlight(Math.min(supplierHighlight + 1, supplierFiltered.length - 1)); scrollHi(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setHighlight(Math.max(supplierHighlight - 1, 0)); scrollHi(); }
+    else if (e.key === 'Enter') { if (supplierHighlight >= 0 && supplierFiltered[supplierHighlight]) { e.preventDefault(); selectSupplier(supplierFiltered[supplierHighlight]); } }
+    else if (e.key === 'Escape') { supplierDropdown.style.display = 'none'; }
+});
+function scrollHi() { const el = supplierResults.children[supplierHighlight]; if (el) el.scrollIntoView({ block: 'nearest' }); }
 
 function selectSupplier(s) {
     document.getElementById('supplierId').value = s.id;

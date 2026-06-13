@@ -36,13 +36,16 @@ class ProductController extends Controller
     {
         $trips = Trip::whereIn('status', ['open', 'purchasing'])->orderByDesc('id')->get();
         $selectedTrip = $request->trip_id ? Trip::find($request->trip_id) : null;
-        return view('products.create', compact('trips', 'selectedTrip'));
+        // Preload suppliers (small list) so the picker filters instantly with no API calls
+        $suppliers = \App\Models\Supplier::orderBy('name')->get(['id', 'name', 'country', 'phone']);
+        return view('products.create', compact('trips', 'selectedTrip', 'suppliers'));
     }
 
     public function store(Request $request)
     {
         $data = $request->validate([
             'trip_id'          => 'required|exists:trips,id',
+            'supplier_id'      => 'required|exists:suppliers,id',
             'name'             => 'required|string|max:255',
             'sku'              => 'nullable|string|max:100',
             'product_code' => [
@@ -87,7 +90,7 @@ class ProductController extends Controller
 
     public function show(Product $product)
     {
-        $product->load(['variants', 'orderItems.order.customer', 'trip']);
+        $product->load(['variants', 'orderItems.order.customer', 'trip', 'supplier']);
         return view('products.show', compact('product'));
     }
 
@@ -497,7 +500,7 @@ class ProductController extends Controller
      * Resize image to max 800×800px and store as JPEG ≤200KB.
      * Uses GD (available on most shared hosting).
      */
-    private function resizeAndStoreImage($file): string
+    private function resizeAndStoreImage(\Illuminate\Http\UploadedFile $file): string
     {
         $maxDim  = 800;   // max width or height in pixels
         $quality = 82;    // JPEG quality start (will reduce if still too big)
