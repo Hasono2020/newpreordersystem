@@ -84,7 +84,12 @@
                         @foreach($order->items as $item)
                         @php $soldOut = $item->status === 'sold_out'; @endphp
                         <tr class="{{ $soldOut ? 'text-muted' : '' }}">
-                            <td class="fw-semibold small">{{ $item->product->name }}</td>
+                            <td class="fw-semibold small">
+                                {{ $item->product->name }}
+                                @if($item->product->product_code)
+                                <div class="text-primary" style="font-size:.72rem;font-weight:500;">{{ $item->product->product_code }}</div>
+                                @endif
+                            </td>
                             <td class="small text-muted">{{ $item->variant?->label ?? '—' }}</td>
                             <td>{{ $item->quantity }}</td>
                             <td class="small">
