@@ -154,6 +154,47 @@
 
         /* ── Utilities ───────────────────────────────────── */
         .badge-status { font-size: .75rem; }
+
+        /* ── Mobile card layout for tables with .responsive-cards (≤768px) ── */
+        @media (max-width: 768px) {
+            .responsive-cards thead { display: none; }
+            .responsive-cards, .responsive-cards tbody, .responsive-cards tr, .responsive-cards td {
+                display: block; width: 100%;
+            }
+            .responsive-cards tr {
+                margin-bottom: .75rem;
+                border: 1px solid #e5e7eb;
+                border-radius: 10px;
+                padding: .35rem .25rem;
+                background: #fff;
+                box-shadow: 0 1px 3px rgba(0,0,0,.04);
+            }
+            .responsive-cards td {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                text-align: right;
+                padding: .4rem .85rem;
+                border: none;
+                border-bottom: 1px solid #f1f5f9;
+            }
+            .responsive-cards td:last-child { border-bottom: none; }
+            .responsive-cards td::before {
+                content: attr(data-label);
+                font-weight: 600;
+                font-size: .72rem;
+                color: #64748b;
+                text-transform: uppercase;
+                letter-spacing: .02em;
+                text-align: left;
+                margin-right: 1rem;
+                flex-shrink: 0;
+            }
+            .responsive-cards td.no-label { justify-content: flex-end; }
+            .responsive-cards td.no-label::before { content: none; }
+            .responsive-cards td.cell-actions { justify-content: stretch; gap:.5rem; flex-wrap: wrap; }
+            .responsive-cards td.cell-actions .btn { flex: 1; }
+        }
         .table th {
             font-size: .76rem;
             text-transform: uppercase;

@@ -36,7 +36,7 @@
 {{-- Table --}}
 <div class="card">
     <div class="table-responsive">
-        <table class="table table-hover mb-0">
+        <table class="table table-hover mb-0 responsive-cards">
             <thead class="table-light">
                 <tr>
                     @if(auth()->user()->hasPermission('promos.edit'))
@@ -59,35 +59,35 @@
                 @forelse($promos as $promo)
                 <tr>
                     @if(auth()->user()->hasPermission('promos.edit'))
-                    <td>
+                    <td class="no-label">
                         <input type="checkbox" class="form-check-input promo-cb" value="{{ $promo->id }}">
                     </td>
                     @endif
-                    <td class="fw-semibold">{{ $promo->name }}</td>
-                    <td class="text-muted small">{{ $promo->trip?->name ?? 'All trips' }}</td>
-                    <td>{{ $promo->min_items }}</td>
-                    <td>
+                    <td class="fw-semibold" data-label="Name">{{ $promo->name }}</td>
+                    <td class="text-muted small" data-label="Trip">{{ $promo->trip?->name ?? 'All trips' }}</td>
+                    <td data-label="Min Items">{{ $promo->min_items }}</td>
+                    <td data-label="Discount/Item">
                         @if($promo->discount_per_item > 0)
                             <span class="text-success fw-semibold">Rp {{ number_format($promo->discount_per_item, 0, ',', '.') }}</span>
                         @else
                             <span class="text-muted">—</span>
                         @endif
                     </td>
-                    <td>
+                    <td data-label="Flat Discount">
                         @if($promo->discount_flat > 0)
                             <span class="text-success fw-semibold">Rp {{ number_format($promo->discount_flat, 0, ',', '.') }}</span>
                         @else
                             <span class="text-muted">—</span>
                         @endif
                     </td>
-                    <td>
+                    <td data-label="Shipping Subsidy">
                         @if($promo->max_shipping_subsidy > 0)
                             <span class="fw-semibold text-secondary">Rp {{ number_format($promo->max_shipping_subsidy, 0, ',', '.') }}</span>
                         @else
                             <span class="text-muted">—</span>
                         @endif
                     </td>
-                    <td>
+                    <td data-label="Customer Types">
                         @if($promo->eligible_customer_types)
                             @foreach($promo->eligible_customer_types as $t)
                             @php
@@ -104,12 +104,12 @@
                             <span class="text-muted small">All</span>
                         @endif
                     </td>
-                    <td>
+                    <td data-label="Status">
                         <span class="badge {{ $promo->is_active ? 'bg-success' : 'bg-secondary' }}">
                             {{ $promo->is_active ? 'Active' : 'Inactive' }}
                         </span>
                     </td>
-                    <td>
+                    <td class="cell-actions no-label">
                         @if(auth()->user()->hasPermission('promos.edit'))
                         <a href="{{ route('promos.edit', $promo) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
                         @endif

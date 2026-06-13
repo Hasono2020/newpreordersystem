@@ -12,21 +12,21 @@
 
 <div class="card">
     <div class="table-responsive">
-        <table class="table table-hover mb-0">
+        <table class="table table-hover mb-0 responsive-cards">
             <thead class="table-light">
                 <tr><th>Name</th><th>Destination</th><th>Trip Date</th><th>Deadline</th><th>Status</th><th>Orders</th><th>Products</th><th></th></tr>
             </thead>
             <tbody>
                 @forelse($trips as $trip)
                 <tr>
-                    <td class="fw-semibold">{{ $trip->name }}</td>
-                    <td>{{ $trip->destination ?? '—' }}</td>
-                    <td class="small">{{ $trip->trip_date?->format('d M Y') ?? '—' }}</td>
-                    <td class="small">{{ $trip->order_deadline?->format('d M Y') ?? '—' }}</td>
-                    <td>{!! $trip->status_badge !!}</td>
-                    <td>{{ $trip->orders_count }}</td>
-                    <td>{{ $trip->products_count }}</td>
-                    <td>
+                    <td class="fw-semibold" data-label="Name">{{ $trip->name }}</td>
+                    <td data-label="Destination">{{ $trip->destination ?? '—' }}</td>
+                    <td class="small" data-label="Trip Date">{{ $trip->trip_date?->format('d M Y') ?? '—' }}</td>
+                    <td class="small" data-label="Deadline">{{ $trip->order_deadline?->format('d M Y') ?? '—' }}</td>
+                    <td data-label="Status">{!! $trip->status_badge !!}</td>
+                    <td data-label="Orders">{{ $trip->orders_count }}</td>
+                    <td data-label="Products">{{ $trip->products_count }}</td>
+                    <td class="cell-actions no-label">
                         <a href="{{ route('trips.show', $trip) }}" class="btn btn-sm btn-outline-primary">View</a>
                         @if(auth()->user()->isAdmin())
                         <a href="{{ route('trips.edit', $trip) }}" class="btn btn-sm btn-outline-secondary">Edit</a>

@@ -139,7 +139,7 @@
 
 <div class="card">
     <div class="table-responsive">
-        <table class="table table-hover mb-0">
+        <table class="table table-hover mb-0 responsive-cards">
             <thead class="table-light">
                 <tr>
 @if(auth()->user()->hasPermission('customers.delete'))
@@ -158,13 +158,13 @@
                 @forelse($customers as $customer)
                 <tr>
 @if(auth()->user()->hasPermission('customers.delete'))
-                    <td>
+                    <td class="no-label">
                         <input type="checkbox" class="form-check-input customer-cb" value="{{ $customer->id }}">
                     </td>
                     @endif
-                    <td class="fw-semibold">{{ $customer->name }}</td>
-                    <td class="text-muted small">{{ $customer->phone ?? '—' }}</td>
-                    <td>
+                    <td class="fw-semibold" data-label="Name">{{ $customer->name }}</td>
+                    <td class="text-muted small" data-label="Phone">{{ $customer->phone ?? '—' }}</td>
+                    <td data-label="Type">
                         @if($customer->type === 'reseller')
                             <span class="badge" style="background:#7c3aed;">Reseller</span>
                         @elseif($customer->type === 'selected_customer')
@@ -173,8 +173,8 @@
                             <span class="badge bg-secondary">Customer</span>
                         @endif
                     </td>
-                    <td>{{ $customer->orders_count }}</td>
-                    <td>
+                    <td data-label="Orders">{{ $customer->orders_count }}</td>
+                    <td class="cell-actions no-label">
                         <a href="{{ route('customers.show', $customer) }}" class="btn btn-sm btn-outline-primary">View</a>
                         @if(auth()->user()->hasPermission('customers.edit'))
                         <a href="{{ route('customers.edit', $customer) }}" class="btn btn-sm btn-outline-secondary">Edit</a>

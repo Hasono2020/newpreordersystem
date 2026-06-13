@@ -82,11 +82,12 @@
                     <div class="col-md-5">
                         @php
                             $groups = [
-                                'Orders'     => ['orders.view','orders.create','orders.edit','orders.delete','orders.import'],
-                                'Customers'  => ['customers.view','customers.create','customers.edit','customers.delete'],
-                                'Products'   => ['products.view','products.create','products.edit','products.delete'],
+                                'Orders'     => ['orders.view','orders.create','orders.edit','orders.delete','orders.import','orders.export'],
+                                'Customers'  => ['customers.view','customers.create','customers.edit','customers.delete','customers.import','customers.export'],
+                                'Products'   => ['products.view','products.create','products.edit','products.delete','products.import','products.export'],
                                 'Purchasing' => ['purchasing.view','purchasing.edit'],
                                 'Payments'   => ['payments.view','payments.record','payments.void'],
+                                'Promos'     => ['promos.view','promos.create','promos.edit','promos.delete'],
                                 'Other'      => ['invoices.view','trips.view','trips.edit','reports.view','settings.view','settings.edit'],
                             ];
                         @endphp

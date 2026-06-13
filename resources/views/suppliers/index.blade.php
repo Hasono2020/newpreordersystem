@@ -41,7 +41,7 @@
 
 <div class="card">
     <div class="table-responsive">
-        <table class="table table-hover mb-0">
+        <table class="table table-hover mb-0 responsive-cards">
             <thead class="table-light">
                 <tr>
 @if(auth()->user()->hasPermission('suppliers.delete'))
@@ -54,22 +54,22 @@
                 @forelse($suppliers as $supplier)
                 <tr>
 @if(auth()->user()->hasPermission('suppliers.delete'))
-                    <td><input type="checkbox" class="form-check-input row-check" value="{{ $supplier->id }}"></td>
+                    <td class="no-label"><input type="checkbox" class="form-check-input row-check" value="{{ $supplier->id }}"></td>
                     @endif
-                    <td class="fw-semibold">{{ $supplier->name }}</td>
-                    <td class="text-muted small">{{ $supplier->contact_person ?? '—' }}</td>
-                    <td class="text-muted small">{{ $supplier->phone ?? '—' }}</td>
-                    <td class="small">{{ $supplier->country ?? '—' }}</td>
-                    <td>{{ $supplier->products_count }}</td>
-                    <td>{{ $supplier->purchase_orders_count }}</td>
-                    <td>
+                    <td class="fw-semibold" data-label="Name">{{ $supplier->name }}</td>
+                    <td class="text-muted small" data-label="Contact">{{ $supplier->contact_person ?? '—' }}</td>
+                    <td class="text-muted small" data-label="Phone">{{ $supplier->phone ?? '—' }}</td>
+                    <td class="small" data-label="Country">{{ $supplier->country ?? '—' }}</td>
+                    <td data-label="Products">{{ $supplier->products_count }}</td>
+                    <td data-label="POs">{{ $supplier->purchase_orders_count }}</td>
+                    <td data-label="Status">
                         @if($supplier->is_active)
                             <span class="badge bg-success">Active</span>
                         @else
                             <span class="badge bg-secondary">Inactive</span>
                         @endif
                     </td>
-                    <td>
+                    <td class="cell-actions no-label">
                         <a href="{{ route('suppliers.show', $supplier) }}" class="btn btn-sm btn-outline-primary">View</a>
                         @if(auth()->user()->hasPermission('suppliers.edit'))
                         <a href="{{ route('suppliers.edit', $supplier) }}" class="btn btn-sm btn-outline-secondary">Edit</a>

@@ -684,13 +684,10 @@ class PurchasingController extends Controller
 
                 $variantIds        = [];
                 $productNoVariant  = [];
-                $stockToSubtract   = []; // variant_id => qty_received
 
                 foreach ($poItems as $pi) {
                     if ($pi->product_variant_id) {
                         $variantIds[$pi->product_variant_id] = true;
-                        $stockToSubtract[$pi->product_variant_id] =
-                            ($stockToSubtract[$pi->product_variant_id] ?? 0) + (int)$pi->quantity_received;
                     } else {
                         $productNoVariant[$pi->product_id] = true;
                     }
@@ -745,22 +742,13 @@ class PurchasingController extends Controller
                     }
                 }
 
-                // ── 3) Subtract supplier_stock + recalc allocated_qty ───────
-                foreach ($stockToSubtract as $variantId => $qty) {
-                    DB::table('product_variants')->where('id', $variantId)
-                        ->update([
-                            'supplier_stock' => DB::raw('GREATEST(0, supplier_stock - '.(int)$qty.')'),
-                        ]);
-                }
-                foreach (array_keys($variantIds) as $variantId) {
-                    $allocatedQty = DB::table('order_items')
-                        ->join('orders', 'orders.id', '=', 'order_items.order_id')
-                        ->where('orders.trip_id', $tripId)
-                        ->where('order_items.product_variant_id', $variantId)
-                        ->where('order_items.status', 'arrived')
-                        ->sum('order_items.quantity');
-                    DB::table('product_variants')->where('id', $variantId)
-                        ->update(['allocated_qty' => $allocatedQty]);
+                // ── 3) Reset supplier_stock + allocated_qty to 0 ───────────
+                // Full clean undo: clear stock for all variants this PO touched,
+                // so the next arrival cycle starts fresh (no accumulation).
+                $resetVariantIds = array_keys($variantIds);
+                foreach (array_chunk($resetVariantIds, 1000) as $chunk) {
+                    DB::table('product_variants')->whereIn('id', $chunk)
+                        ->update(['supplier_stock' => 0, 'allocated_qty' => 0]);
                 }
 
                 // ── 4) Recalculate affected order totals ────────────────────
@@ -937,8 +925,10 @@ class PurchasingController extends Controller
             }
 
             // ── Step 5: supplier_stock + allocated_qty ──────────────────
-            foreach ($variantStockInc as $variantId => $inc) {
-                ProductVariant::where('id', $variantId)->increment('supplier_stock', $inc);
+            // SET stock to the received quantity (not increment) so repeated
+            // arrival cycles don't accumulate stale stock.
+            foreach ($variantStockInc as $variantId => $received) {
+                ProductVariant::where('id', $variantId)->update(['supplier_stock' => $received]);
             }
             foreach (array_keys($variantIds) as $variantId) {
                 $allocatedQty = DB::table('order_items')

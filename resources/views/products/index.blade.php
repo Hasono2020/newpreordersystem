@@ -129,7 +129,7 @@
 
 <div class="card">
     <div class="table-responsive">
-        <table class="table table-hover mb-0">
+        <table class="table table-hover mb-0 responsive-cards">
             <thead class="table-light">
                 <tr>
                     @if(auth()->user()->isAdmin())
@@ -144,12 +144,12 @@
                 @forelse($products as $product)
                 <tr>
                     @if(auth()->user()->isAdmin())
-                    <td>
+                    <td class="no-label">
                         <input type="checkbox" name="product_ids[]" value="{{ $product->id }}"
                             class="form-check-input product-checkbox" form="bulkDeleteForm">
                     </td>
                     @endif
-                    <td>
+                    <td data-label="Product">
                         <div class="d-flex align-items-center gap-2">
                             @if($product->image)
                                 <img src="{{ asset('storage/'.$product->image) }}" width="36" height="36"
@@ -170,29 +170,29 @@
                             </div>
                         </div>
                     </td>
-                    <td>
+                    <td data-label="Code">
                         @if($product->product_code)
                             <span class="badge bg-light text-dark border font-monospace">{{ $product->product_code }}</span>
                         @else
                             <span class="text-muted small">—</span>
                         @endif
                     </td>
-                    <td class="small text-muted">{{ $product->trip->name }}</td>
-                    <td class="small">Rp {{ number_format($product->price, 0, ',', '.') }}</td>
-                    <td class="small text-muted">
+                    <td class="small text-muted" data-label="Trip">{{ $product->trip->name }}</td>
+                    <td class="small" data-label="Price">Rp {{ number_format($product->price, 0, ',', '.') }}</td>
+                    <td class="small text-muted" data-label="Weight">
                         @if($product->weight_gram)
                             {{ $product->weight_gram }}g
                         @else
                             <span class="text-warning" title="Weight not set"><i class="bi bi-exclamation-triangle-fill"></i></span>
                         @endif
                     </td>
-                    <td>
+                    <td data-label="Status">
                         <span class="badge {{ $product->status === 'active' ? 'bg-success' : ($product->status === 'arrived' ? 'bg-info' : 'bg-secondary') }}">
                             {{ ucfirst($product->status) }}
                         </span>
                     </td>
-                    <td class="text-center">{{ $product->order_items_count }}</td>
-                    <td>
+                    <td class="text-center" data-label="Orders">{{ $product->order_items_count }}</td>
+                    <td class="cell-actions no-label">
                         <a href="{{ route('products.show', $product) }}" class="btn btn-sm btn-outline-primary">View</a>
 @if(auth()->user()->hasPermission('products.edit'))
                         <a href="{{ route('products.edit', $product) }}" class="btn btn-sm btn-outline-secondary">Edit</a>

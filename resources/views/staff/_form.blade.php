@@ -10,6 +10,7 @@
             'orders.edit'    => 'Edit orders',
             'orders.delete'  => 'Delete orders',
             'orders.import'  => 'Import orders',
+            'orders.export'  => 'Export orders',
         ],
         'Customers'  => [
             'customers.view'    => 'View customers',
@@ -17,12 +18,15 @@
             'customers.edit'    => 'Edit customers',
             'customers.delete'  => 'Delete customers',
             'customers.import'  => 'Import customers',
+            'customers.export'  => 'Export customers',
         ],
         'Products'   => [
             'products.view'   => 'View products',
             'products.create' => 'Add products',
             'products.edit'   => 'Edit products',
             'products.delete' => 'Delete products',
+            'products.import' => 'Import products',
+            'products.export' => 'Export products',
         ],
         'Purchasing' => [
             'purchasing.view' => 'View purchasing',
@@ -34,7 +38,10 @@
             'payments.void'   => 'Void payments',
         ],
         'Promo Rules' => [
-            'promos.edit' => 'Manage promo rules',
+            'promos.view'   => 'View promo rules',
+            'promos.create' => 'Add promo rules',
+            'promos.edit'   => 'Edit promo rules',
+            'promos.delete' => 'Delete promo rules',
         ],
         'Reports & Settings' => [
             'invoices.view'  => 'View invoices',

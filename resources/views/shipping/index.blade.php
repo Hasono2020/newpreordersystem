@@ -66,7 +66,7 @@
 {{-- Table --}}
 <div class="card">
     <div class="table-responsive">
-        <table class="table table-hover mb-0">
+        <table class="table table-hover mb-0 responsive-cards">
             <thead class="table-light">
                 <tr>
                     @if(auth()->user()->isAdmin())
@@ -83,17 +83,17 @@
                 @forelse($areas as $area)
                 <tr>
                     @if(auth()->user()->isAdmin())
-                    <td><input type="checkbox" class="form-check-input row-check" value="{{ $area->id }}"></td>
+                    <td class="no-label"><input type="checkbox" class="form-check-input row-check" value="{{ $area->id }}"></td>
                     @endif
-                    <td class="fw-semibold">{{ $area->name }}</td>
-                    <td class="text-muted small">{{ $area->province ?? '—' }}</td>
-                    <td>Rp {{ number_format($area->price_per_kg, 0, ',', '.') }}</td>
-                    <td>
+                    <td class="fw-semibold" data-label="Area / City">{{ $area->name }}</td>
+                    <td class="text-muted small" data-label="Province">{{ $area->province ?? '—' }}</td>
+                    <td data-label="Price / kg">Rp {{ number_format($area->price_per_kg, 0, ',', '.') }}</td>
+                    <td data-label="Status">
                         <span class="badge {{ $area->is_active ? 'bg-success' : 'bg-secondary' }}">
                             {{ $area->is_active ? 'Active' : 'Inactive' }}
                         </span>
                     </td>
-                    <td class="text-nowrap">
+                    <td class="cell-actions no-label">
                         <a href="{{ route('shipping.show', $area) }}" class="btn btn-sm btn-outline-primary">View</a>
                         @if(auth()->user()->hasPermission('shipping.edit'))
                         <a href="{{ route('shipping.edit', $area) }}" class="btn btn-sm btn-outline-secondary">Edit</a>

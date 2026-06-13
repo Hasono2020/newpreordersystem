@@ -59,8 +59,8 @@ Route::middleware('auth')->group(function () {
     // Orders
     Route::get('orders-export', [ReportController::class, 'exportOrders'])->name('orders.export');
     Route::get('orders-items-export', [ReportController::class, 'exportOrderItems'])->name('orders.items.export');
-    Route::get('orders-import-template', [ReportController::class, 'orderImportTemplate'])->middleware('perm:orders.import')->name('orders.import.template');
-    Route::post('orders-import', [ReportController::class, 'importOrders'])->middleware('perm:orders.import')->name('orders.import');
+    Route::get('orders-import-template', [ReportController::class, 'orderImportTemplate'])->name('orders.import.template');
+    Route::post('orders-import', [ReportController::class, 'importOrders'])->name('orders.import');
     Route::post('orders/bulk-destroy', [OrderController::class, 'bulkDestroy'])->middleware('perm:orders.delete')->name('orders.bulk-destroy');
     Route::resource('orders', OrderController::class);
     Route::post('orders/{order}/items', [OrderController::class, 'addItem'])->name('orders.items.add');
@@ -73,13 +73,17 @@ Route::middleware('auth')->group(function () {
     Route::get('customers/{customer}/combined-invoice', [OrderController::class, 'combinedInvoice'])->name('orders.combined-invoice');
 
     // Promos
-    Route::delete('promos-bulk', [PromoController::class, 'bulkDestroy'])->middleware('perm:promos.edit')->name('promos.bulk-destroy');
-    Route::get('promos', [PromoController::class, 'index'])->name('promos.index');
-    Route::middleware('perm:promos.edit')->group(function () {
+    Route::delete('promos-bulk', [PromoController::class, 'bulkDestroy'])->middleware('perm:promos.delete')->name('promos.bulk-destroy');
+    Route::get('promos', [PromoController::class, 'index'])->middleware('perm:promos.view')->name('promos.index');
+    Route::middleware('perm:promos.create')->group(function () {
         Route::get('promos/create', [PromoController::class, 'create'])->name('promos.create');
         Route::post('promos', [PromoController::class, 'store'])->name('promos.store');
+    });
+    Route::middleware('perm:promos.edit')->group(function () {
         Route::get('promos/{promo}/edit', [PromoController::class, 'edit'])->name('promos.edit');
         Route::put('promos/{promo}', [PromoController::class, 'update'])->name('promos.update');
+    });
+    Route::middleware('perm:promos.delete')->group(function () {
         Route::delete('promos/{promo}', [PromoController::class, 'destroy'])->name('promos.destroy');
     });
 

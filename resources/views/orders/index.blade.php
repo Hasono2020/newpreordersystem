@@ -173,7 +173,7 @@
 
 <div class="card">
     <div class="table-responsive">
-        <table class="table table-hover mb-0">
+        <table class="table table-hover mb-0 responsive-cards">
             <thead class="table-light">
                 <tr>
                     @if(auth()->user()->isAdmin())
@@ -189,26 +189,28 @@
                 <tr>
                     @if(auth()->user()->isAdmin())
 @if(auth()->user()->hasPermission('orders.delete'))
-                    <td><input type="checkbox" name="order_ids[]" value="{{ $order->id }}" class="form-check-input order-checkbox" form="bulkDeleteForm"></td>
+                    <td class="no-label"><input type="checkbox" name="order_ids[]" value="{{ $order->id }}" class="form-check-input order-checkbox" form="bulkDeleteForm"></td>
                     @endif
                     @endif
-                    <td class="font-monospace small">{{ $order->order_number }}</td>
-                    <td>
-                        <div class="fw-semibold">{{ $order->customer->name }}</div>
-                        <div class="text-muted" style="font-size:.72rem;">{{ $order->customer->type_label }}</div>
+                    <td class="font-monospace small" data-label="Order #">{{ $order->order_number }}</td>
+                    <td data-label="Customer">
+                        <div class="text-end">
+                            <div class="fw-semibold">{{ $order->customer->name }}</div>
+                            <div class="text-muted" style="font-size:.72rem;">{{ $order->customer->type_label }}</div>
+                        </div>
                     </td>
-                    <td class="small text-muted">{{ $order->trip->name }}</td>
-                    <td class="small">Rp {{ number_format($order->subtotal, 0, ',', '.') }}</td>
-                    <td class="small text-success">
+                    <td class="small text-muted" data-label="Trip">{{ $order->trip->name }}</td>
+                    <td class="small" data-label="Subtotal">Rp {{ number_format($order->subtotal, 0, ',', '.') }}</td>
+                    <td class="small text-success" data-label="Discount">
                         @if($order->discount_amount > 0) -Rp {{ number_format($order->discount_amount, 0, ',', '.') }} @else — @endif
                     </td>
-                    <td class="fw-semibold">Rp {{ number_format($order->total_amount, 0, ',', '.') }}</td>
-                    <td class="small text-success">Rp {{ number_format($order->deposit_paid, 0, ',', '.') }}</td>
-                    <td class="small {{ $order->remaining_balance > 0 ? 'text-danger' : 'text-success' }}">
+                    <td class="fw-semibold" data-label="Total">Rp {{ number_format($order->total_amount, 0, ',', '.') }}</td>
+                    <td class="small text-success" data-label="Paid">Rp {{ number_format($order->deposit_paid, 0, ',', '.') }}</td>
+                    <td class="small {{ $order->remaining_balance > 0 ? 'text-danger' : 'text-success' }}" data-label="Balance">
                         Rp {{ number_format($order->remaining_balance, 0, ',', '.') }}
                     </td>
-                    <td>{!! $order->payment_status_badge !!}</td>
-                    <td>
+                    <td data-label="Status">{!! $order->payment_status_badge !!}</td>
+                    <td class="cell-actions no-label">
                         <a href="{{ route('orders.show', $order) }}" class="btn btn-sm btn-outline-primary">View</a>
                         @if(auth()->user()->hasPermission('orders.edit') && (auth()->user()->isAdmin() || auth()->user()->role !== 'staff' || $order->created_by === auth()->id()))
                         <a href="{{ route('orders.edit', $order) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
