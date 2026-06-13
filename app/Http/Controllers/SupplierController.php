@@ -108,7 +108,7 @@ class SupplierController extends Controller
         if ($request->boolean('delete_all')) {
             \App\Models\Product::whereNotNull('supplier_id')->update(['supplier_id' => null]);
             $count = \App\Models\Supplier::count();
-            \App\Models\Supplier::truncate();
+            \App\Models\Supplier::query()->delete();
             return redirect()->route('suppliers.index')->with('success', "All {$count} supplier(s) deleted.");
         }
         $ids = $request->input('ids', []);
