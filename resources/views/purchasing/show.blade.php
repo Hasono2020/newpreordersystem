@@ -195,18 +195,11 @@ body { padding-bottom: 0; }
             </table>
         </div>
 
-        {{-- hidden inputs for all items --}}
-        <div id="hiddenInputs" style="display:none;">
-            @foreach($purchasing->items as $i => $item)
-            <input type="hidden" name="items[{{ $i }}][id]" value="{{ $item->id }}">
-            @if($purchasing->status !== 'arrived')
-            <input type="number" name="items[{{ $i }}][quantity_received]"
-                class="qty-hidden" data-index="{{ $i }}"
-                value="{{ $item->quantity_received ?: $item->quantity_ordered }}"
-                min="0" max="{{ $item->quantity_ordered }}">
-            @endif
-            @endforeach
-        </div>
+        {{-- All received quantities bundled into ONE hidden JSON field --}}
+        {{-- Avoids max_input_vars limits for large POs (1000+ items). --}}
+        @if($purchasing->status !== 'arrived')
+        <input type="hidden" name="items_json" id="itemsJsonField" value="">
+        @endif
 
         @if($purchasing->status !== 'arrived')
         <div class="po-actionbar">
@@ -278,9 +271,11 @@ function renderChunk() {
 
 function escH(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
+const RECEIVED = {};
+ITEMS.forEach(r => { RECEIVED[r.i] = r.received; });
+
 function syncHidden(idx, val) {
-    const hidden = document.querySelector(`.qty-hidden[data-index="${idx}"]`);
-    if (hidden) hidden.value = val;
+    RECEIVED[idx] = val;
 }
 
 function filterItems(q) {
