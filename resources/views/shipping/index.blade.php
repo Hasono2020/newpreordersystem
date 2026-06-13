@@ -41,10 +41,10 @@
         </button>
         <ul class="dropdown-menu dropdown-menu-end" style="min-width:240px;">
             <li><h6 class="dropdown-header">Export</h6></li>
-            <li><a class="dropdown-item" href="{{ route('shipping.export') }}"><i class="bi bi-download me-2 text-success"></i>Export all as Excel</a></li>
+            <li><a class="dropdown-item" href="{{ route('shipping.export') }}" onclick="showExport('Preparing your export file. Please wait…')"><i class="bi bi-download me-2 text-success"></i>Export all as Excel</a></li>
             <li><hr class="dropdown-divider"></li>
             <li><h6 class="dropdown-header">Import</h6></li>
-            <li><a class="dropdown-item" href="{{ route('shipping.template') }}"><i class="bi bi-file-earmark-spreadsheet me-2 text-secondary"></i>Download template (.xlsx)</a></li>
+            <li><a class="dropdown-item" href="{{ route('shipping.template') }}" onclick="showExport('Preparing template download…')"><i class="bi bi-file-earmark-spreadsheet me-2 text-secondary"></i>Download template (.xlsx)</a></li>
             <li><button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#importModal"><i class="bi bi-upload me-2 text-primary"></i>Import from Excel</button></li>
         </ul>
     </div>
@@ -103,7 +103,7 @@
                 @empty
                 <tr>
                     <td colspan="{{ auth()->user()->isAdmin() ? 6 : 5 }}" class="text-center text-muted py-4">
-                        No shipping areas yet. <a href="{{ route('shipping.template') }}">Download template</a> to import in bulk.
+                        No shipping areas yet. <a onclick="showExport('Preparing template download…')" href="{{ route('shipping.template') }}">Download template</a> to import in bulk.
                     </td>
                 </tr>
                 @endforelse
@@ -133,7 +133,7 @@
 <div class="modal fade" id="importModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
-            <form method="POST" action="{{ route('shipping.import') }}" enctype="multipart/form-data">
+            <form method="POST" action="{{ route('shipping.import') }}" enctype="multipart/form-data" onsubmit="showProcessing('Importing shipping areas from Excel. Please do not close this page.');">
                 @csrf
                 <div class="modal-header">
                     <h5 class="modal-title"><i class="bi bi-upload me-2"></i>Import Shipping Areas</h5>
@@ -143,7 +143,7 @@
                     <div class="alert alert-light border small mb-3">
                         <strong>Excel columns:</strong> name · province · price_per_kg · is_active · notes<br>
                         <span class="text-muted">Existing areas (matched by name) will be updated. New areas will be created.</span><br>
-                        <a href="{{ route('shipping.template') }}" class="small mt-1 d-inline-block">
+                        <a onclick="showExport('Preparing template download…')" href="{{ route('shipping.template') }}" class="small mt-1 d-inline-block">
                             <i class="bi bi-download me-1"></i>Download template (.xlsx)
                         </a>
                     </div>

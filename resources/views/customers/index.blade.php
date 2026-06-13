@@ -49,7 +49,7 @@
             <ul class="dropdown-menu dropdown-menu-end" style="min-width:220px;">
                 <li><h6 class="dropdown-header">Export</h6></li>
                 <li>
-                    <a class="dropdown-item" href="{{ route('customers.export') }}">
+                    <a class="dropdown-item" href="{{ route('customers.export') }}" onclick="showExport('Preparing your export file. Please wait…')">
                         <i class="bi bi-download me-2 text-success"></i>Export all as Excel
                     </a>
                 </li>
@@ -111,15 +111,15 @@
                         • Duplicates (same phone or name) are skipped automatically.
                     </span>
                     <div class="mt-2 d-flex gap-3">
-                        <a href="{{ route('customers.import.template') }}" class="small">
+                        <a onclick="showExport('Preparing template download…')" href="{{ route('customers.import.template') }}" class="small">
                             <i class="bi bi-download me-1"></i>Download template (.xlsx)
                         </a>
-                        <a href="{{ route('customers.export') }}" class="small">
+                        <a onclick="showExport('Preparing your export file. Please wait…')" href="{{ route('customers.export') }}" class="small">
                             <i class="bi bi-download me-1"></i>Export existing customers
                         </a>
                     </div>
                 </div>
-                <form method="POST" action="{{ route('customers.import') }}" enctype="multipart/form-data">
+                <form method="POST" action="{{ route('customers.import') }}" enctype="multipart/form-data" onsubmit="showProcessing('Importing customers from Excel. Large files may take up to a minute. Please do not close this page.');">
                     @csrf
                     <input type="file" name="file" class="form-control mb-3" accept=".xlsx" required>
                     <button type="submit" class="btn btn-primary w-100">

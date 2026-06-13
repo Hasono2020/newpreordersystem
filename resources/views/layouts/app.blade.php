@@ -401,6 +401,15 @@ function hideProcessing() {
     _processingActive = false;
     document.getElementById('processingOverlay').style.display = 'none';
 }
+// For file downloads (export / template): show overlay briefly, then auto-hide.
+// Downloads don't navigate the page, so we can't detect completion — hide after a short delay.
+function showExport(msg) {
+    const ov = document.getElementById('processingOverlay');
+    if (msg) document.getElementById('processingMsg').textContent = msg;
+    ov.style.display = 'flex';
+    // Do NOT set _processingActive (no navigation, no beforeunload guard needed)
+    setTimeout(() => { ov.style.display = 'none'; }, 2500);
+}
 // Warn if the user tries to leave while processing
 window.addEventListener('beforeunload', function (e) {
     if (_processingActive) {

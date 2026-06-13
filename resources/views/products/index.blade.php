@@ -43,14 +43,14 @@
             <ul class="dropdown-menu dropdown-menu-end" style="min-width:240px;">
                 <li><h6 class="dropdown-header">Export</h6></li>
                 <li>
-                    <a class="dropdown-item" href="{{ route('products.export', request()->only('trip_id')) }}">
+                    <a onclick="showExport('Preparing your export file. Please wait…')" class="dropdown-item" href="{{ route('products.export', request()->only('trip_id')) }}">
                         <i class="bi bi-download me-2 text-success"></i>Export{{ request('trip_id') ? ' (this trip)' : ' all' }} as Excel
                     </a>
                 </li>
                 <li><hr class="dropdown-divider"></li>
                 <li><h6 class="dropdown-header">Import</h6></li>
                 <li>
-                    <a class="dropdown-item" href="{{ route('products.import.template') }}">
+                    <a class="dropdown-item" href="{{ route('products.import.template') }}" onclick="showExport('Preparing template download…')">
                         <i class="bi bi-file-earmark-spreadsheet me-2 text-secondary"></i>Download template (.xlsx)
                     </a>
                 </li>
@@ -106,11 +106,11 @@
                         • Supplier is auto-created if it doesn't exist yet.<br>
                         • <strong>Excluded from Promo:</strong> yes / no &nbsp;|&nbsp; <strong>Status:</strong> active / closed
                     </span>
-                    <a href="{{ route('products.import.template') }}" class="small mt-1 d-inline-block">
+                    <a onclick="showExport('Preparing template download…')" href="{{ route('products.import.template') }}" class="small mt-1 d-inline-block">
                         <i class="bi bi-download me-1"></i>Download template (.xlsx)
                     </a>
                 </div>
-                <form method="POST" action="{{ route('products.import') }}" enctype="multipart/form-data">
+                <form method="POST" action="{{ route('products.import') }}" enctype="multipart/form-data" onsubmit="showProcessing('Importing products from Excel. Large files may take up to a minute. Please do not close this page.');">
                     @csrf
                     <input type="file" name="file" class="form-control mb-3" accept=".xlsx" required>
                     <button type="submit" class="btn btn-primary w-100">

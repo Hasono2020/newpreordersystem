@@ -75,12 +75,12 @@
             <ul class="dropdown-menu dropdown-menu-end" style="min-width:240px;">
                 <li><h6 class="dropdown-header">Export</h6></li>
                 <li>
-                    <a class="dropdown-item" href="{{ route('orders.export', request()->only('trip_id')) }}">
+                    <a onclick="showExport('Preparing your export file. Please wait…')" class="dropdown-item" href="{{ route('orders.export', request()->only('trip_id')) }}">
                         <i class="bi bi-download me-2 text-success"></i>Export orders as Excel
                     </a>
                 </li>
                 <li>
-                    <a class="dropdown-item" href="{{ route('orders.items.export', request()->only('trip_id')) }}">
+                    <a onclick="showExport('Preparing your export file. Please wait…')" class="dropdown-item" href="{{ route('orders.items.export', request()->only('trip_id')) }}">
                         <i class="bi bi-download me-2 text-info"></i>Export order items as Excel
                     </a>
                 </li>
@@ -88,7 +88,7 @@
                 <li><hr class="dropdown-divider"></li>
                 <li><h6 class="dropdown-header">Import</h6></li>
                 <li>
-                    <a class="dropdown-item" href="{{ route('orders.import.template') }}">
+                    <a class="dropdown-item" href="{{ route('orders.import.template') }}" onclick="showExport('Preparing template download…')">
                         <i class="bi bi-file-earmark-spreadsheet me-2 text-secondary"></i>Download template (.xlsx)
                     </a>
                 </li>
@@ -132,11 +132,11 @@
                         • <strong>Recipient Name</strong> = Atas Nama / order notes.<br>
                         • All rows are validated before import — any error blocks the entire file.
                     </span>
-                    <a href="{{ route('orders.import.template') }}" class="small mt-1 d-inline-block">
+                    <a onclick="showExport('Preparing template download…')" href="{{ route('orders.import.template') }}" class="small mt-1 d-inline-block">
                         <i class="bi bi-download me-1"></i>Download template (.xlsx)
                     </a>
                 </div>
-                <form method="POST" action="{{ route('orders.import') }}" enctype="multipart/form-data">
+                <form method="POST" action="{{ route('orders.import') }}" enctype="multipart/form-data" onsubmit="showProcessing('Importing orders from Excel. Large files may take up to a minute. Please do not close this page.');">
                     @csrf
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Trip <span class="text-danger">*</span></label>
