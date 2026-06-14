@@ -35,13 +35,7 @@
             @endif
         </form>
     </div>
-    @if(auth()->user()->hasPermission('payments.record'))
-    <div class="col-auto">
-        <a href="{{ route('payments.create', ['trip_id' => $tripId]) }}" class="btn btn-primary btn-sm">
-            <i class="bi bi-plus-lg me-1"></i>Record Payment
-        </a>
-    </div>
-    @endif
+
 </div>
 
 {{-- Tabs --}}
