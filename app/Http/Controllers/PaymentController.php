@@ -29,34 +29,38 @@ class PaymentController extends Controller
         $tab = $request->get('tab', 'outstanding');
         $search = trim($request->get('search', ''));
 
-        // ── Outstanding: customers with a balance due in this trip ──────
+        // ── Outstanding: pure aggregate query — only_full_group_by safe ──────
         $outstanding = collect();
         if ($tripId) {
-            $outstanding = Order::with('customer')
-                ->where('trip_id', $tripId)
-                ->where('payment_status', '!=', 'paid')
-                ->when($search, function ($q) use ($search) {
-                    $q->whereHas('customer', fn($c) =>
-                        $c->where('name', 'like', "%{$search}%")
-                          ->orWhere('phone', 'like', "%{$search}%"));
-                })
-                ->get()
-                ->groupBy('customer_id')
-                ->map(function ($orders) {
-                    $cust = $orders->first()->customer;
-                    $totalOrdered = $orders->sum('total_amount');
-                    $totalPaid    = $orders->sum('deposit_paid');
-                    return (object) [
-                        'customer'      => $cust,
-                        'order_count'   => $orders->count(),
-                        'total_ordered' => $totalOrdered,
-                        'total_paid'    => $totalPaid,
-                        'balance_due'   => max(0, $totalOrdered - $totalPaid),
-                    ];
-                })
-                ->filter(fn($row) => $row->balance_due > 0)
-                ->sortByDesc('balance_due')
-                ->values();
+            $query = DB::table('orders')
+                ->join('customers', 'customers.id', '=', 'orders.customer_id')
+                ->select([
+                    'orders.customer_id',
+                    'customers.name as customer_name',
+                    'customers.phone as customer_phone',
+                    'customers.type as customer_type',
+                    DB::raw('COUNT(orders.id) as order_count'),
+                    DB::raw('SUM(orders.total_amount) as total_ordered'),
+                    DB::raw('SUM(orders.deposit_paid) as total_paid'),
+                    DB::raw('(SUM(orders.total_amount) - SUM(orders.deposit_paid)) as balance_due'),
+                ])
+                ->where('orders.trip_id', $tripId)
+                ->where('orders.payment_status', '!=', 'paid')
+                ->when($search, fn($q) => $q->where(fn($w) =>
+                    $w->where('customers.name', 'like', "%{$search}%")
+                      ->orWhere('customers.phone', 'like', "%{$search}%")
+                ))
+                ->groupBy(
+                    'orders.customer_id',
+                    'customers.name',
+                    'customers.phone',
+                    'customers.type'
+                )
+                ->having('balance_due', '>', 0)
+                ->orderByDesc('balance_due');
+
+            $outstanding = $query->paginate(50, ['*'], 'outstanding_page')
+                ->withQueryString();
         }
 
         // ── Payment log: recent payments (optionally scoped to trip) ────

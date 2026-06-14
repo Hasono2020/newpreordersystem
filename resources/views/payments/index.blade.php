@@ -76,14 +76,14 @@
                 <tbody>
                     @forelse($outstanding as $row)
                     <tr>
-                        <td data-label="Customer" class="fw-semibold">{{ $row->customer->name }}</td>
+                        <td data-label="Customer" class="fw-semibold">{{ $row->customer_name }}</td>
                         <td data-label="Orders" class="text-end">{{ $row->order_count }}</td>
                         <td data-label="Total Ordered" class="text-end">Rp {{ number_format($row->total_ordered, 0, ',', '.') }}</td>
                         <td data-label="Paid" class="text-end text-success">Rp {{ number_format($row->total_paid, 0, ',', '.') }}</td>
                         <td data-label="Balance Due" class="text-end fw-semibold text-danger">Rp {{ number_format($row->balance_due, 0, ',', '.') }}</td>
                         <td class="cell-actions no-label text-end">
                             @if(auth()->user()->hasPermission('payments.record'))
-                            <a href="{{ route('payments.create', ['customer' => $row->customer->id, 'trip_id' => $tripId]) }}"
+                            <a href="{{ route('payments.create', ['customer' => $row->customer_id, 'trip_id' => $tripId]) }}"
                                class="btn btn-sm btn-outline-primary">
                                 <i class="bi bi-plus-lg me-1"></i>Record Payment
                             </a>
@@ -96,6 +96,12 @@
                 </tbody>
             </table>
         </div>
+        @if($outstanding && $outstanding->hasPages())
+        <div class="card-footer bg-white d-flex justify-content-between align-items-center py-2">
+            <span class="small text-muted">{{ $outstanding->total() }} customer(s) with balance due</span>
+            <div>{{ $outstanding->links() }}</div>
+        </div>
+        @endif
     </div>
 @else
     {{-- Payment log --}}
