@@ -41,6 +41,7 @@ class OrderController extends Controller
 
     public function create(Request $request)
     {
+        if (!Auth::user()->hasPermission('orders.create')) abort(403);
         $trips         = Trip::where('status', 'open')->orderByDesc('id')->get();
         $shippingAreas = ShippingArea::where('is_active', true)->orderBy('name')->get();
         $selectedTrip  = $request->trip_id ? Trip::find($request->trip_id) : null;

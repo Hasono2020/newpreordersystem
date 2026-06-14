@@ -63,9 +63,7 @@ Route::middleware('auth')->group(function () {
     Route::get('orders-import-template', [ReportController::class, 'orderImportTemplate'])->name('orders.import.template');
     Route::post('orders-import', [ReportController::class, 'importOrders'])->name('orders.import');
     Route::post('orders/bulk-destroy', [OrderController::class, 'bulkDestroy'])->middleware('perm:orders.delete')->name('orders.bulk-destroy');
-    Route::resource('orders', OrderController::class)->except(['create','store']);
-    Route::get('orders/create', [OrderController::class, 'create'])->middleware('perm:orders.create')->name('orders.create');
-    Route::post('orders', [OrderController::class, 'store'])->middleware('perm:orders.create')->name('orders.store');
+    Route::resource('orders', OrderController::class);
     Route::post('orders/{order}/items', [OrderController::class, 'addItem'])->name('orders.items.add');
     Route::patch('orders/{order}/items/{item}', [OrderController::class, 'updateItem'])->name('orders.items.update');
     Route::patch('orders/{order}/items/{item}/status', [OrderController::class, 'updateItemStatus'])->name('orders.items.status');
