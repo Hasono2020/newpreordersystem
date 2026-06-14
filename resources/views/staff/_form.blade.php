@@ -53,7 +53,7 @@
             'promos.delete' => 'Delete promo rules',
         ],
         'Data Scope' => [
-            'own_data' => 'Own data only (staff sees only their own orders/customers/payments)',
+            'own_data' => 'Own data only (staff sees only their own orders & payments — customers are always shared)',
         ],
         'Reports & Settings' => [
             'invoices.view'  => 'View invoices',

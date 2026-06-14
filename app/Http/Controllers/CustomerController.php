@@ -15,10 +15,7 @@ class CustomerController extends Controller
     {
         $perPage = in_array((int)$request->per_page, [20, 50, 100, 200]) ? (int)$request->per_page : 20;
         $query   = Customer::withCount('orders');
-        // Staff with own_data=true only see customers they created
-        if (\Illuminate\Support\Facades\Auth::user()->isOwnDataOnly()) {
-            $query->where('created_by', \Illuminate\Support\Facades\Auth::id());
-        }
+        // Customers are shared — all roles see all customers
         if ($request->search) {
             $query->where(function ($q) use ($request) {
                 $q->where('name', 'like', '%'.$request->search.'%')

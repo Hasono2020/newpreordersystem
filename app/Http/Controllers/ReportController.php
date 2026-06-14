@@ -20,6 +20,9 @@ class ReportController extends Controller
         $tripId  = $request->trip_id;
 
         $query = Order::query();
+        if (\Illuminate\Support\Facades\Auth::user()->isOwnDataOnly()) {
+            $query->where('created_by', \Illuminate\Support\Facades\Auth::id());
+        }
         if ($tripId) $query->where('trip_id', $tripId);
 
         $summary = [
@@ -71,6 +74,9 @@ class ReportController extends Controller
     {
         $query = Order::with('customer', 'trip', 'shippingArea', 'items.product', 'items.variant', 'payments')
             ->orderBy('ordered_at');
+        if (\Illuminate\Support\Facades\Auth::user()->isOwnDataOnly()) {
+            $query->where('created_by', \Illuminate\Support\Facades\Auth::id());
+        }
         if ($request->trip_id) $query->where('trip_id', $request->trip_id);
         $orders = $query->get();
 
