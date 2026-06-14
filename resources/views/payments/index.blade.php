@@ -17,48 +17,55 @@
 </div>
 @endif
 
-{{-- Trip selector + search + tabs --}}
-<div class="d-flex flex-wrap gap-2 mb-3 align-items-center justify-content-between">
-    <form method="GET" class="d-flex gap-2 align-items-center flex-wrap">
-        <input type="hidden" name="tab" value="{{ $tab }}">
-        <label class="small text-muted mb-0">Trip</label>
-        <select name="trip_id" class="form-select form-select-sm" style="width:auto;" onchange="this.form.submit()">
-            @foreach($trips as $trip)
-                <option value="{{ $trip->id }}" {{ $tripId == $trip->id ? 'selected' : '' }}>{{ $trip->name }}</option>
-            @endforeach
-        </select>
-        <input type="text" name="search" class="form-control form-control-sm" style="width:220px;"
-               value="{{ $search ?? '' }}" placeholder="Search name, phone, order, ref…">
-        <button type="submit" class="btn btn-sm btn-outline-secondary">
-            <i class="bi bi-search"></i>
-        </button>
-        @if(!empty($search))
-        <a href="{{ route('payments.index', ['trip_id' => $tripId, 'tab' => $tab]) }}" class="btn btn-sm btn-link">Clear</a>
-        @endif
-    </form>
+{{-- Filter bar (matches Orders / Customers / etc.) --}}
+<div class="row g-2 mb-3 align-items-end">
+    <div class="col">
+        <form class="d-flex gap-2 flex-wrap">
+            <input type="hidden" name="tab" value="{{ $tab }}">
+            <input type="text" name="search" class="form-control form-control-sm" style="width:220px;"
+                   placeholder="Name, phone, order, ref…" value="{{ $search ?? '' }}">
+            <select name="trip_id" class="form-select form-select-sm" style="width:auto;">
+                @foreach($trips as $trip)
+                    <option value="{{ $trip->id }}" {{ $tripId == $trip->id ? 'selected' : '' }}>{{ $trip->name }}</option>
+                @endforeach
+            </select>
+            <button class="btn btn-sm btn-outline-secondary">Filter</button>
+            @if(!empty($search))
+                <a href="{{ route('payments.index', ['trip_id' => $tripId, 'tab' => $tab]) }}" class="btn btn-sm btn-link">Clear</a>
+            @endif
+        </form>
+    </div>
+    @if(auth()->user()->hasPermission('payments.record'))
+    <div class="col-auto">
+        <a href="{{ route('payments.create', ['trip_id' => $tripId]) }}" class="btn btn-primary btn-sm">
+            <i class="bi bi-plus-lg me-1"></i>Record Payment
+        </a>
+    </div>
+    @endif
 </div>
 
+{{-- Tabs --}}
 <ul class="nav nav-tabs mb-3">
     <li class="nav-item">
         <a class="nav-link {{ $tab === 'outstanding' ? 'active' : '' }}"
-           href="{{ route('payments.index', ['trip_id' => $tripId, 'tab' => 'outstanding', 'search' => $search]) }}">
+           href="{{ route('payments.index', ['trip_id' => $tripId, 'tab' => 'outstanding', 'search' => $search ?? '']) }}">
             <i class="bi bi-cash-stack me-1"></i>Outstanding Balances
         </a>
     </li>
     <li class="nav-item">
         <a class="nav-link {{ $tab === 'log' ? 'active' : '' }}"
-           href="{{ route('payments.index', ['trip_id' => $tripId, 'tab' => 'log', 'search' => $search]) }}">
+           href="{{ route('payments.index', ['trip_id' => $tripId, 'tab' => 'log', 'search' => $search ?? '']) }}">
             <i class="bi bi-clock-history me-1"></i>Payment Log
         </a>
     </li>
 </ul>
 
 @if($tab === 'outstanding')
-    {{-- ── Outstanding balances ── --}}
+    {{-- Outstanding balances --}}
     <div class="card">
         <div class="table-responsive">
             <table class="table table-hover mb-0 responsive-cards">
-                <thead>
+                <thead class="table-light">
                     <tr>
                         <th>Customer</th>
                         <th class="text-end">Orders</th>
@@ -79,7 +86,7 @@
                         <td class="cell-actions no-label text-end">
                             @if(auth()->user()->hasPermission('payments.record'))
                             <a href="{{ route('payments.create', ['customer' => $row->customer->id, 'trip_id' => $tripId]) }}"
-                               class="btn btn-sm btn-primary">
+                               class="btn btn-sm btn-outline-primary">
                                 <i class="bi bi-plus-lg me-1"></i>Record Payment
                             </a>
                             @endif
@@ -93,11 +100,11 @@
         </div>
     </div>
 @else
-    {{-- ── Payment log ── --}}
+    {{-- Payment log --}}
     <div class="card">
         <div class="table-responsive">
             <table class="table table-hover mb-0 responsive-cards">
-                <thead>
+                <thead class="table-light">
                     <tr>
                         <th>Date</th>
                         <th>Customer</th>
@@ -139,7 +146,10 @@
             </table>
         </div>
         @if($log->hasPages())
-        <div class="card-footer bg-white">{{ $log->links() }}</div>
+        <div class="card-footer bg-white d-flex justify-content-between align-items-center py-2">
+            <span class="small text-muted">{{ $log->total() }} payment(s)</span>
+            <div>{{ $log->links() }}</div>
+        </div>
         @endif
     </div>
 @endif
