@@ -263,6 +263,7 @@ class CustomerController extends Controller
                 'default_shipping_area_id' => $areaId,
                 'address'                  => $address ?: null,
                 'notes'                    => $notes ?: null,
+                'created_by'               => \Illuminate\Support\Facades\Auth::id(),
                 'created_at'               => $now,
                 'updated_at'               => $now,
             ];

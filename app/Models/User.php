@@ -34,7 +34,7 @@ class User extends Authenticatable
     public function isPurchasing(): bool{ return in_array($this->role, ['admin', 'purchasing']); }
     public function isStaff(): bool     { return $this->role === 'staff'; }
     public function isViewer(): bool    { return $this->role === 'viewer'; }
-    public function isOwnDataOnly(): bool { return $this->hasPermission('own_data'); }
+    public function isOwnDataOnly(): bool { return $this->role !== 'admin' && $this->hasPermission('own_data'); }
     public function isActive(): bool    { return $this->is_active; }
 
     /**

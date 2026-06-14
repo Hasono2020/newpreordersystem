@@ -217,11 +217,9 @@
                             @endif
                             {{-- Void button --}}
                             @if(!$payment->isVoided() && auth()->user()->hasPermission('payments.void'))
+                            @php $voidRoute = $payment->batch_id ? "batch/{$payment->batch_id}" : $payment->id; @endphp
                             <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2 ms-1"
-                                onclick="showVoidModal(
-                                    {{ $payment->batch_id ? \"'batch/{$payment->batch_id}'\" : \"'{$payment->id}'\" }},
-                                    {{ $payment->amount }},
-                                    {{ $payment->batch_id ? 'true' : 'false' }})">
+                                onclick="showVoidModal('{{ $voidRoute }}', {{ $payment->amount }}, {{ $payment->batch_id ? 'true' : 'false' }})">
                                 Void
                             </button>
                             @endif
