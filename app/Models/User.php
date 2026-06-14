@@ -34,6 +34,7 @@ class User extends Authenticatable
     public function isPurchasing(): bool{ return in_array($this->role, ['admin', 'purchasing']); }
     public function isStaff(): bool     { return $this->role === 'staff'; }
     public function isViewer(): bool    { return $this->role === 'viewer'; }
+    public function isOwnDataOnly(): bool { return $this->hasPermission('own_data'); }
     public function isActive(): bool    { return $this->is_active; }
 
     /**
@@ -86,7 +87,8 @@ class User extends Authenticatable
                 'shipping.import'  => false,
                 'purchasing.view'  => true,  'purchasing.edit'  => false,
                 'payments.view'    => true,  'payments.record'  => true,
-                'payments.void'    => true,  'payments.export'  => true,
+                'payments.void'    => true,  'payments.verify'  => true,
+                'payments.export'  => true,
                 'invoices.view'    => true,
                 'trips.view'       => true,  'trips.edit'       => false,
                 'trips.new_order'  => false,
@@ -122,6 +124,7 @@ class User extends Authenticatable
                 'settings.view'    => false, 'settings.edit'    => false,
             ],
             'staff' => [
+                'own_data'         => true,
                 'orders.view'      => true,  'orders.create'    => true,
                 'orders.edit'      => true,  'orders.delete'    => false,
                 'orders.import'    => true,  'orders.export'    => true,
@@ -138,7 +141,8 @@ class User extends Authenticatable
                 'shipping.import'  => false,
                 'purchasing.view'  => true,  'purchasing.edit'  => false,
                 'payments.view'    => true,  'payments.record'  => true,
-                'payments.void'    => false, 'payments.export'  => true,
+                'payments.void'    => false, 'payments.verify'  => false,
+                'payments.export'  => true,
                 'invoices.view'    => true,
                 'trips.view'       => true,  'trips.edit'       => false,
                 'trips.new_order'  => true,

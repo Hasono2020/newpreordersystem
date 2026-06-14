@@ -64,10 +64,14 @@ class PaymentController extends Controller
         }
 
         // ── Payment log: recent payments (optionally scoped to trip) ────
-        $logQuery = Payment::with(['order.customer', 'order.trip', 'recordedBy'])
+        $logQuery = Payment::with(['order.customer', 'order.trip', 'recordedBy', 'verifiedBy'])
             ->orderByDesc('paid_at')->orderByDesc('id');
         if ($tripId) {
             $logQuery->whereHas('order', fn($q) => $q->where('trip_id', $tripId));
+        }
+        // Staff with own_data only see payments they recorded
+        if (Auth::user()->isOwnDataOnly()) {
+            $logQuery->where('recorded_by', Auth::id());
         }
         if ($search) {
             $logQuery->where(function ($q) use ($search) {
@@ -78,9 +82,28 @@ class PaymentController extends Controller
                   ->orWhere('reference', 'like', "%{$search}%");
             });
         }
+
+        $verificationFilter = $request->get('verification_status', '');
+        if ($verificationFilter) {
+            $logQuery->where('verification_status', $verificationFilter);
+        }
+
         $log = $logQuery->paginate(50)->withQueryString();
 
-        return view('payments.index', compact('trips', 'tripId', 'tab', 'outstanding', 'log', 'search'));
+        // Verification counts for the tab badges and summary bar (scoped to trip)
+        $vcBase = Payment::whereHas('order', fn($q) => $q->where('trip_id', $tripId))
+            ->whereNull('voided_at');
+        if (Auth::user()->isOwnDataOnly()) {
+            $vcBase->where('recorded_by', Auth::id());
+        }
+        $verificationCounts = [
+            'unverified'      => (clone $vcBase)->where('verification_status', 'unverified')->count(),
+            'verified'        => (clone $vcBase)->where('verification_status', 'verified')->count(),
+            'disputed'        => (clone $vcBase)->where('verification_status', 'disputed')->count(),
+            'verified_amount' => (clone $vcBase)->where('verification_status', 'verified')->sum('amount'),
+        ];
+
+        return view('payments.index', compact('trips', 'tripId', 'tab', 'outstanding', 'log', 'search', 'verificationFilter', 'verificationCounts'));
     }
 
     /**

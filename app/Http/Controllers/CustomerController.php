@@ -15,6 +15,10 @@ class CustomerController extends Controller
     {
         $perPage = in_array((int)$request->per_page, [20, 50, 100, 200]) ? (int)$request->per_page : 20;
         $query   = Customer::withCount('orders');
+        // Staff with own_data=true only see customers they created
+        if (\Illuminate\Support\Facades\Auth::user()->isOwnDataOnly()) {
+            $query->where('created_by', \Illuminate\Support\Facades\Auth::id());
+        }
         if ($request->search) {
             $query->where(function ($q) use ($request) {
                 $q->where('name', 'like', '%'.$request->search.'%')
@@ -47,6 +51,7 @@ class CustomerController extends Controller
             'phone.unique' => 'This phone number is already registered to another customer.',
         ]);
 
+        $data['created_by'] = \Illuminate\Support\Facades\Auth::id();
         $customer = Customer::create($data);
         if ($request->expectsJson()) return response()->json($customer);
         return redirect()->route('customers.show', $customer)->with('success', 'Customer added.');

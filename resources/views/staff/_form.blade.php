@@ -43,6 +43,7 @@
             'payments.view'   => 'View payments',
             'payments.record' => 'Record payments',
             'payments.void'   => 'Void payments',
+            'payments.verify' => 'Verify / dispute payments',
             'payments.export' => 'Export payments',
         ],
         'Promo Rules' => [
@@ -50,6 +51,9 @@
             'promos.create' => 'Add promo rules',
             'promos.edit'   => 'Edit promo rules',
             'promos.delete' => 'Delete promo rules',
+        ],
+        'Data Scope' => [
+            'own_data' => 'Own data only (staff sees only their own orders/customers/payments)',
         ],
         'Reports & Settings' => [
             'invoices.view'  => 'View invoices',

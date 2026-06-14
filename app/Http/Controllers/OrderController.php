@@ -21,6 +21,10 @@ class OrderController extends Controller
     {
         $perPage = in_array((int)$request->per_page, [20, 50, 100, 200]) ? (int)$request->per_page : 20;
         $query   = Order::with('customer', 'trip')->latest();
+        // Staff with own_data=true only see orders they created
+        if (Auth::user()->isOwnDataOnly()) {
+            $query->where('created_by', Auth::id());
+        }
         if ($request->trip_id)        $query->where('trip_id', $request->trip_id);
         if ($request->payment_status) $query->where('payment_status', $request->payment_status);
         if ($request->search) {

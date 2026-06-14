@@ -4,7 +4,7 @@
 
 @section('content')
 
-{{-- Filter bar (matches Orders / Customers / etc.) --}}
+{{-- Filter bar --}}
 <div class="row g-2 mb-3 align-items-end">
     <div class="col">
         <form class="d-flex gap-2 flex-wrap">
@@ -16,7 +16,18 @@
                     <option value="{{ $trip->id }}" {{ $tripId == $trip->id ? 'selected' : '' }}>{{ $trip->name }}</option>
                 @endforeach
             </select>
+            @if($tab === 'log')
+            <select name="verification_status" class="form-select form-select-sm" style="width:auto;">
+                <option value="">All statuses</option>
+                <option value="unverified" {{ ($verificationFilter??'') === 'unverified' ? 'selected' : '' }}>Unverified</option>
+                <option value="verified"   {{ ($verificationFilter??'') === 'verified'   ? 'selected' : '' }}>Verified</option>
+                <option value="disputed"   {{ ($verificationFilter??'') === 'disputed'   ? 'selected' : '' }}>Disputed</option>
+            </select>
+            @endif
             <button class="btn btn-sm btn-outline-secondary">Filter</button>
+            @if(!empty($search))
+                <a href="{{ route('payments.index', ['trip_id' => $tripId, 'tab' => $tab]) }}" class="btn btn-sm btn-link">Clear</a>
+            @endif
             @if(auth()->user()->hasPermission('payments.view'))
             <div class="dropdown">
                 <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
@@ -34,12 +45,8 @@
                 </ul>
             </div>
             @endif
-            @if(!empty($search))
-                <a href="{{ route('payments.index', ['trip_id' => $tripId, 'tab' => $tab]) }}" class="btn btn-sm btn-link">Clear</a>
-            @endif
         </form>
     </div>
-
 </div>
 
 {{-- Tabs --}}
@@ -54,15 +61,20 @@
         <a class="nav-link {{ $tab === 'log' ? 'active' : '' }}"
            href="{{ route('payments.index', ['trip_id' => $tripId, 'tab' => 'log', 'search' => $search ?? '']) }}">
             <i class="bi bi-clock-history me-1"></i>Payment Log
+            @if(($verificationCounts['unverified'] ?? 0) > 0)
+                <span class="badge bg-warning text-dark ms-1">{{ $verificationCounts['unverified'] }}</span>
+            @endif
+            @if(($verificationCounts['disputed'] ?? 0) > 0)
+                <span class="badge bg-danger ms-1">{{ $verificationCounts['disputed'] }}</span>
+            @endif
         </a>
     </li>
 </ul>
 
 @if($tab === 'outstanding')
-    {{-- Outstanding balances --}}
     <div class="card">
         <div class="table-responsive">
-            <table class="table table-hover mb-0 responsive-cards">
+            <table class="table table-hover mb-0">
                 <thead class="table-light">
                     <tr>
                         <th>Customer</th>
@@ -76,12 +88,12 @@
                 <tbody>
                     @forelse($outstanding as $row)
                     <tr>
-                        <td data-label="Customer" class="fw-semibold">{{ $row->customer_name }}</td>
-                        <td data-label="Orders" class="text-end">{{ $row->order_count }}</td>
-                        <td data-label="Total Ordered" class="text-end">Rp {{ number_format($row->total_ordered, 0, ',', '.') }}</td>
-                        <td data-label="Paid" class="text-end text-success">Rp {{ number_format($row->total_paid, 0, ',', '.') }}</td>
-                        <td data-label="Balance Due" class="text-end fw-semibold text-danger">Rp {{ number_format($row->balance_due, 0, ',', '.') }}</td>
-                        <td class="cell-actions no-label text-end">
+                        <td class="fw-semibold">{{ $row->customer_name }}</td>
+                        <td class="text-end">{{ $row->order_count }}</td>
+                        <td class="text-end">Rp {{ number_format($row->total_ordered, 0, ',', '.') }}</td>
+                        <td class="text-end text-success">Rp {{ number_format($row->total_paid, 0, ',', '.') }}</td>
+                        <td class="text-end fw-semibold text-danger">Rp {{ number_format($row->balance_due, 0, ',', '.') }}</td>
+                        <td class="text-end">
                             @if(auth()->user()->hasPermission('payments.record'))
                             <a href="{{ route('payments.create', ['customer' => $row->customer_id, 'trip_id' => $tripId]) }}"
                                class="btn btn-sm btn-outline-primary">
@@ -103,11 +115,42 @@
         </div>
         @endif
     </div>
+
 @else
+    {{-- Verification summary bar (finance/admin only) --}}
+    @if(auth()->user()->hasPermission('payments.verify'))
+    <div class="row g-2 mb-3">
+        <div class="col-6 col-md-3">
+            <div class="card text-center py-2">
+                <div class="small text-muted">Unverified</div>
+                <div class="fw-semibold text-warning fs-5">{{ $verificationCounts['unverified'] ?? 0 }}</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card text-center py-2">
+                <div class="small text-muted">Verified</div>
+                <div class="fw-semibold text-success fs-5">{{ $verificationCounts['verified'] ?? 0 }}</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card text-center py-2">
+                <div class="small text-muted">Disputed</div>
+                <div class="fw-semibold text-danger fs-5">{{ $verificationCounts['disputed'] ?? 0 }}</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card text-center py-2">
+                <div class="small text-muted">Total Verified (Rp)</div>
+                <div class="fw-semibold fs-6">{{ number_format($verificationCounts['verified_amount'] ?? 0, 0, ',', '.') }}</div>
+            </div>
+        </div>
+    </div>
+    @endif
+
     {{-- Payment log --}}
     <div class="card">
         <div class="table-responsive">
-            <table class="table table-hover mb-0 responsive-cards">
+            <table class="table table-hover mb-0">
                 <thead class="table-light">
                     <tr>
                         <th>Date</th>
@@ -117,27 +160,66 @@
                         <th>Method</th>
                         <th>Reference</th>
                         <th>Recorded By</th>
+                        <th>Status</th>
                         <th></th>
                     </tr>
                 </thead>
                 <tbody>
                     @forelse($log as $payment)
-                    <tr class="{{ $payment->isVoided() ? 'text-muted' : '' }}">
-                        <td data-label="Date" class="small">{{ $payment->paid_at?->format('d M Y') }}</td>
-                        <td data-label="Customer">{{ $payment->order->customer->name ?? '—' }}</td>
-                        <td data-label="Order" class="font-monospace small">{{ $payment->order->order_number ?? '—' }}</td>
-                        <td data-label="Amount" class="text-end {{ $payment->type === 'refund' ? 'text-danger' : '' }}">
+                    @php
+                        $rowClass = $payment->isDisputed() ? 'table-danger' : ($payment->isVerified() ? 'table-success bg-opacity-25' : '');
+                    @endphp
+                    <tr class="{{ $rowClass }} {{ $payment->isVoided() ? 'text-muted' : '' }}">
+                        <td class="small">{{ $payment->paid_at?->format('d M Y') }}</td>
+                        <td>{{ $payment->order->customer->name ?? '—' }}</td>
+                        <td class="font-monospace small">{{ $payment->order->order_number ?? '—' }}</td>
+                        <td class="text-end {{ $payment->type === 'refund' ? 'text-danger' : '' }}">
                             {{ $payment->type === 'refund' ? '-' : '' }}Rp {{ number_format($payment->amount, 0, ',', '.') }}
                             @if($payment->isVoided())<span class="badge bg-secondary ms-1">Voided</span>@endif
                         </td>
-                        <td data-label="Method" class="small">{{ ucfirst($payment->method ?? '—') }}</td>
-                        <td data-label="Reference" class="small text-muted">{{ $payment->reference ?? '—' }}</td>
-                        <td data-label="Recorded By" class="small text-muted">{{ $payment->recordedBy->name ?? '—' }}</td>
-                        <td class="no-label text-end">
+                        <td class="small">{{ ucfirst($payment->method ?? '—') }}</td>
+                        <td class="small text-muted">{{ $payment->reference ?? '—' }}</td>
+                        <td class="small text-muted">{{ $payment->recordedBy->name ?? '—' }}</td>
+                        <td>
+                            @if($payment->isVoided())
+                                <span class="badge bg-secondary">Voided</span>
+                            @elseif($payment->isVerified())
+                                <span class="badge bg-success">
+                                    <i class="bi bi-check-circle me-1"></i>Verified
+                                </span>
+                                <div class="small text-muted" style="font-size:.7rem">by {{ $payment->verifiedBy->name ?? '?' }} · {{ $payment->verified_at?->format('d M') }}</div>
+                            @elseif($payment->isDisputed())
+                                <span class="badge bg-danger">
+                                    <i class="bi bi-exclamation-triangle me-1"></i>Disputed
+                                </span>
+                                <div class="small text-danger" style="font-size:.7rem" title="{{ $payment->dispute_note }}">
+                                    {{ \Str::limit($payment->dispute_note, 40) }}
+                                </div>
+                            @else
+                                <span class="badge bg-warning text-dark">Unverified</span>
+                            @endif
+                        </td>
+                        <td class="text-end" style="white-space:nowrap">
+                            {{-- Verify/Dispute actions for finance --}}
+                            @if(!$payment->isVoided() && auth()->user()->hasPermission('payments.verify') && !$payment->isVerified())
+                                <form method="POST" action="{{ route('payments.verify', $payment) }}" class="d-inline">
+                                    @csrf
+                                    <button type="submit" class="btn btn-sm btn-outline-success py-0 px-2">
+                                        <i class="bi bi-check-lg"></i> Verify
+                                    </button>
+                                </form>
+                                @if(!$payment->isDisputed())
+                                <button type="button" class="btn btn-sm btn-outline-warning py-0 px-2 ms-1"
+                                    onclick="showDisputeModal({{ $payment->id }}, '{{ addslashes($payment->order->customer->name ?? '') }}', {{ $payment->amount }})">
+                                    <i class="bi bi-exclamation-triangle"></i> Dispute
+                                </button>
+                                @endif
+                            @endif
+                            {{-- Void button --}}
                             @if(!$payment->isVoided() && auth()->user()->hasPermission('payments.void'))
-                            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2"
+                            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2 ms-1"
                                 onclick="showVoidModal(
-                                    {{ $payment->batch_id ? "'batch/{$payment->batch_id}'" : "'{$payment->id}'" }},
+                                    {{ $payment->batch_id ? \"'batch/{$payment->batch_id}'\" : \"'{$payment->id}'\" }},
                                     {{ $payment->amount }},
                                     {{ $payment->batch_id ? 'true' : 'false' }})">
                                 Void
@@ -146,7 +228,7 @@
                         </td>
                     </tr>
                     @empty
-                    <tr><td colspan="8" class="text-center text-muted py-4">No payments recorded yet.</td></tr>
+                    <tr><td colspan="9" class="text-center text-muted py-4">No payments recorded yet.</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -159,6 +241,38 @@
         @endif
     </div>
 @endif
+
+{{-- Dispute Modal --}}
+<div class="modal fade" id="disputeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header border-warning">
+                <h5 class="modal-title text-warning"><i class="bi bi-exclamation-triangle me-2"></i>Dispute Payment</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="disputeForm" method="POST">
+                @csrf
+                <div class="modal-body">
+                    <p class="mb-3">Disputing: <strong id="disputeCustomerName"></strong> — <strong id="disputeAmountDisplay"></strong></p>
+                    <div class="alert alert-warning py-2 small">
+                        <i class="bi bi-info-circle me-1"></i>
+                        The payment will be marked as disputed. Void it and re-record the correct amount after.
+                    </div>
+                    <label class="form-label fw-semibold">Reason / discrepancy note <span class="text-danger">*</span></label>
+                    <textarea name="dispute_note" class="form-control" rows="3"
+                        placeholder="e.g. Bank statement shows Rp 200,000 received, not Rp 400,000. Ref TF#2291."
+                        required></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-warning">
+                        <i class="bi bi-exclamation-triangle me-1"></i>Mark as Disputed
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 
 {{-- Void Payment Modal --}}
 <div class="modal fade" id="voidPaymentModal" tabindex="-1">
@@ -173,19 +287,16 @@
                 <div class="modal-body">
                     <div class="alert alert-warning py-2 small">
                         <i class="bi bi-exclamation-triangle-fill me-1"></i>
-                        <strong>Voiding does not delete the record.</strong> It marks the payment as invalid and restores the affected order balances. A full audit trail is kept.
+                        Voiding restores the order balance. The record is kept for audit.
                     </div>
-                    <p class="mb-2">You are voiding: <strong id="voidAmountDisplay"></strong></p>
-                    <label class="form-label fw-semibold">Reason for voiding <span class="text-danger">*</span></label>
-                    <textarea name="void_reason" class="form-control" rows="3"
-                        placeholder="e.g. Duplicate entry — customer only made one transfer."
-                        required></textarea>
+                    <p class="mb-2">Voiding: <strong id="voidAmountDisplay"></strong></p>
+                    <label class="form-label fw-semibold">Reason <span class="text-danger">*</span></label>
+                    <textarea name="void_reason" class="form-control" rows="3" required
+                        placeholder="e.g. Duplicate entry — customer only made one transfer."></textarea>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-danger">
-                        <i class="bi bi-x-circle me-1"></i>Void This Payment
-                    </button>
+                    <button type="submit" class="btn btn-danger"><i class="bi bi-x-circle me-1"></i>Void</button>
                 </div>
             </form>
         </div>
@@ -194,14 +305,20 @@
 
 @push('scripts')
 <script>
+function showDisputeModal(paymentId, customerName, amount) {
+    const form = document.getElementById('disputeForm');
+    form.action = `/payments/${paymentId}/dispute`;
+    form.querySelector('textarea').value = '';
+    document.getElementById('disputeCustomerName').textContent = customerName;
+    document.getElementById('disputeAmountDisplay').textContent = 'Rp ' + Math.round(amount).toLocaleString('id-ID');
+    new bootstrap.Modal(document.getElementById('disputeModal')).show();
+}
+
 function showVoidModal(routeSuffix, amount, isBatch) {
     const form = document.getElementById('voidPaymentForm');
-    // isBatch=true  → /payments/batch/{batchId}/void
-    // isBatch=false → /payments/{id}/void
     form.action = `/payments/${routeSuffix}/void`;
     form.querySelector('textarea').value = '';
-    document.getElementById('voidAmountDisplay').textContent =
-        'Rp ' + Math.round(amount).toLocaleString('id-ID');
+    document.getElementById('voidAmountDisplay').textContent = 'Rp ' + Math.round(amount).toLocaleString('id-ID');
     new bootstrap.Modal(document.getElementById('voidPaymentModal')).show();
 }
 </script>

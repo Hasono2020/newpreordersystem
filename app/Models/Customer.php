@@ -9,7 +9,9 @@ class Customer extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['name', 'phone', 'address', 'type', 'notes', 'default_shipping_area_id'];
+    protected $fillable = ['name', 'phone', 'address', 'type', 'notes', 'default_shipping_area_id', 'created_by'];
+
+    public function createdBy() { return $this->belongsTo(User::class, 'created_by'); }
 
     /**
      * Normalize phone: strip non-digits, ensure leading 0 for Indonesian numbers.
