@@ -27,6 +27,7 @@ class OrderController extends Controller
         }
         if ($request->trip_id)        $query->where('trip_id', $request->trip_id);
         if ($request->payment_status) $query->where('payment_status', $request->payment_status);
+        if ($request->created_by)     $query->where('created_by', $request->created_by);
         if ($request->search) {
             $query->whereHas('customer', fn($q) => $q->where('name', 'like', '%'.$request->search.'%')
                                                        ->orWhere('phone', 'like', '%'.$request->search.'%'));
@@ -34,7 +35,8 @@ class OrderController extends Controller
         $orders       = $query->paginate($perPage)->withQueryString();
         $trips        = Trip::orderByDesc('id')->get();
         $selectedTrip = $request->trip_id ? Trip::find($request->trip_id) : null;
-        return view('orders.index', compact('orders', 'trips', 'selectedTrip', 'perPage'));
+        $staffList = \App\Models\User::where('is_active', true)->orderBy('name')->get(['id','name','role']);
+        return view('orders.index', compact('orders', 'trips', 'selectedTrip', 'perPage', 'staffList'));
     }
 
     public function create(Request $request)

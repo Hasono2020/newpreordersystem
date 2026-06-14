@@ -28,6 +28,7 @@ class PaymentController extends Controller
         $tripId = $request->trip_id ?: ($trips->first()->id ?? null);
         $tab = $request->get('tab', 'outstanding');
         $search = trim($request->get('search', ''));
+        $createdByFilter = !Auth::user()->isOwnDataOnly() ? $request->get('created_by', '') : '';
 
         // ── Outstanding: pure aggregate query — only_full_group_by safe ──────
         $outstanding = collect();
@@ -49,6 +50,7 @@ class PaymentController extends Controller
                 ->where('orders.trip_id', $tripId)
                 ->where('orders.payment_status', '!=', 'paid')
                 ->when(Auth::user()->isOwnDataOnly(), fn($q) => $q->where('orders.created_by', Auth::id()))
+                ->when($createdByFilter, fn($q) => $q->where('orders.created_by', $createdByFilter))
                 ->when($search, fn($q) => $q->where(fn($w) =>
                     $w->where('customers.name', 'like', "%{$search}%")
                       ->orWhere('customers.phone', 'like', "%{$search}%")
@@ -92,6 +94,12 @@ class PaymentController extends Controller
             $logQuery->where('verification_status', $verificationFilter);
         }
 
+        // Filter by order creator (admin/finance only — staff already scoped)
+        // createdByFilter applied to log below
+        if ($createdByFilter) {
+            $logQuery->whereHas('order', fn($q) => $q->where('created_by', $createdByFilter));
+        }
+
         $log = $logQuery->paginate(50)->withQueryString();
 
         // Verification counts for the tab badges and summary bar (scoped to trip)
@@ -107,7 +115,8 @@ class PaymentController extends Controller
             'verified_amount' => (clone $vcBase)->where('verification_status', 'verified')->sum('amount'),
         ];
 
-        return view('payments.index', compact('trips', 'tripId', 'tab', 'outstanding', 'log', 'search', 'verificationFilter', 'verificationCounts'));
+        $staffList = \App\Models\User::where('is_active', true)->orderBy('name')->get(['id','name','role']);
+        return view('payments.index', compact('trips', 'tripId', 'tab', 'outstanding', 'log', 'search', 'verificationFilter', 'verificationCounts', 'createdByFilter', 'staffList'));
     }
 
     /**
@@ -431,6 +440,34 @@ class PaymentController extends Controller
         $content = file_get_contents($tmp);
         unlink($tmp);
         return $content;
+    }
+
+
+    public function verify(Request $request, Payment $payment)
+    {
+        if (!Auth::user()->hasPermission('payments.verify')) abort(403);
+        if ($payment->isVoided()) return back()->with('error', 'Cannot verify a voided payment.');
+        $payment->update([
+            'verification_status' => 'verified',
+            'verified_by'         => Auth::id(),
+            'verified_at'         => now(),
+            'dispute_note'        => null,
+        ]);
+        return back()->with('success', 'Payment of Rp ' . number_format($payment->amount, 0, ',', '.') . ' verified.');
+    }
+
+    public function dispute(Request $request, Payment $payment)
+    {
+        if (!Auth::user()->hasPermission('payments.verify')) abort(403);
+        if ($payment->isVoided()) return back()->with('error', 'Cannot dispute a voided payment.');
+        $request->validate(['dispute_note' => 'required|string|max:1000']);
+        $payment->update([
+            'verification_status' => 'disputed',
+            'verified_by'         => Auth::id(),
+            'verified_at'         => now(),
+            'dispute_note'        => $request->dispute_note,
+        ]);
+        return back()->with('success', 'Payment marked as disputed.');
     }
 
     private function recalcOrderPayment(?Order $order): void

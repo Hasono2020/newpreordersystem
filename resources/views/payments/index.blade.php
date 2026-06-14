@@ -23,9 +23,29 @@
                 <option value="verified"   {{ ($verificationFilter??'') === 'verified'   ? 'selected' : '' }}>Verified</option>
                 <option value="disputed"   {{ ($verificationFilter??'') === 'disputed'   ? 'selected' : '' }}>Disputed</option>
             </select>
+            @if(!auth()->user()->isOwnDataOnly())
+            <select name="created_by" class="form-select form-select-sm" style="width:auto;">
+                <option value="">All Staff</option>
+                @foreach($staffList as $staff)
+                    <option value="{{ $staff->id }}" {{ ($createdByFilter??'') == $staff->id ? 'selected' : '' }}>
+                        {{ $staff->name }}
+                    </option>
+                @endforeach
+            </select>
+            @endif
+            @endif
+            @if($tab === 'outstanding' && !auth()->user()->isOwnDataOnly())
+            <select name="created_by" class="form-select form-select-sm" style="width:auto;">
+                <option value="">All Staff</option>
+                @foreach($staffList as $staff)
+                    <option value="{{ $staff->id }}" {{ ($createdByFilter??'') == $staff->id ? 'selected' : '' }}>
+                        {{ $staff->name }}
+                    </option>
+                @endforeach
+            </select>
             @endif
             <button class="btn btn-sm btn-outline-secondary">Filter</button>
-            @if(!empty($search))
+            @if(!empty($search) || !empty($createdByFilter))
                 <a href="{{ route('payments.index', ['trip_id' => $tripId, 'tab' => $tab]) }}" class="btn btn-sm btn-link">Clear</a>
             @endif
             @if(auth()->user()->hasPermission('payments.view'))

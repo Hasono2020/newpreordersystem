@@ -33,8 +33,18 @@
                 <option value="partial" {{ request('payment_status')=='partial'?'selected':'' }}>Partial</option>
                 <option value="paid" {{ request('payment_status')=='paid'?'selected':'' }}>Paid</option>
             </select>
+            @if(!auth()->user()->isOwnDataOnly())
+            <select name="created_by" class="form-select form-select-sm" style="width:auto;">
+                <option value="">All Staff</option>
+                @foreach($staffList as $staff)
+                    <option value="{{ $staff->id }}" {{ request('created_by') == $staff->id ? 'selected' : '' }}>
+                        {{ $staff->name }}
+                    </option>
+                @endforeach
+            </select>
+            @endif
             <button class="btn btn-sm btn-outline-secondary">Filter</button>
-            @if(request()->anyFilled(['search','trip_id','payment_status']))
+            @if(request()->anyFilled(['search','trip_id','payment_status','created_by']))
                 <a href="{{ route('orders.index') }}" class="btn btn-sm btn-link">Clear</a>
             @endif
         </form>
