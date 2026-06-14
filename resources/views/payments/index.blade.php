@@ -17,9 +17,9 @@
 </div>
 @endif
 
-{{-- Trip selector + tabs --}}
+{{-- Trip selector + search + tabs --}}
 <div class="d-flex flex-wrap gap-2 mb-3 align-items-center justify-content-between">
-    <form method="GET" class="d-flex gap-2 align-items-center">
+    <form method="GET" class="d-flex gap-2 align-items-center flex-wrap">
         <input type="hidden" name="tab" value="{{ $tab }}">
         <label class="small text-muted mb-0">Trip</label>
         <select name="trip_id" class="form-select form-select-sm" style="width:auto;" onchange="this.form.submit()">
@@ -27,19 +27,27 @@
                 <option value="{{ $trip->id }}" {{ $tripId == $trip->id ? 'selected' : '' }}>{{ $trip->name }}</option>
             @endforeach
         </select>
+        <input type="text" name="search" class="form-control form-control-sm" style="width:220px;"
+               value="{{ $search ?? '' }}" placeholder="Search name, phone, order, ref…">
+        <button type="submit" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-search"></i>
+        </button>
+        @if(!empty($search))
+        <a href="{{ route('payments.index', ['trip_id' => $tripId, 'tab' => $tab]) }}" class="btn btn-sm btn-link">Clear</a>
+        @endif
     </form>
 </div>
 
 <ul class="nav nav-tabs mb-3">
     <li class="nav-item">
         <a class="nav-link {{ $tab === 'outstanding' ? 'active' : '' }}"
-           href="{{ route('payments.index', ['trip_id' => $tripId, 'tab' => 'outstanding']) }}">
+           href="{{ route('payments.index', ['trip_id' => $tripId, 'tab' => 'outstanding', 'search' => $search]) }}">
             <i class="bi bi-cash-stack me-1"></i>Outstanding Balances
         </a>
     </li>
     <li class="nav-item">
         <a class="nav-link {{ $tab === 'log' ? 'active' : '' }}"
-           href="{{ route('payments.index', ['trip_id' => $tripId, 'tab' => 'log']) }}">
+           href="{{ route('payments.index', ['trip_id' => $tripId, 'tab' => 'log', 'search' => $search]) }}">
             <i class="bi bi-clock-history me-1"></i>Payment Log
         </a>
     </li>

@@ -25,6 +25,7 @@ class PaymentController extends Controller
         $trips = Trip::orderByDesc('id')->get();
         $tripId = $request->trip_id ?: ($trips->first()->id ?? null);
         $tab = $request->get('tab', 'outstanding');
+        $search = trim($request->get('search', ''));
 
         // ── Outstanding: customers with a balance due in this trip ──────
         $outstanding = collect();
@@ -32,6 +33,11 @@ class PaymentController extends Controller
             $outstanding = Order::with('customer')
                 ->where('trip_id', $tripId)
                 ->where('payment_status', '!=', 'paid')
+                ->when($search, function ($q) use ($search) {
+                    $q->whereHas('customer', fn($c) =>
+                        $c->where('name', 'like', "%{$search}%")
+                          ->orWhere('phone', 'like', "%{$search}%"));
+                })
                 ->get()
                 ->groupBy('customer_id')
                 ->map(function ($orders) {
@@ -57,9 +63,18 @@ class PaymentController extends Controller
         if ($tripId) {
             $logQuery->whereHas('order', fn($q) => $q->where('trip_id', $tripId));
         }
+        if ($search) {
+            $logQuery->where(function ($q) use ($search) {
+                $q->whereHas('order.customer', fn($c) =>
+                        $c->where('name', 'like', "%{$search}%")
+                          ->orWhere('phone', 'like', "%{$search}%"))
+                  ->orWhereHas('order', fn($o) => $o->where('order_number', 'like', "%{$search}%"))
+                  ->orWhere('reference', 'like', "%{$search}%");
+            });
+        }
         $log = $logQuery->paginate(50)->withQueryString();
 
-        return view('payments.index', compact('trips', 'tripId', 'tab', 'outstanding', 'log'));
+        return view('payments.index', compact('trips', 'tripId', 'tab', 'outstanding', 'log', 'search'));
     }
 
     /**
