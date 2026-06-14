@@ -82,6 +82,7 @@
                         <th class="text-end">Total Ordered</th>
                         <th class="text-end">Paid</th>
                         <th class="text-end">Balance Due</th>
+                        <th>Created By</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -93,6 +94,7 @@
                         <td class="text-end">Rp {{ number_format($row->total_ordered, 0, ',', '.') }}</td>
                         <td class="text-end text-success">Rp {{ number_format($row->total_paid, 0, ',', '.') }}</td>
                         <td class="text-end fw-semibold text-danger">Rp {{ number_format($row->balance_due, 0, ',', '.') }}</td>
+                        <td class="small text-muted">{{ $row->created_by_names ?? '—' }}</td>
                         <td class="text-end">
                             @if(auth()->user()->hasPermission('payments.record'))
                             <a href="{{ route('payments.create', ['customer' => $row->customer_id, 'trip_id' => $tripId]) }}"
@@ -159,6 +161,7 @@
                         <th class="text-end">Amount</th>
                         <th>Method</th>
                         <th>Reference</th>
+                        <th>Order By</th>
                         <th>Recorded By</th>
                         <th>Status</th>
                         <th></th>
@@ -179,6 +182,7 @@
                         </td>
                         <td class="small">{{ ucfirst($payment->method ?? '—') }}</td>
                         <td class="small text-muted">{{ $payment->reference ?? '—' }}</td>
+                        <td class="small text-muted">{{ $payment->order->createdBy->name ?? '—' }}</td>
                         <td class="small text-muted">{{ $payment->recordedBy->name ?? '—' }}</td>
                         <td>
                             @if($payment->isVoided())

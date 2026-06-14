@@ -34,6 +34,7 @@ class PaymentController extends Controller
         if ($tripId) {
             $query = DB::table('orders')
                 ->join('customers', 'customers.id', '=', 'orders.customer_id')
+                ->join('users as creators', 'creators.id', '=', 'orders.created_by')
                 ->select([
                     'orders.customer_id',
                     'customers.name as customer_name',
@@ -43,9 +44,11 @@ class PaymentController extends Controller
                     DB::raw('SUM(orders.total_amount) as total_ordered'),
                     DB::raw('SUM(orders.deposit_paid) as total_paid'),
                     DB::raw('(SUM(orders.total_amount) - SUM(orders.deposit_paid)) as balance_due'),
+                    DB::raw('GROUP_CONCAT(DISTINCT creators.name ORDER BY creators.name SEPARATOR ", ") as created_by_names'),
                 ])
                 ->where('orders.trip_id', $tripId)
                 ->where('orders.payment_status', '!=', 'paid')
+                ->when(Auth::user()->isOwnDataOnly(), fn($q) => $q->where('orders.created_by', Auth::id()))
                 ->when($search, fn($q) => $q->where(fn($w) =>
                     $w->where('customers.name', 'like', "%{$search}%")
                       ->orWhere('customers.phone', 'like', "%{$search}%")
@@ -56,6 +59,7 @@ class PaymentController extends Controller
                     'customers.phone',
                     'customers.type'
                 )
+                // Note: created_by_names uses GROUP_CONCAT so no groupBy needed
                 ->having('balance_due', '>', 0)
                 ->orderByDesc('balance_due');
 
@@ -64,14 +68,14 @@ class PaymentController extends Controller
         }
 
         // ── Payment log: recent payments (optionally scoped to trip) ────
-        $logQuery = Payment::with(['order.customer', 'order.trip', 'recordedBy', 'verifiedBy'])
+        $logQuery = Payment::with(['order.customer', 'order.trip', 'order.createdBy', 'recordedBy', 'verifiedBy'])
             ->orderByDesc('paid_at')->orderByDesc('id');
         if ($tripId) {
             $logQuery->whereHas('order', fn($q) => $q->where('trip_id', $tripId));
         }
-        // Staff with own_data only see payments they recorded
+        // Staff with own_data only see payments for orders they created
         if (Auth::user()->isOwnDataOnly()) {
-            $logQuery->where('recorded_by', Auth::id());
+            $logQuery->whereHas('order', fn($q) => $q->where('created_by', Auth::id()));
         }
         if ($search) {
             $logQuery->where(function ($q) use ($search) {
@@ -91,10 +95,10 @@ class PaymentController extends Controller
         $log = $logQuery->paginate(50)->withQueryString();
 
         // Verification counts for the tab badges and summary bar (scoped to trip)
-        $vcBase = Payment::whereHas('order', fn($q) => $q->where('trip_id', $tripId))
-            ->whereNull('voided_at');
+        $vcBase = Payment::whereHas('order', fn($q) => $q->where('trip_id', $tripId));
+        $vcBase->whereNull('voided_at');
         if (Auth::user()->isOwnDataOnly()) {
-            $vcBase->where('recorded_by', Auth::id());
+            $vcBase->whereHas('order', fn($q) => $q->where('created_by', Auth::id()));
         }
         $verificationCounts = [
             'unverified'      => (clone $vcBase)->where('verification_status', 'unverified')->count(),

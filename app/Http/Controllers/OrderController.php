@@ -20,7 +20,7 @@ class OrderController extends Controller
     public function index(Request $request)
     {
         $perPage = in_array((int)$request->per_page, [20, 50, 100, 200]) ? (int)$request->per_page : 20;
-        $query   = Order::with('customer', 'trip')->latest();
+        $query   = Order::with('customer', 'trip', 'createdBy')->latest();
         // Staff with own_data=true only see orders they created
         if (Auth::user()->isOwnDataOnly()) {
             $query->where('created_by', Auth::id());
