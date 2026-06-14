@@ -28,6 +28,13 @@
             'products.import' => 'Import products',
             'products.export' => 'Export products',
         ],
+        'Shipping Areas' => [
+            'shipping.view'   => 'View shipping areas',
+            'shipping.create' => 'Add shipping areas',
+            'shipping.edit'   => 'Edit shipping areas',
+            'shipping.delete' => 'Delete shipping areas',
+            'shipping.import' => 'Import shipping areas',
+        ],
         'Purchasing' => [
             'purchasing.view' => 'View purchasing',
             'purchasing.edit' => 'Manage POs',

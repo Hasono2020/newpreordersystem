@@ -2,421 +2,565 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Order;
-use App\Models\Payment;
-use App\Models\Customer;
+use App\Models\Product;
+use App\Models\ProductVariant;
 use App\Models\Trip;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Storage;
 
-class PaymentController extends Controller
+class ProductController extends Controller
 {
     use \App\Traits\HandlesXlsx;
-
-    /**
-     * Payments home: outstanding balances + payment log.
-     */
     public function index(Request $request)
     {
-        if (!Auth::user()->hasPermission('payments.view')) {
-            abort(403, 'You do not have permission to view payments.');
+        $perPage = in_array((int)$request->per_page, [20, 50, 100, 200]) ? (int)$request->per_page : 20;
+        $query   = Product::with('trip', 'supplier')->withCount('orderItems');
+
+        if ($request->trip_id) {
+            $query->where('trip_id', $request->trip_id);
         }
-
-        $trips = Trip::orderByDesc('id')->get();
-        $tripId = $request->trip_id ?: ($trips->first()->id ?? null);
-        $tab = $request->get('tab', 'outstanding');
-        $search = trim($request->get('search', ''));
-
-        // ── Outstanding: pure aggregate query — only_full_group_by safe ──────
-        $outstanding = collect();
-        if ($tripId) {
-            $query = DB::table('orders')
-                ->join('customers', 'customers.id', '=', 'orders.customer_id')
-                ->select([
-                    'orders.customer_id',
-                    'customers.name as customer_name',
-                    'customers.phone as customer_phone',
-                    'customers.type as customer_type',
-                    DB::raw('COUNT(orders.id) as order_count'),
-                    DB::raw('SUM(orders.total_amount) as total_ordered'),
-                    DB::raw('SUM(orders.deposit_paid) as total_paid'),
-                    DB::raw('(SUM(orders.total_amount) - SUM(orders.deposit_paid)) as balance_due'),
-                ])
-                ->where('orders.trip_id', $tripId)
-                ->where('orders.payment_status', '!=', 'paid')
-                ->when($search, fn($q) => $q->where(fn($w) =>
-                    $w->where('customers.name', 'like', "%{$search}%")
-                      ->orWhere('customers.phone', 'like', "%{$search}%")
-                ))
-                ->groupBy(
-                    'orders.customer_id',
-                    'customers.name',
-                    'customers.phone',
-                    'customers.type'
-                )
-                ->having('balance_due', '>', 0)
-                ->orderByDesc('balance_due');
-
-            $outstanding = $query->paginate(50, ['*'], 'outstanding_page')
-                ->withQueryString();
-        }
-
-        // ── Payment log: recent payments (optionally scoped to trip) ────
-        $logQuery = Payment::with(['order.customer', 'order.trip', 'recordedBy'])
-            ->orderByDesc('paid_at')->orderByDesc('id');
-        if ($tripId) {
-            $logQuery->whereHas('order', fn($q) => $q->where('trip_id', $tripId));
-        }
-        if ($search) {
-            $logQuery->where(function ($q) use ($search) {
-                $q->whereHas('order.customer', fn($c) =>
-                        $c->where('name', 'like', "%{$search}%")
-                          ->orWhere('phone', 'like', "%{$search}%"))
-                  ->orWhereHas('order', fn($o) => $o->where('order_number', 'like', "%{$search}%"))
-                  ->orWhere('reference', 'like', "%{$search}%");
+        if ($request->search) {
+            $query->where(function ($q) use ($request) {
+                $q->where('name', 'like', '%'.$request->search.'%')
+                  ->orWhere('product_code', 'like', '%'.$request->search.'%')
+                  ->orWhere('brand', 'like', '%'.$request->search.'%');
             });
         }
-        $log = $logQuery->paginate(50)->withQueryString();
 
-        return view('payments.index', compact('trips', 'tripId', 'tab', 'outstanding', 'log', 'search'));
+        $products = $query->orderBy('name')->paginate($perPage)->withQueryString();
+        $trips    = Trip::orderByDesc('id')->get();
+        return view('products.index', compact('products', 'trips', 'perPage'));
     }
 
-    /**
-     * Show the record-payment screen for one customer (their unpaid orders).
-     */
-    public function createForCustomer(Request $request, Customer $customer)
+    public function create(Request $request)
     {
-        if (!Auth::user()->hasPermission('payments.record')) {
-            abort(403, 'You do not have permission to record payments.');
-        }
-
-        $tripId = $request->trip_id;
-        abort_if(!$tripId, 404, 'Trip is required.');
-
-        $trip = Trip::findOrFail($tripId);
-
-        // Unpaid orders for this customer in this trip, oldest first (FIFO allocation)
-        $orders = Order::where('customer_id', $customer->id)
-            ->where('trip_id', $tripId)
-            ->where('payment_status', '!=', 'paid')
-            ->orderBy('ordered_at')->orderBy('id')
-            ->get();
-
-        $totalDue = $orders->sum(fn($o) => max(0, $o->total_amount - $o->deposit_paid));
-
-        return view('payments.create', compact('customer', 'trip', 'orders', 'totalDue'));
+        $trips = Trip::whereIn('status', ['open', 'purchasing'])->orderByDesc('id')->get();
+        $selectedTrip = $request->trip_id ? Trip::find($request->trip_id) : null;
+        // Preload suppliers (small list) so the picker filters instantly with no API calls
+        $suppliers = \App\Models\Supplier::orderBy('name')->get(['id', 'name', 'country', 'phone']);
+        return view('products.create', compact('trips', 'selectedTrip', 'suppliers'));
     }
 
-    /**
-     * Store a lump-sum payment, allocated across the customer's orders.
-     * Each order gets its own payment row sharing a batch_id.
-     */
     public function store(Request $request)
     {
-        if (!Auth::user()->hasPermission('payments.record')) {
-            abort(403, 'You do not have permission to record payments.');
-        }
-
         $data = $request->validate([
-            'customer_id'          => 'required|exists:customers,id',
-            'trip_id'              => 'required|exists:trips,id',
-            'method'               => 'nullable|string|max:50',
-            'reference'            => 'nullable|string|max:100',
-            'paid_at'              => 'required|date',
-            'notes'                => 'nullable|string',
-            'allocations'          => 'required|array|min:1',
-            'allocations.*.order_id' => 'required|exists:orders,id',
-            'allocations.*.amount'   => 'required|numeric|min:0',
+            'trip_id'          => 'required|exists:trips,id',
+            'supplier_id'      => 'required|exists:suppliers,id',
+            'name'             => 'required|string|max:255',
+            'sku'              => 'nullable|string|max:100',
+            'product_code' => [
+                'required', 'string', 'max:50',
+                \Illuminate\Validation\Rule::unique('products')->where('trip_id', $request->trip_id),
+            ],
+            'brand'            => 'nullable|string|max:100',
+            'price'            => 'required|numeric|min:0',
+            'weight_gram'      => 'required|integer|min:1',
+            'notes'            => 'nullable|string',
+            'image'            => 'nullable|image|max:5120',
+            'variants'         => 'nullable|array',
+            'variants.*.color' => 'nullable|string|max:50',
+            'variants.*.size'  => 'nullable|string|max:20',
+            'variants.*.price_adjustment' => 'nullable|numeric',
+        ], [
+            'product_code.unique' => 'This product code is already used by another product. Each product code must be unique.',
         ]);
 
-        // Filter to allocations with a positive amount
-        $allocations = collect($data['allocations'])
-            ->filter(fn($a) => (float) $a['amount'] > 0)
-            ->values();
+        $data['excluded_from_promo'] = $request->boolean('excluded_from_promo');
 
-        if ($allocations->isEmpty()) {
-            return back()->withInput()->with('error', 'Enter at least one amount to allocate.');
+        if ($request->hasFile('image')) {
+            $data['image'] = $this->resizeAndStoreImage($request->file('image'));
         }
 
-        $batchId = (string) Str::uuid();
-        $affectedOrderIds = [];
+        $product = Product::create($data);
 
-        DB::transaction(function () use ($allocations, $data, $batchId, &$affectedOrderIds) {
-            foreach ($allocations as $alloc) {
-                $order = Order::where('id', $alloc['order_id'])
-                    ->where('trip_id', $data['trip_id'])
-                    ->where('customer_id', $data['customer_id'])
-                    ->first();
-                if (!$order) continue;
-
-                $order->payments()->create([
-                    'batch_id'    => $batchId,
-                    'amount'      => $alloc['amount'],
-                    'type'        => 'partial',
-                    'method'      => $data['method'] ?? 'transfer',
-                    'reference'   => $data['reference'] ?? null,
-                    'paid_at'     => $data['paid_at'],
-                    'notes'       => $data['notes'] ?? null,
-                    'recorded_by' => Auth::id(),
-                ]);
-                $affectedOrderIds[] = $order->id;
+        if (!empty($data['variants'])) {
+            foreach ($data['variants'] as $v) {
+                if (!empty($v['color']) || !empty($v['size'])) {
+                    $product->variants()->create([
+                        'color' => $v['color'] ?? null,
+                        'size' => $v['size'] ?? null,
+                        'price_adjustment' => $v['price_adjustment'] ?? 0,
+                    ]);
+                }
             }
+        }
 
-            // Recalculate each affected order's payment status
-            foreach (array_unique($affectedOrderIds) as $oid) {
-                $this->recalcOrderPayment(Order::find($oid));
-            }
-        });
-
-        $total = $allocations->sum(fn($a) => (float) $a['amount']);
-        return redirect()->route('payments.index', ['trip_id' => $data['trip_id']])
-            ->with('success', 'Payment of Rp ' . number_format($total, 0, ',', '.') .
-                ' recorded across ' . count(array_unique($affectedOrderIds)) . ' order(s).');
+        return redirect()->route('products.show', $product)->with('success', 'Product created.');
     }
 
-    /**
-     * Void an entire payment batch (all rows sharing the batch_id),
-     * or a single payment if it has no batch.
-     */
-    public function voidBatch(Request $request, string $batchId)
+    public function show(Product $product)
     {
-        if (!Auth::user()->hasPermission('payments.void')) {
-            abort(403, 'You do not have permission to void payments.');
-        }
-
-        $payments = Payment::where('batch_id', $batchId)->whereNull('voided_at')->get();
-        if ($payments->isEmpty()) {
-            return back()->with('error', 'No active payments found for this batch.');
-        }
-
-        $affectedOrderIds = [];
-        DB::transaction(function () use ($payments, $request, &$affectedOrderIds) {
-            foreach ($payments as $payment) {
-                $payment->update([
-                    'voided_at'   => now(),
-                    'voided_by'   => Auth::id(),
-                    'void_reason' => $request->input('void_reason', 'Batch voided'),
-                ]);
-                $affectedOrderIds[] = $payment->order_id;
-            }
-            foreach (array_unique($affectedOrderIds) as $oid) {
-                $this->recalcOrderPayment(Order::find($oid));
-            }
-        });
-
-        return back()->with('success', 'Payment batch voided. Affected order balances restored.');
+        $product->load(['variants', 'orderItems.order.customer', 'trip', 'supplier']);
+        return view('products.show', compact('product'));
     }
 
+    public function edit(Product $product)
+    {
+        $trips = Trip::whereIn('status', ['open', 'purchasing'])->orderByDesc('id')->get();
+        $product->load('variants', 'supplier');
+        return view('products.edit', compact('product', 'trips'));
+    }
 
-    /**
-     * Export payments for a trip — two-sheet xlsx:
-     *   Sheet 1 — Outstanding Balances
-     *   Sheet 2 — Payment Log
-     */
+    public function update(Request $request, Product $product)
+    {
+        $data = $request->validate([
+            'trip_id'      => 'required|exists:trips,id',
+            'name'         => 'required|string|max:255',
+            'sku'          => 'nullable|string|max:100',
+            'product_code' => [
+                'required', 'string', 'max:50',
+                \Illuminate\Validation\Rule::unique('products')
+                    ->where('trip_id', $request->trip_id)
+                    ->ignore($product->id),
+            ],
+            'brand'        => 'nullable|string|max:100',
+            'supplier_id'  => 'required|exists:suppliers,id',
+            'price'        => 'required|numeric|min:0',
+            'weight_gram'  => 'required|integer|min:1',
+            'notes'        => 'nullable|string',
+            'status'       => 'required|in:active,closed,arrived',
+            'image'        => 'nullable|image|max:5120',
+        ], [
+            'product_code.unique' => 'This product code is already used by another product. Each product code must be unique.',
+        ]);
+
+        $data['excluded_from_promo'] = $request->boolean('excluded_from_promo');
+
+        if ($request->hasFile('image')) {
+            if ($product->image) Storage::disk('public')->delete($product->image);
+            $data['image'] = $this->resizeAndStoreImage($request->file('image'));
+        }
+
+        $product->update($data);
+        return redirect()->route('products.show', $product)->with('success', 'Product updated.');
+    }
+
+    public function bulkDestroy(Request $request)
+    {
+        $this->adminOnly('bulk delete products');
+
+        $request->validate([
+            'action'      => 'required|in:selected,no_orders',
+            'product_ids' => 'required_if:action,selected|array',
+        ]);
+
+        $query = Product::query();
+
+        if ($request->action === 'selected') {
+            $query->whereIn('id', $request->product_ids ?? []);
+        } elseif ($request->action === 'no_orders') {
+            $query->whereDoesntHave('orderItems');
+        }
+
+        $products   = $query->with('variants')->get();
+        $productIds = $products->pluck('id');
+        $variantIds = $products->flatMap(fn($p) => $p->variants->pluck('id'));
+        $deleted    = $products->count();
+
+        \DB::transaction(function () use ($productIds, $variantIds, $deleted) {
+            if ($variantIds->isNotEmpty()) {
+                \App\Models\PurchaseOrderItem::whereIn('product_variant_id', $variantIds)->delete();
+            }
+            \App\Models\PurchaseOrderItem::whereIn('product_id', $productIds)->delete();
+            \DB::table('order_items')->whereIn('product_id', $productIds)->delete();
+            \DB::table('product_variants')->whereIn('product_id', $productIds)->delete();
+            \DB::table('products')->whereIn('id', $productIds)->delete();
+        });
+
+        return redirect()->route('products.index', request()->only('trip_id', 'search'))
+            ->with('success', "Deleted {$deleted} product(s).");
+    }
+
+    public function destroy(Product $product)
+    {
+        $this->adminOnly('delete products');
+        // Must delete in order: purchase_order_items → order_items → variants → product
+        // to avoid foreign key constraint violations
+        \DB::transaction(function () use ($product) {
+            $variantIds = $product->variants()->pluck('id');
+
+            // Remove purchase order items referencing these variants or this product
+            \App\Models\PurchaseOrderItem::whereIn('product_variant_id', $variantIds)
+                ->orWhere('product_id', $product->id)
+                ->delete();
+
+            // Remove order items referencing these variants or this product
+            \App\Models\OrderItem::whereIn('product_variant_id', $variantIds)
+                ->orWhere('product_id', $product->id)
+                ->delete();
+
+            // Delete variants
+            $product->variants()->delete();
+
+            // Delete product image from storage
+            if ($product->image) {
+                \Storage::disk('public')->delete($product->image);
+            }
+
+            $product->delete();
+        });
+
+        return redirect()->route('products.index')->with('success', 'Product deleted.');
+    }
+
+    // Manage variants separately
+    public function importTemplate()
+    {
+        return $this->streamXlsx('product_import_template.xlsx', [
+            ['Trip', 'Name', 'Code', 'SKU', 'Brand', 'Supplier', 'Price', 'Weight (gram)', 'Excluded from Promo', 'Status', 'Color', 'Size', 'Price Adjustment', 'Supplier Stock'],
+            // One row per variant. Same Code on multiple rows = same product, different variants.
+            // Excluded from Promo: yes / no    Status: active / closed
+            ['Testing Trip', 'Baju', 'NA_01', '', 'Brand X', 'Shein', 250000, 30000, 'no', 'active', 'BLACK', 'L',  0, 25],
+            ['Testing Trip', 'Baju', 'NA_01', '', 'Brand X', 'Shein', 250000, 30000, 'no', 'active', 'BLACK', 'XL', 0, 20],
+            ['Testing Trip', 'Baju', 'NA_01', '', 'Brand X', 'Shein', 250000, 30000, 'no', 'active', 'BLACK', 'S',  0, 15],
+            ['Testing Trip', 'Baju', 'NA_01', '', 'Brand X', 'Shein', 250000, 30000, 'no', 'active', 'WHITE', 'S',  0, 20],
+            ['Testing Trip', 'Baju', 'NA_01', '', 'Brand X', 'Shein', 250000, 30000, 'no', 'active', 'WHITE', 'M',  0, 18],
+            ['Testing Trip', 'Celana Chino', 'NZ_01', '', 'Brand Y', 'Uniqlo', 500000, 40000, 'no', 'active', '', '', 0, 0],
+        ]);
+    }
+
+    public function importCsv(Request $request)
+    {
+        $request->validate(['file' => 'required|file|max:10240']);
+
+        $rows = $this->readXlsx($request->file('file')->getRealPath());
+        if (empty($rows)) {
+            return back()->with('error', 'Could not read the file. Make sure it is a valid .xlsx file.');
+        }
+
+        array_shift($rows); // remove header
+
+        // Remove completely blank rows
+        $rows = array_values(array_filter($rows, fn($r) =>
+            !empty(trim((string)($r[1] ?? ''))) || !empty(trim((string)($r[2] ?? '')))
+        ));
+
+        if (empty($rows)) {
+            return back()->with('error', 'The file has no data rows.');
+        }
+
+        // ── Pre-load trips and suppliers into memory ──────────────────────
+        $trips = \App\Models\Trip::all()->mapWithKeys(fn($t) => [strtolower(trim($t->name)) => $t]);
+        $suppliers = \App\Models\Supplier::all()->mapWithKeys(fn($s) => [strtolower(trim($s->name)) => $s]);
+
+        // ── Full validation pass — ALL rows checked before any insert ─────
+        $errors    = [];
+        $seenCodes = []; // code → first row's trip (to detect cross-trip duplicates in file)
+
+        foreach ($rows as $i => $row) {
+            $lineNum  = $i + 2;
+            $tripName = trim((string)($row[0] ?? ''));
+            $name     = trim((string)($row[1] ?? ''));
+            $code     = strtoupper(trim((string)($row[2] ?? '')));
+
+            if (empty($tripName)) { $errors[] = "Row {$lineNum}: Trip is required."; continue; }
+            if (empty($name))     { $errors[] = "Row {$lineNum}: Name is required."; continue; }
+            if (empty($code))     { $errors[] = "Row {$lineNum} ({$name}): Product Code is required."; continue; }
+
+            // Trip must exist
+            $tripKey = strtolower($tripName);
+            $trip = $trips->get($tripKey) ?? $trips->first(fn($t) => str_contains(strtolower($t->name), $tripKey) || str_contains($tripKey, strtolower($t->name)));
+            if (!$trip) {
+                $errors[] = "Row {$lineNum} ({$name}): Trip '{$tripName}' not found.";
+                continue;
+            }
+
+            // If same code seen before in this file, must be same trip (adding a variant)
+            if (isset($seenCodes[$code])) {
+                if ($seenCodes[$code] !== $trip->id) {
+                    $errors[] = "Row {$lineNum} ({$name}): Code '{$code}' used in multiple trips — each code must belong to one trip.";
+                }
+                continue; // same code = same product, adding a variant — OK
+            }
+            $seenCodes[$code] = $trip->id;
+            // Note: if code already exists in DB, import will add variants to it (not block)
+        }
+
+        if (!empty($errors)) {
+            return back()->with('import_errors', $errors)
+                         ->with('error', count($errors) . ' error(s) found — fix all issues before importing:');
+        }
+
+        // ── Import pass ────────────────────────────────────────────────────
+        $imported     = 0;
+        $variantCount = 0;
+        $newSuppliers = 0;
+        $productMap   = []; // code => Product model (created in this import)
+
+        foreach ($rows as $rowIdx => $row) {
+            $tripName  = trim((string)($row[0] ?? ''));
+            $name      = trim((string)($row[1] ?? ''));
+            $code      = strtoupper(trim((string)($row[2] ?? '')));
+            $sku       = trim((string)($row[3] ?? ''));
+            $brand     = trim((string)($row[4] ?? ''));
+            $suppName  = trim((string)($row[5] ?? ''));
+            $price     = (float)($row[6] ?? 0);
+            $weight    = (int)($row[7] ?? 0);
+            $excluded  = strtolower(trim((string)($row[8] ?? ''))) === 'yes';
+            $status    = trim((string)($row[9] ?? 'active'));
+            $color     = trim((string)($row[10] ?? ''));
+            $size      = trim((string)($row[11] ?? ''));
+            $priceAdj  = (float)($row[12] ?? 0);
+            $suppStock = (int)($row[13] ?? 0);
+
+            if (empty($name) || empty($code)) continue;
+
+            $tripKey = strtolower($tripName);
+            $trip = $trips->get($tripKey) ?? $trips->first(fn($t) => str_contains(strtolower($t->name), $tripKey));
+
+            // Resolve supplier (auto-create if new)
+            $supplierId = null;
+            if ($suppName) {
+                $suppKey = strtolower($suppName);
+                $supplier = $suppliers->get($suppKey) ?? $suppliers->first(fn($s) => str_contains(strtolower($s->name), $suppKey));
+                if (!$supplier) {
+                    $supplier = \App\Models\Supplier::create(['name' => $suppName, 'is_active' => true]);
+                    $suppliers->put($suppKey, $supplier);
+                    $newSuppliers++;
+                }
+                $supplierId = $supplier->id;
+            }
+
+            // Find existing product in this import batch, or in DB, or create new
+            if (isset($productMap[$code])) {
+                $product = $productMap[$code]; // already handled this code in this file
+            } else {
+                // Check if product already exists in DB for this trip
+                $existing = \App\Models\Product::where('product_code', $code)
+                    ->where('trip_id', $trip->id)->first();
+
+                if ($existing) {
+                    // Update product info with latest data from file
+                    $existing->update(array_filter([
+                        'name'                => $name,
+                        'sku'                 => $sku   ?: $existing->sku,
+                        'brand'               => $brand ?: $existing->brand,
+                        'supplier_id'         => $supplierId ?: $existing->supplier_id,
+                        'price'               => $price  ?: $existing->price,
+                        'weight_gram'         => $weight ?: $existing->weight_gram,
+                        'excluded_from_promo' => $excluded,
+                        'status'              => in_array($status, ['active','closed','arrived']) ? $status : $existing->status,
+                    ]));
+                    $product = $existing;
+                    $imported++; // count as updated
+                } else {
+                    $product = \App\Models\Product::create([
+                        'trip_id'             => $trip->id,
+                        'name'                => $name,
+                        'product_code'        => $code,
+                        'sku'                 => $sku   ?: null,
+                        'brand'               => $brand ?: null,
+                        'supplier_id'         => $supplierId,
+                        'price'               => $price,
+                        'weight_gram'         => $weight,
+                        'excluded_from_promo' => $excluded,
+                        'status'              => in_array($status, ['active','closed','arrived']) ? $status : 'active',
+                    ]);
+                    $imported++;
+                }
+                $productMap[$code] = $product;
+            }
+
+            // Add variant if color or size present, skip if exact same variant already exists
+            if ($color || $size) {
+                $variantExists = $product->variants()
+                    ->whereRaw('LOWER(COALESCE(color,"")) = ?', [strtolower($color)])
+                    ->whereRaw('LOWER(COALESCE(size,"")) = ?', [strtolower($size)])
+                    ->exists();
+
+                if (!$variantExists) {
+                    $product->variants()->create([
+                        'color'            => $color    ?: null,
+                        'size'             => $size     ?: null,
+                        'price_adjustment' => $priceAdj,
+                        'supplier_stock'   => $suppStock,
+                        'allocated_qty'    => 0,
+                    ]);
+                    $variantCount++;
+                }
+            }
+        }
+
+        $msg = "✓ Imported/updated {$imported} product(s) with {$variantCount} new variant(s).";
+        if ($newSuppliers) $msg .= " {$newSuppliers} new supplier(s) auto-created.";
+        return redirect()->route('products.index')->with('success', $msg);
+    }
     public function export(Request $request)
     {
-        if (!Auth::user()->hasPermission('payments.export')) {
-            abort(403);
-        }
+        $query = Product::with('trip', 'supplier', 'variants');
+        if ($request->trip_id) $query->where('trip_id', $request->trip_id);
+        $products = $query->orderBy('name')->get();
 
-        $trips  = Trip::orderByDesc('id')->get();
-        $tripId = $request->trip_id ?: ($trips->first()->id ?? null);
-        $trip   = Trip::find($tripId);
-        $label  = $trip ? preg_replace('/[^\w\-]/', '_', $trip->name) : 'trip';
+        $header = ['trip','name','product_code','sku','brand','supplier','price','weight_gram','excluded_from_promo','status','color','size','price_adjustment','supplier_stock'];
+        $rows   = [$header];
 
-        // ── Sheet 1: Outstanding Balances ─────────────────────────────
-        $sheet1 = [
-            ['Customer', 'Phone', 'Type', 'Orders', 'Total Ordered (Rp)', 'Total Paid (Rp)', 'Balance Due (Rp)'],
-        ];
-        $orders = Order::with('customer')
-            ->where('trip_id', $tripId)
-            ->where('payment_status', '!=', 'paid')
-            ->get()
-            ->groupBy('customer_id');
-        foreach ($orders as $customerOrders) {
-            $c = $customerOrders->first()->customer;
-            $ordered = $customerOrders->sum('total_amount');
-            $paid    = $customerOrders->sum('deposit_paid');
-            $sheet1[] = [
-                $c->name ?? '—', $c->phone ?? '—', $c->type ?? '—',
-                $customerOrders->count(), $ordered, $paid, $ordered - $paid,
+        foreach ($products as $p) {
+            $base = [
+                $p->trip->name,
+                $p->name,
+                $p->product_code ?? '',
+                $p->sku ?? '',
+                $p->brand ?? '',
+                $p->supplier?->name ?? '',
+                $p->price,
+                $p->weight_gram,
+                $p->excluded_from_promo ? 'yes' : 'no',
+                $p->status,
             ];
-        }
 
-        // ── Sheet 2: Payment Log ──────────────────────────────────────
-        $sheet2 = [
-            ['Date', 'Customer', 'Phone', 'Order Number', 'Amount (Rp)', 'Method', 'Reference', 'Notes', 'Recorded By', 'Voided'],
-        ];
-        $payments = Payment::with(['order.customer', 'recordedBy'])
-            ->whereHas('order', fn($q) => $q->where('trip_id', $tripId))
-            ->orderBy('paid_at', 'desc')
-            ->get();
-        foreach ($payments as $p) {
-            $sheet2[] = [
-                $p->paid_at?->format('d/m/Y') ?? '—',
-                $p->order->customer->name ?? '—',
-                $p->order->customer->phone ?? '—',
-                $p->order->order_number ?? '—',
-                $p->amount,
-                ucfirst($p->method ?? '—'),
-                $p->reference ?? '—',
-                $p->notes ?? '—',
-                $p->recordedBy->name ?? '—',
-                $p->isVoided() ? 'Yes' : 'No',
-            ];
-        }
-
-        // ── Build two-sheet xlsx manually ─────────────────────────────
-        $filename = "payments_{$label}.xlsx";
-        $xlsx = $this->buildMultiSheetXlsx([
-            'Outstanding Balances' => $sheet1,
-            'Payment Log'          => $sheet2,
-        ]);
-
-        $tmp = tempnam(sys_get_temp_dir(), 'xlsx_dl_');
-        file_put_contents($tmp, $xlsx);
-        return response()->download($tmp, $filename, [
-            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        ])->deleteFileAfterSend(true);
-    }
-
-    /**
-     * Build a multi-sheet xlsx binary from an associative array of
-     * sheetName => rows[][].
-     */
-    /**
-     * Build a multi-sheet xlsx binary. $sheets = ['Sheet Name' => $rows2d, ...]
-     */
-    private function buildMultiSheetXlsx(array $sheets): string
-    {
-        // Collect shared strings across all sheets
-        $sharedStrings = [];
-        $ssIndex = [];
-        foreach ($sheets as $rows) {
-            foreach ($rows as $row) {
-                foreach ($row as $cell) {
-                    $s = (string) $cell;
-                    if (!is_numeric($cell) && $s !== '' && !isset($ssIndex[$s])) {
-                        $ssIndex[$s] = count($sharedStrings);
-                        $sharedStrings[] = $s;
-                    }
-                }
-            }
-        }
-
-        // Build each sheet XML
-        $sheetXmls    = [];
-        $sheetEntries = '';
-        $relEntries   = '';
-        $ctEntries    = '';
-        $id = 1;
-
-        foreach ($sheets as $name => $rows) {
-            $sheetRows = '';
-            foreach ($rows as $ri => $row) {
-                $rowNum = $ri + 1;
-                $cells  = '';
-                foreach ($row as $ci => $cell) {
-                    $col = $this->xlsxIndexToCol($ci);
-                    $ref = $col . $rowNum;
-                    $s   = (string) $cell;
-                    if ($s === '') {
-                        $cells .= '<c r="' . $ref . '"/>';
-                    } elseif (is_numeric($cell)) {
-                        $cells .= '<c r="' . $ref . '"><v>' . $cell . '</v></c>';
+            if ($p->variants->isEmpty()) {
+                // No variants — one row, blank variant columns
+                $rows[] = array_merge($base, ['', '', 0, 0]);
+            } else {
+                foreach ($p->variants as $i => $v) {
+                    if ($i === 0) {
+                        // First variant row has full product info
+                        $rows[] = array_merge($base, [$v->color ?? '', $v->size ?? '', $v->price_adjustment, $v->supplier_stock]);
                     } else {
-                        $idx    = $ssIndex[$s];
-                        $cells .= '<c r="' . $ref . '" t="s"><v>' . $idx . '</v></c>';
+                        // Subsequent variant rows — only code + variant columns, rest blank
+                        $rows[] = [
+                            '', '', $p->product_code ?? '', '', '', '', '', '', '', '',
+                            $v->color ?? '', $v->size ?? '', $v->price_adjustment, $v->supplier_stock,
+                        ];
                     }
                 }
-                $sheetRows .= '<row r="' . $rowNum . '">' . $cells . '</row>';
             }
-
-            $sheetXmls['xl/worksheets/sheet' . $id . '.xml'] =
-                '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-                . '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-                . '<sheetData>' . $sheetRows . '</sheetData></worksheet>';
-
-            $safeName      = htmlspecialchars($name, ENT_XML1, 'UTF-8');
-            $sheetEntries .= '<sheet name="' . $safeName . '" sheetId="' . $id . '" r:id="rId' . $id . '"/>';
-            $relEntries   .= '<Relationship Id="rId' . $id . '"'
-                . ' Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"'
-                . ' Target="worksheets/sheet' . $id . '.xml"/>';
-            $ctEntries    .= '<Override PartName="/xl/worksheets/sheet' . $id . '.xml"'
-                . ' ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>';
-            $id++;
         }
 
-        // Shared strings XML
-        $ssEntries = '';
-        foreach ($sharedStrings as $str) {
-            $ssEntries .= '<si><t>' . htmlspecialchars($str, ENT_XML1, 'UTF-8') . '</t></si>';
-        }
-        $ssXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            . '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
-            . ' count="' . count($sharedStrings) . '" uniqueCount="' . count($sharedStrings) . '">'
-            . $ssEntries . '</sst>';
-
-        $ssRelId = $id;
-
-        $workbookXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            . '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
-            . ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
-            . '<sheets>' . $sheetEntries . '</sheets></workbook>';
-
-        $workbookRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-            . $relEntries
-            . '<Relationship Id="rId' . $ssRelId . '"'
-            . ' Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings"'
-            . ' Target="sharedStrings.xml"/>'
-            . '</Relationships>';
-
-        $contentTypes = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            . '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
-            . '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
-            . '<Default Extension="xml" ContentType="application/xml"/>'
-            . '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
-            . $ctEntries
-            . '<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>'
-            . '</Types>';
-
-        $dotRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-            . '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
-            . '</Relationships>';
-
-        $tmp = tempnam(sys_get_temp_dir(), 'xlsx_');
-        $zip = new \ZipArchive();
-        $zip->open($tmp, \ZipArchive::CREATE | \ZipArchive::OVERWRITE);
-        $zip->addFromString('[Content_Types].xml',       $contentTypes);
-        $zip->addFromString('_rels/.rels',               $dotRels);
-        $zip->addFromString('xl/workbook.xml',           $workbookXml);
-        $zip->addFromString('xl/_rels/workbook.xml.rels',$workbookRels);
-        $zip->addFromString('xl/sharedStrings.xml',      $ssXml);
-        foreach ($sheetXmls as $path => $xml) {
-            $zip->addFromString($path, $xml);
-        }
-        $zip->close();
-
-        $content = file_get_contents($tmp);
-        unlink($tmp);
-        return $content;
+        return $this->streamXlsx('products_export.xlsx', $rows);
     }
 
-    private function recalcOrderPayment(?Order $order): void
+    /** AJAX: check if product code is already taken within a trip */
+    public function checkCode(Request $request)
     {
-        if (!$order) return;
-        $payments = $order->payments()->whereNull('voided_at')->get();
-        $paid = $payments->where('type', '!=', 'refund')->sum('amount')
-              - $payments->where('type', 'refund')->sum('amount');
-        $status = $paid <= 0 ? 'unpaid'
-            : ($paid >= $order->total_amount ? 'paid' : 'partial');
-        if ($status === 'paid') {
-            $order->items()->where('status', 'pending')->update(['status' => 'confirmed']);
+        $code      = strtoupper(trim($request->code ?? ''));
+        $excludeId = $request->exclude;
+        $tripId    = $request->trip_id;
+
+        if (!$code) return response()->json(['exists' => false]);
+
+        $query = Product::where('product_code', $code);
+        if ($tripId)    $query->where('trip_id', $tripId);
+        if ($excludeId) $query->where('id', '!=', $excludeId);
+
+        $product = $query->with('trip')->first();
+
+        if ($product) {
+            return response()->json([
+                'exists'       => true,
+                'product_name' => $product->name,
+                'trip_name'    => $product->trip->name,
+            ]);
         }
-        $order->update(['deposit_paid' => max(0, $paid), 'payment_status' => $status]);
+
+        return response()->json(['exists' => false]);
+    }
+
+    public function storeVariant(Request $request, Product $product)
+    {
+        $data = $request->validate([
+            'color' => 'nullable|string|max:50',
+            'size' => 'nullable|string|max:20',
+            'price_adjustment' => 'nullable|numeric',
+        ]);
+        $product->variants()->create($data);
+        return back()->with('success', 'Variant added.');
+    }
+
+    public function updateVariant(Request $request, Product $product, ProductVariant $variant)
+    {
+        $data = $request->validate([
+            'color' => 'nullable|string|max:50',
+            'size' => 'nullable|string|max:20',
+            'price_adjustment' => 'nullable|numeric',
+            'supplier_stock' => 'nullable|integer|min:0',
+        ]);
+        $variant->update($data);
+        return back()->with('success', 'Variant updated.');
+    }
+
+    public function destroyVariant(Product $product, ProductVariant $variant)
+    {
+        // Block if any order items or purchase order items reference this variant
+        $orderItemCount = $variant->orderItems()->count();
+        if ($orderItemCount > 0) {
+            return back()->with('error', "Cannot delete this variant — it has {$orderItemCount} order item(s) referencing it. Remove those orders first.");
+        }
+
+        $poItemCount = \App\Models\PurchaseOrderItem::where('product_variant_id', $variant->id)->count();
+        if ($poItemCount > 0) {
+            return back()->with('error', "Cannot delete this variant — it is referenced in {$poItemCount} purchase order item(s).");
+        }
+
+        $variant->delete();
+        return back()->with('success', 'Variant removed.');
+    }
+
+    /**
+     * Resize image to max 800×800px and store as JPEG ≤200KB.
+     * Uses GD (available on most shared hosting).
+     */
+    private function resizeAndStoreImage(\Illuminate\Http\UploadedFile $file): string
+    {
+        $maxDim  = 800;   // max width or height in pixels
+        $quality = 82;    // JPEG quality start (will reduce if still too big)
+        $maxBytes = 200 * 1024; // 200 KB target
+
+        $mime = $file->getMimeType();
+        $src  = $file->getRealPath();
+
+        // Load source image via GD
+        $srcImg = match(true) {
+            str_contains($mime, 'jpeg') || str_contains($mime, 'jpg') => imagecreatefromjpeg($src),
+            str_contains($mime, 'png')  => imagecreatefrompng($src),
+            str_contains($mime, 'webp') => imagecreatefromwebp($src),
+            str_contains($mime, 'gif')  => imagecreatefromgif($src),
+            default                      => imagecreatefromjpeg($src),
+        };
+
+        if (!$srcImg) {
+            // Fallback: just store original
+            return $file->store('products', 'public');
+        }
+
+        $origW = imagesx($srcImg);
+        $origH = imagesy($srcImg);
+
+        // Calculate new dimensions keeping aspect ratio
+        if ($origW <= $maxDim && $origH <= $maxDim) {
+            $newW = $origW;
+            $newH = $origH;
+        } elseif ($origW >= $origH) {
+            $newW = $maxDim;
+            $newH = (int) round($origH * $maxDim / $origW);
+        } else {
+            $newH = $maxDim;
+            $newW = (int) round($origW * $maxDim / $origH);
+        }
+
+        $dstImg = imagecreatetruecolor($newW, $newH);
+
+        // Preserve transparency for PNG
+        imagealphablending($dstImg, false);
+        imagesavealpha($dstImg, true);
+        $transparent = imagecolorallocatealpha($dstImg, 0, 0, 0, 127);
+        imagefill($dstImg, 0, 0, $transparent);
+
+        imagecopyresampled($dstImg, $srcImg, 0, 0, 0, 0, $newW, $newH, $origW, $origH);
+        imagedestroy($srcImg);
+
+        // Save to temp buffer and reduce quality until under maxBytes
+        $filename = 'products/' . uniqid('img_', true) . '.jpg';
+        do {
+            ob_start();
+            imagejpeg($dstImg, null, $quality);
+            $data = ob_get_clean();
+            $quality -= 5;
+        } while (strlen($data) > $maxBytes && $quality > 20);
+
+        imagedestroy($dstImg);
+
+        Storage::disk('public')->put($filename, $data);
+        return $filename;
     }
 }

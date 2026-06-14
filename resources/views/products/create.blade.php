@@ -70,11 +70,12 @@
             @error('name')<div class="invalid-feedback">{{ $message }}</div>@enderror
         </div>
         <div class="col-md-4">
-            <label class="form-label fw-semibold">Product Code</label>
+            <label class="form-label fw-semibold">Product Code <span class="text-danger">*</span></label>
             <input type="text" name="product_code" id="productCodeInput"
                 class="form-control font-monospace"
                 value="{{ old('product_code') }}"
                 placeholder="e.g. NA_01 or NZ_01"
+                required
                 oninput="this.value=this.value.toUpperCase(); checkZCode(this.value); checkCodeUnique(this.value)">
             <div class="form-text">Prefix ending in <strong>Z</strong> (NZ, MZ…) auto-excludes from promos.</div>
             <div id="codeUniqueWarn" class="text-danger small mt-1" style="display:none;">
@@ -152,16 +153,17 @@
             @error('price')<div class="invalid-feedback">{{ $message }}</div>@enderror
         </div>
         <div class="col-md-3">
-            <label class="form-label fw-semibold">Weight per Item</label>
+            <label class="form-label fw-semibold">Weight per Item <span class="text-danger">*</span></label>
             <div class="input-group">
                 <input type="number" name="weight_gram" id="weightInput" class="form-control"
-                    value="{{ old('weight_gram', 0) }}" min="0" step="1" placeholder="0"
-                    oninput="document.getElementById('weightWarnMsg').style.display = this.value == 0 ? 'block' : 'none'">
+                    value="{{ old('weight_gram') }}" min="1" step="1" placeholder="e.g. 350"
+                    required
+                    oninput="document.getElementById('weightWarnMsg').style.display = this.value < 1 ? 'block' : 'none'">
                 <span class="input-group-text text-muted">gram</span>
             </div>
-            <div class="form-text">For shipping calculation</div>
-            <div id="weightWarnMsg" class="text-warning small mt-1" {{ old('weight_gram', 0) == 0 ? '' : 'style=display:none' }}>
-                <i class="bi bi-exclamation-triangle-fill me-1"></i>0g — shipping won't calculate for this product.
+            <div class="form-text">For shipping calculation (required)</div>
+            <div id="weightWarnMsg" class="text-warning small mt-1" style="display:none">
+                <i class="bi bi-exclamation-triangle-fill me-1"></i>Weight must be at least 1g.
             </div>
         </div>
     </div>

@@ -49,12 +49,12 @@ class ProductController extends Controller
             'name'             => 'required|string|max:255',
             'sku'              => 'nullable|string|max:100',
             'product_code' => [
-                'nullable', 'string', 'max:50',
+                'required', 'string', 'max:50',
                 \Illuminate\Validation\Rule::unique('products')->where('trip_id', $request->trip_id),
             ],
             'brand'            => 'nullable|string|max:100',
             'price'            => 'required|numeric|min:0',
-            'weight_gram'      => 'nullable|integer|min:0',
+            'weight_gram'      => 'required|integer|min:1',
             'notes'            => 'nullable|string',
             'image'            => 'nullable|image|max:5120',
             'variants'         => 'nullable|array',
@@ -108,7 +108,7 @@ class ProductController extends Controller
             'name'         => 'required|string|max:255',
             'sku'          => 'nullable|string|max:100',
             'product_code' => [
-                'nullable', 'string', 'max:50',
+                'required', 'string', 'max:50',
                 \Illuminate\Validation\Rule::unique('products')
                     ->where('trip_id', $request->trip_id)
                     ->ignore($product->id),
@@ -116,7 +116,7 @@ class ProductController extends Controller
             'brand'        => 'nullable|string|max:100',
             'supplier_id'  => 'required|exists:suppliers,id',
             'price'        => 'required|numeric|min:0',
-            'weight_gram'  => 'nullable|integer|min:0',
+            'weight_gram'  => 'required|integer|min:1',
             'notes'        => 'nullable|string',
             'status'       => 'required|in:active,closed,arrived',
             'image'        => 'nullable|image|max:5120',
