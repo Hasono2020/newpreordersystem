@@ -3,7 +3,6 @@ namespace Tests;
 
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
 use App\Models\User;
 use App\Models\Trip;
 use App\Models\Customer;
@@ -13,39 +12,10 @@ abstract class TestCase extends BaseTestCase
 {
     use RefreshDatabase;
 
-    protected function setUp(): void
-    {
-        parent::setUp();
-
-        // Register REGEXP function for SQLite so the old data migration works
-        if (DB::connection()->getDriverName() === 'sqlite') {
-            DB::connection()->getPdo()->sqliteCreateFunction('REGEXP', function ($pattern, $value) {
-                return preg_match('/' . $pattern . '/', $value) ? 1 : 0;
-            });
-        }
-    }
-
-    // ── Helpers ───────────────────────────────────────────────────────
-
-    public function adminUser(): User
-    {
-        return User::factory()->admin()->create();
-    }
-
-    public function staffUser(array $extra = []): User
-    {
-        return User::factory()->staff()->create($extra);
-    }
-
-    public function financeUser(): User
-    {
-        return User::factory()->finance()->create();
-    }
-
-    public function ownDataStaff(): User
-    {
-        return User::factory()->ownDataOnly()->create();
-    }
+    public function adminUser(): User    { return User::factory()->admin()->create(); }
+    public function staffUser(array $e = []): User { return User::factory()->staff()->create($e); }
+    public function financeUser(): User  { return User::factory()->finance()->create(); }
+    public function ownDataStaff(): User { return User::factory()->ownDataOnly()->create(); }
 
     public function openTrip(): Trip
     {
@@ -53,10 +23,7 @@ abstract class TestCase extends BaseTestCase
         return Trip::factory()->open()->create(['created_by' => $admin->id]);
     }
 
-    public function shippingArea(): ShippingArea
-    {
-        return ShippingArea::factory()->create();
-    }
+    public function shippingArea(): ShippingArea { return ShippingArea::factory()->create(); }
 
     public function customer(?User $createdBy = null): Customer
     {
