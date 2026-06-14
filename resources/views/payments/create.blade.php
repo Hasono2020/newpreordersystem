@@ -160,7 +160,11 @@ document.getElementById('paymentForm').addEventListener('submit', function (e) {
         alert('Enter at least one allocation amount before saving.');
         return;
     }
-    showProcessing('Recording payment…');
+    // Use showExport-style overlay (no _processingActive flag) so the
+    // browser beforeunload guard doesn't fire on normal form navigation.
+    const ov = document.getElementById('processingOverlay');
+    document.getElementById('processingMsg').textContent = 'Recording payment…';
+    ov.style.display = 'flex';
 });
 
 recalcSums();

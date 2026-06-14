@@ -4,19 +4,6 @@
 
 @section('content')
 
-@if(session('success'))
-<div class="alert alert-success alert-dismissible fade show" role="alert">
-    <i class="bi bi-check-circle-fill me-1"></i>{{ session('success') }}
-    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-</div>
-@endif
-@if(session('error'))
-<div class="alert alert-danger alert-dismissible fade show" role="alert">
-    <i class="bi bi-exclamation-triangle-fill me-1"></i>{{ session('error') }}
-    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-</div>
-@endif
-
 {{-- Filter bar (matches Orders / Customers / etc.) --}}
 <div class="row g-2 mb-3 align-items-end">
     <div class="col">
@@ -125,11 +112,10 @@
                         <td data-label="Recorded By" class="small text-muted">{{ $payment->recordedBy->name ?? '—' }}</td>
                         <td class="no-label text-end">
                             @if(!$payment->isVoided() && $payment->batch_id && auth()->user()->hasPermission('payments.void'))
-                            <form method="POST" action="{{ route('payments.batch.void', $payment->batch_id) }}"
-                                  onsubmit="return confirm('Void this entire payment batch? All orders it covered will have their balances restored.')">
-                                @csrf
-                                <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2">Void</button>
-                            </form>
+                            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2"
+                                onclick="showVoidModal('{{ $payment->batch_id }}', {{ $payment->amount }})">
+                                Void
+                            </button>
                             @endif
                         </td>
                     </tr>
@@ -147,5 +133,50 @@
         @endif
     </div>
 @endif
+
+{{-- Void Payment Modal --}}
+<div class="modal fade" id="voidPaymentModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header border-danger">
+                <h5 class="modal-title text-danger"><i class="bi bi-x-circle me-2"></i>Void Payment</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="voidPaymentForm" method="POST">
+                @csrf
+                <div class="modal-body">
+                    <div class="alert alert-warning py-2 small">
+                        <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                        <strong>Voiding does not delete the record.</strong> It marks the payment as invalid and restores the affected order balances. A full audit trail is kept.
+                    </div>
+                    <p class="mb-2">You are voiding: <strong id="voidAmountDisplay"></strong></p>
+                    <label class="form-label fw-semibold">Reason for voiding <span class="text-danger">*</span></label>
+                    <textarea name="void_reason" class="form-control" rows="3"
+                        placeholder="e.g. Duplicate entry — customer only made one transfer."
+                        required></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger">
+                        <i class="bi bi-x-circle me-1"></i>Void This Payment
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@push('scripts')
+<script>
+function showVoidModal(batchId, amount) {
+    const form = document.getElementById('voidPaymentForm');
+    form.action = `/payments/batch/${batchId}/void`;
+    form.querySelector('textarea').value = '';
+    document.getElementById('voidAmountDisplay').textContent =
+        'Rp ' + Math.round(amount).toLocaleString('id-ID');
+    new bootstrap.Modal(document.getElementById('voidPaymentModal')).show();
+}
+</script>
+@endpush
 
 @endsection
