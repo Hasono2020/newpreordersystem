@@ -66,14 +66,15 @@ class PurchasingController extends Controller
             ->orderBy('products.name')
             ->get();
 
-        // Suppliers whose POs are confirmed/arrived — hide their demand entirely
+        // Suppliers with a CONFIRMED (sent) PO — hide demand (already ordered, awaiting arrival).
+        // Arrived POs do NOT lock — new orders after arrival should show demand again.
         $lockedSupplierIds = PurchaseOrder::where('trip_id', $trip->id)
-            ->whereIn('status', ['confirmed', 'arrived'])
+            ->where('status', 'confirmed')
             ->whereNotNull('supplier_id')
             ->pluck('supplier_id')->unique()->toArray();
 
         $lockedNoSupplier = PurchaseOrder::where('trip_id', $trip->id)
-            ->whereIn('status', ['confirmed', 'arrived'])
+            ->where('status', 'confirmed')
             ->whereNull('supplier_id')->exists();
 
         // For each variant, get total quantity already in active POs for this trip.

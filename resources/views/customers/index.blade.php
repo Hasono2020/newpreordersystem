@@ -119,7 +119,7 @@
                         </a>
                     </div>
                 </div>
-                <form method="POST" action="{{ route('customers.import') }}" enctype="multipart/form-data" onsubmit="showProcessing('Importing customers from Excel. Large files may take up to a minute. Please do not close this page.');">
+                <form method="POST" action="{{ route('customers.import') }}" enctype="multipart/form-data" onsubmit="const ov=document.getElementById('processingOverlay'); document.getElementById('processingMsg').textContent='Importing customers from Excel. Large files may take up to a minute. Please do not close this page.'; ov.style.display='flex';">
                     @csrf
                     <input type="file" name="file" class="form-control mb-3" accept=".xlsx" required>
                     <button type="submit" class="btn btn-primary w-100">

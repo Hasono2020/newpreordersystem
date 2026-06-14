@@ -4,7 +4,17 @@
 
 @push('styles')
 <style>
-.item-row { background:#f9fafb; border-radius:8px; padding:1rem; margin-bottom:.75rem; border:1px solid #e5e7eb; }
+.item-row { background:#f9fafb; border-radius:8px; padding:.75rem 1rem; margin-bottom:.5rem; border:1px solid #e5e7eb; transition:border-color .15s; }
+.item-row.active-row { border-color:#2563eb; background:#f0f9ff; }
+
+/* variant tags */
+.var-tags { display:flex; flex-wrap:wrap; gap:4px; margin-top:4px; min-height:28px; }
+.var-tag { border:1px solid #d1d5db; border-radius:4px; padding:2px 8px; font-size:.78rem; cursor:pointer;
+    background:#fff; color:#374151; transition:all .1s; user-select:none; }
+.var-tag:hover { border-color:#93c5fd; background:#eff6ff; }
+.var-tag.selected { border-color:#2563eb; background:#2563eb; color:#fff; font-weight:500; }
+.var-tag:focus { outline:2px solid #2563eb; outline-offset:1px; }
+.no-variant-badge { font-size:.75rem; color:#9ca3af; padding:4px 0; }
 
 /* ── Phone-first customer lookup ── */
 #phoneInput { font-family: monospace; letter-spacing:.05em; }
@@ -29,10 +39,11 @@
 .product-dropdown .prod-item:hover { background:#f0f9ff; }
 .product-dropdown .prod-item .prod-code { font-weight:700; color:#2563eb; margin-right:.35rem; }
 .product-dropdown .prod-no-result { padding:.5rem .75rem; color:#9ca3af; font-size:.82rem; }
-.product-selected-badge { background:#eff6ff; border:1px solid #bfdbfe; border-radius:5px; padding:.25rem .6rem;
-    font-size:.8rem; display:flex; align-items:center; justify-content:space-between; }
-.product-selected-badge .clear-product { cursor:pointer; color:#6b7280; font-size:1rem; line-height:1; margin-left:.4rem; }
-.product-selected-badge .clear-product:hover { color:#dc2626; }
+.product-selected-badge { background:#eff6ff; border:1px solid #bfdbfe; border-radius:5px; padding:.3rem .7rem;
+    font-size:.82rem; display:flex; align-items:center; justify-content:space-between; }
+.product-selected-badge .clear-product { cursor:pointer; color:#6b7280; font-size:.8rem; margin-left:.5rem;
+    padding:1px 5px; border:1px solid #d1d5db; border-radius:3px; background:#fff; }
+.product-selected-badge .clear-product:hover { color:#dc2626; border-color:#fca5a5; background:#fff5f5; }
 
 /* Keyboard hint */
 .kbd-hint { display:inline-block; background:#f3f4f6; border:1px solid #d1d5db; border-radius:3px;
@@ -234,10 +245,13 @@
         </div>
         <div class="card-body" id="itemsContainer">
             <div class="item-row" data-index="0">
-                <div class="row g-2 align-items-end">
-                    <div class="col-md-4">
-                        <label class="form-label small fw-semibold">Product code / name</label>
+                <div class="d-flex gap-2 align-items-start">
+                    {{-- Product search --}}
+                    <div style="flex:0 0 240px;">
+                        <div class="small text-muted mb-1">Product</div>
                         <input type="hidden" name="items[0][product_id]" class="product-id-input">
+                        <input type="hidden" name="items[0][product_variant_id]" class="variant-id-input">
+                        <input type="hidden" name="items[0][unit_price]" class="item-price" value="0">
                         <div class="product-search-wrap position-relative">
                             <input type="text" class="form-control form-control-sm product-search-input"
                                    placeholder="Code or name…" autocomplete="off">
@@ -245,34 +259,30 @@
                         </div>
                         <div class="product-selected-badge mt-1" style="display:none;"></div>
                     </div>
-                    <div class="col-md-3">
-                        <label class="form-label small fw-semibold">Variant</label>
-                        <select name="items[0][product_variant_id]" class="form-select form-select-sm variant-select">
-                            <option value="">No variant</option>
-                        </select>
+                    {{-- Variant tags --}}
+                    <div style="flex:1;min-width:0;">
+                        <div class="small text-muted mb-1">Variant <span class="kbd-hint" style="font-size:.65rem;">↑↓ navigate · Enter select</span></div>
+                        <div class="var-tags">
+                            <span class="no-variant-badge">— select product first —</span>
+                        </div>
                     </div>
-                    <div class="col-md-2">
-                        <label class="form-label small fw-semibold">Qty</label>
-                        <input type="number" name="items[0][quantity]" class="form-control form-control-sm item-qty" value="1" min="1" required>
+                    {{-- Qty --}}
+                    <div style="flex:0 0 72px;">
+                        <div class="small text-muted mb-1">Qty</div>
+                        <input type="number" name="items[0][quantity]" class="form-control form-control-sm item-qty text-center" value="1" min="1" required>
                     </div>
-                    <div class="col-md-2">
-                        <label class="form-label small fw-semibold">Price (Rp)</label>
-                        <input type="number" name="items[0][unit_price]" class="form-control form-control-sm item-price" value="0" min="0" step="1000" required>
-                    </div>
-                    <div class="col-md-1 d-flex align-items-end">
-                        <button type="button" class="btn btn-sm btn-outline-danger remove-item w-100">×</button>
+                    {{-- Remove --}}
+                    <div style="flex:0 0 32px;margin-top:20px;">
+                        <button type="button" class="btn btn-sm btn-outline-danger remove-item w-100 px-0">×</button>
                     </div>
                 </div>
-                <div class="row mt-1">
-                    <div class="col small text-muted">
-                        Line: <strong class="line-total">Rp 0</strong>
-                        &nbsp;·&nbsp; Weight: <strong class="line-weight">0g</strong>
-                        &nbsp;·&nbsp; Code: <span class="product-code text-info">—</span>
-                        <span class="weight-warn text-warning ms-2" style="display:none;">
-                            <i class="bi bi-exclamation-triangle-fill"></i> Product weight is 0 — shipping may be incorrect.
-                            <a href="#" onclick="return false;" class="edit-product-link text-warning">Edit product</a>
-                        </span>
-                    </div>
+                <div class="small text-muted mt-1 ps-1">
+                    Line: <strong class="line-total">Rp 0</strong>
+                    &nbsp;·&nbsp; <span class="line-weight">0g</span>
+                    &nbsp;·&nbsp; <span class="product-code text-info font-monospace">—</span>
+                    <span class="weight-warn text-warning ms-1" style="display:none;">
+                        <i class="bi bi-exclamation-triangle-fill"></i> Weight is 0
+                    </span>
                 </div>
             </div>
         </div>
@@ -642,58 +652,116 @@ function initProductSearch(wrap) {
 function selectProduct(p, wrap) {
     const row         = wrap.closest('.item-row');
     const hiddenInput = row.querySelector('.product-id-input');
+    const varIdInput  = row.querySelector('.variant-id-input');
+    const priceIn     = row.querySelector('.item-price');
     const badge       = row.querySelector('.product-selected-badge');
     const searchInput = wrap.querySelector('.product-search-input');
     const dropdown    = wrap.querySelector('.product-dropdown');
-    const varSel      = row.querySelector('.variant-select');
-    const priceIn     = row.querySelector('.item-price');
+    const varTagsEl   = row.querySelector('.var-tags');
     const codeEl      = row.querySelector('.product-code');
     const weightWarn  = row.querySelector('.weight-warn');
-    const editLink    = row.querySelector('.edit-product-link');
 
     hiddenInput.value = p.id;
+    varIdInput.value  = '';
+    priceIn.value     = parseFloat(p.price) || 0;
+    if (codeEl) codeEl.textContent = p.code || '—';
+    if (weightWarn) weightWarn.style.display = (!p.weight || p.weight == 0) && p.id ? 'inline' : 'none';
 
+    // Lock in product as badge
     const label = p.code ? `[${p.code}] ${p.name}` : p.name;
-    badge.innerHTML = `<span>${label} <span class="text-muted ms-1" style="font-size:.75rem">Rp ${parseInt(p.price).toLocaleString('id-ID')}</span></span><span class="clear-product" title="Change">×</span>`;
+    badge.innerHTML = `<span class="font-monospace" style="font-size:.75rem;color:#2563eb">${p.code ? '['+p.code+']' : ''}</span>
+        <span class="ms-1">${p.name}</span>
+        <button type="button" class="clear-product ms-auto" title="Change product">change</button>`;
     badge.style.display = 'flex';
+    badge.style.alignItems = 'center';
     searchInput.style.display = 'none';
     searchInput.value = '';
     dropdown.style.display = 'none';
+    row.classList.add('active-row');
 
     badge.querySelector('.clear-product').addEventListener('click', () => {
         hiddenInput.value = '';
+        varIdInput.value  = '';
+        priceIn.value     = 0;
         badge.style.display = 'none';
         searchInput.style.display = '';
         searchInput.value = '';
         searchInput.focus();
-        varSel.innerHTML = '<option value="">No variant</option>';
-        priceIn.value = 0;
+        varTagsEl.innerHTML = '<span class="no-variant-badge">— select product first —</span>';
+        row.classList.remove('active-row');
         if (codeEl) codeEl.textContent = '—';
         recalc();
     });
 
-    priceIn.value = parseFloat(p.price) || 0;
-    if (codeEl) codeEl.textContent = p.code || '—';
-    if (editLink) { editLink.href = `/products/${p.id}/edit`; editLink.target = '_blank'; }
-    if (weightWarn) weightWarn.style.display = (!p.weight || p.weight == 0) && p.id ? 'inline' : 'none';
+    // Build variant tag buttons
+    const variants = p.variants || [];
+    varTagsEl.innerHTML = '';
 
-    varSel.innerHTML = '<option value="">No variant</option>';
-    (p.variants || []).forEach(v => {
-        const fp = parseFloat(v.price) || parseFloat(p.price) || 0;
-        varSel.innerHTML += `<option value="${v.id}" data-price="${fp}">${v.label||'Default'} — Rp ${Math.round(fp).toLocaleString('id-ID')}</option>`;
+    if (!variants.length) {
+        // No variants — show badge and jump to qty immediately
+        varTagsEl.innerHTML = '<span class="no-variant-badge text-success"><i class="bi bi-check-circle me-1"></i>No variant</span>';
+        setTimeout(() => row.querySelector('.item-qty')?.focus(), 50);
+        checkDuplicate(row);
+        recalc();
+        return;
+    }
+
+    variants.forEach((v, i) => {
+        const fp  = parseFloat(v.price) || parseFloat(p.price) || 0;
+        const btn = document.createElement('button');
+        btn.type      = 'button';
+        btn.className = 'var-tag';
+        btn.textContent = v.label || 'Default';
+        btn.dataset.varId    = v.id;
+        btn.dataset.varPrice = fp;
+        btn.tabIndex = 0;
+
+        btn.addEventListener('click', () => selectVariantTag(btn, row));
+        btn.addEventListener('keydown', e => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectVariantTag(btn, row); }
+            if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                e.preventDefault();
+                const next = btn.nextElementSibling;
+                if (next && next.classList.contains('var-tag')) { next.focus(); }
+            }
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                const prev = btn.previousElementSibling;
+                if (prev && prev.classList.contains('var-tag')) { prev.focus(); }
+            }
+        });
+        varTagsEl.appendChild(btn);
     });
 
-    // Auto-select variant if only one, then focus qty
-    if ((p.variants||[]).length === 1) {
-        varSel.selectedIndex = 1;
-        priceIn.value = parseFloat(p.variants[0].price) || parseFloat(p.price) || 0;
+    // Auto-select if only one variant
+    if (variants.length === 1) {
+        selectVariantTag(varTagsEl.querySelector('.var-tag'), row);
+    } else {
+        // Focus first tag for keyboard navigation
+        setTimeout(() => varTagsEl.querySelector('.var-tag')?.focus(), 50);
     }
+}
+
+function selectVariantTag(btn, row) {
+    const varTagsEl = row.querySelector('.var-tags');
+    varTagsEl.querySelectorAll('.var-tag').forEach(t => t.classList.remove('selected'));
+    btn.classList.add('selected');
+    // Clear any validation error highlight and dismiss toast
+    row.style.borderColor = '';
+    varTagsEl.style.outline = '';
+    document.getElementById('variantToast')?.remove();
+    document.getElementById('variantToastBd')?.remove();
+
+    const varIdInput = row.querySelector('.variant-id-input');
+    const priceIn    = row.querySelector('.item-price');
+    varIdInput.value = btn.dataset.varId;
+    priceIn.value    = btn.dataset.varPrice;
 
     checkDuplicate(row);
     recalc();
 
-    // After selecting product, focus qty for fast keyboard entry
-    setTimeout(() => row.querySelector('.item-qty')?.focus(), 50);
+    // Jump to qty
+    setTimeout(() => row.querySelector('.item-qty')?.focus(), 40);
 }
 
 function getRowProduct(row) {
@@ -704,26 +772,19 @@ function getRowProduct(row) {
 
 // ── Item events ──────────────────────────────────────────────────────
 document.addEventListener('change', function(e) {
-    if (e.target.classList.contains('variant-select')) {
-        const row = e.target.closest('.item-row');
-        const opt = e.target.options[e.target.selectedIndex];
-        if (opt.dataset.price) row.querySelector('.item-price').value = opt.dataset.price;
-        checkDuplicate(row);
-        recalc();
-    }
-    if (e.target.classList.contains('item-qty') || e.target.classList.contains('item-price')) recalc();
+    if (e.target.classList.contains('item-qty')) recalc();
 });
 
 function checkDuplicate(row) {
     const prodId = row.querySelector('.product-id-input')?.value;
-    const varId  = row.querySelector('.variant-select')?.value || '';
+    const varId  = row.querySelector('.variant-id-input')?.value || '';
     let warn = row.querySelector('.duplicate-warn');
     if (warn) warn.remove();
     if (!prodId) return;
     let dupRow = null;
     document.querySelectorAll('.item-row').forEach(r => {
         if (r === row) return;
-        if (r.querySelector('.product-id-input')?.value === prodId && (r.querySelector('.variant-select')?.value||'') === varId) dupRow = r;
+        if (r.querySelector('.product-id-input')?.value === prodId && (r.querySelector('.variant-id-input')?.value||'') === varId) dupRow = r;
     });
     if (!dupRow) return;
     const warnDiv = document.createElement('div');
@@ -736,12 +797,12 @@ function checkDuplicate(row) {
 function mergeRow(btn) {
     const row    = btn.closest('.item-row');
     const prodId = row.querySelector('.product-id-input')?.value;
-    const varId  = row.querySelector('.variant-select')?.value || '';
+    const varId  = row.querySelector('.variant-id-input')?.value || '';
     const qty    = parseInt(row.querySelector('.item-qty')?.value) || 1;
     let dupRow = null;
     document.querySelectorAll('.item-row').forEach(r => {
         if (r === row) return;
-        if (r.querySelector('.product-id-input')?.value === prodId && (r.querySelector('.variant-select')?.value||'') === varId) dupRow = r;
+        if (r.querySelector('.product-id-input')?.value === prodId && (r.querySelector('.variant-id-input')?.value||'') === varId) dupRow = r;
     });
     if (dupRow) { dupRow.querySelector('.item-qty').value = parseInt(dupRow.querySelector('.item-qty').value||1) + qty; }
     row.remove(); recalc();
@@ -754,15 +815,13 @@ function recalc() {
         const price = parseFloat(row.querySelector('.item-price').value) || 0;
         const line  = qty * price;
         row.querySelector('.line-total').textContent = fmt(line);
-        const priceInput = row.querySelector('.item-price');
-        if (price === 0 && qty > 0) { priceInput.classList.add('border-warning'); hasZeroPrice = true; }
-        else priceInput.classList.remove('border-warning');
+        if (price === 0 && qty > 0) hasZeroPrice = true;
         const prod      = getRowProduct(row);
         const wGram     = parseInt(prod?.weight || 0);
         const lineGrams = wGram * qty;
         row.querySelector('.line-weight').textContent = fmtG(lineGrams);
         const weightWarn = row.querySelector('.weight-warn');
-        if (weightWarn) weightWarn.style.display = (wGram===0 && prod) ? 'block' : 'none';
+        if (weightWarn) weightWarn.style.display = (wGram===0 && prod) ? 'inline' : 'none';
         subtotal   += line;
         totalGrams += lineGrams;
     });
@@ -800,43 +859,39 @@ function addNewItem() {
     div.className = 'item-row';
     div.dataset.index = itemIndex;
     div.innerHTML = `
-        <div class="row g-2 align-items-end">
-            <div class="col-md-4">
-                <label class="form-label small fw-semibold">Product code / name</label>
+        <div class="d-flex gap-2 align-items-start">
+            <div style="flex:0 0 240px;">
+                <div class="small text-muted mb-1">Product</div>
                 <input type="hidden" name="items[${itemIndex}][product_id]" class="product-id-input">
+                <input type="hidden" name="items[${itemIndex}][product_variant_id]" class="variant-id-input">
+                <input type="hidden" name="items[${itemIndex}][unit_price]" class="item-price" value="0">
                 <div class="product-search-wrap position-relative">
                     <input type="text" class="form-control form-control-sm product-search-input" placeholder="Code or name…" autocomplete="off">
                     <div class="product-dropdown"></div>
                 </div>
                 <div class="product-selected-badge mt-1" style="display:none;"></div>
             </div>
-            <div class="col-md-3">
-                <label class="form-label small fw-semibold">Variant</label>
-                <select name="items[${itemIndex}][product_variant_id]" class="form-select form-select-sm variant-select">
-                    <option value="">No variant</option>
-                </select>
+            <div style="flex:1;min-width:0;">
+                <div class="small text-muted mb-1">Variant <span class="kbd-hint" style="font-size:.65rem;">↑↓ navigate · Enter select</span></div>
+                <div class="var-tags">
+                    <span class="no-variant-badge">— select product first —</span>
+                </div>
             </div>
-            <div class="col-md-2">
-                <label class="form-label small fw-semibold">Qty</label>
-                <input type="number" name="items[${itemIndex}][quantity]" class="form-control form-control-sm item-qty" value="1" min="1" required>
+            <div style="flex:0 0 72px;">
+                <div class="small text-muted mb-1">Qty</div>
+                <input type="number" name="items[${itemIndex}][quantity]" class="form-control form-control-sm item-qty text-center" value="1" min="1" required>
             </div>
-            <div class="col-md-2">
-                <label class="form-label small fw-semibold">Price (Rp)</label>
-                <input type="number" name="items[${itemIndex}][unit_price]" class="form-control form-control-sm item-price" value="0" min="0" step="1000" required>
-            </div>
-            <div class="col-md-1 d-flex align-items-end">
-                <button type="button" class="btn btn-sm btn-outline-danger remove-item w-100">×</button>
+            <div style="flex:0 0 32px;margin-top:20px;">
+                <button type="button" class="btn btn-sm btn-outline-danger remove-item w-100 px-0">×</button>
             </div>
         </div>
-        <div class="row mt-1">
-            <div class="col small text-muted">
-                Line: <strong class="line-total">Rp 0</strong>
-                &nbsp;·&nbsp; Weight: <strong class="line-weight">0g</strong>
-                &nbsp;·&nbsp; Code: <span class="product-code text-info">—</span>
-                <span class="weight-warn text-warning ms-2" style="display:none;">
-                    <i class="bi bi-exclamation-triangle-fill"></i> Product weight is 0 — shipping may be incorrect.
-                </span>
-            </div>
+        <div class="small text-muted mt-1 ps-1">
+            Line: <strong class="line-total">Rp 0</strong>
+            &nbsp;·&nbsp; <span class="line-weight">0g</span>
+            &nbsp;·&nbsp; <span class="product-code text-info font-monospace">—</span>
+            <span class="weight-warn text-warning ms-1" style="display:none;">
+                <i class="bi bi-exclamation-triangle-fill"></i> Weight is 0
+            </span>
         </div>`;
     document.getElementById('itemsContainer').appendChild(div);
     initProductSearch(div.querySelector('.product-search-wrap'));
@@ -845,6 +900,85 @@ function addNewItem() {
 }
 
 document.getElementById('addItemBtn').addEventListener('click', addNewItem);
+
+// ── Form submit guard ─────────────────────────────────────────────────
+document.getElementById('orderForm').addEventListener('submit', function(e) {
+    let errors = [];
+
+    // Check customer selected
+    if (!document.getElementById('customerId').value) {
+        errors.push('Please select a customer.');
+    }
+
+    // Check each item row
+    document.querySelectorAll('.item-row').forEach((row, i) => {
+        const prodId  = row.querySelector('.product-id-input')?.value;
+        const varTags = row.querySelectorAll('.var-tag');
+        const hasSelected = row.querySelector('.var-tag.selected');
+
+        if (!prodId) {
+            errors.push(`Item ${i+1}: No product selected.`);
+            return;
+        }
+
+        // If variant tags exist but none selected — block submit
+        if (varTags.length > 0 && !hasSelected) {
+            // Highlight the row
+            row.classList.add('active-row');
+            row.style.borderColor = '#dc3545';
+            const varLabel = row.querySelector('.var-tags');
+            if (varLabel) varLabel.style.outline = '2px solid #dc3545';
+            errors.push(`Item ${i+1} (${row.querySelector('.product-code')?.textContent || 'product'}): Please select a variant.`);
+        }
+    });
+
+    if (errors.length) {
+        e.preventDefault();
+
+        // Show a fixed centered toast/banner so it's always visible
+        let toast = document.getElementById('variantToast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'variantToast';
+            toast.style.cssText = [
+                'position:fixed',
+                'top:50%','left:50%',
+                'transform:translate(-50%,-50%)',
+                'z-index:9999',
+                'background:#fff',
+                'border:2px solid #dc3545',
+                'border-radius:12px',
+                'padding:1.25rem 1.5rem',
+                'box-shadow:0 8px 32px rgba(0,0,0,.18)',
+                'min-width:320px','max-width:480px',
+                'text-align:center',
+            ].join(';');
+            document.body.appendChild(toast);
+        }
+        toast.innerHTML = `
+            <div style="font-size:2rem;margin-bottom:.5rem;">⚠️</div>
+            <div style="font-weight:700;font-size:1rem;color:#dc3545;margin-bottom:.5rem;">Please fix the following</div>
+            <ul style="text-align:left;margin:0 0 1rem;padding-left:1.2rem;font-size:.9rem;color:#374151">
+                ${errors.map(err => `<li>${err}</li>`).join('')}
+            </ul>
+            <button type="button" onclick="document.getElementById('variantToast').remove()"
+                class="btn btn-danger btn-sm px-4">OK, I'll fix it</button>`;
+
+        // Backdrop
+        let bd = document.getElementById('variantToastBd');
+        if (!bd) {
+            bd = document.createElement('div');
+            bd.id = 'variantToastBd';
+            bd.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:9998;';
+            bd.onclick = () => { bd.remove(); document.getElementById('variantToast')?.remove(); };
+            document.body.appendChild(bd);
+        }
+
+        // Also scroll the first offending row into view
+        const firstBad = document.querySelector('.item-row[style*="dc3545"]');
+        if (firstBad) firstBad.scrollIntoView({behavior:'smooth', block:'center'});
+    }
+});
 document.addEventListener('click', e => {
     if (e.target.classList.contains('remove-item')) {
         if (document.querySelectorAll('.item-row').length > 1) { e.target.closest('.item-row').remove(); recalc(); }

@@ -136,7 +136,7 @@
                         <i class="bi bi-download me-1"></i>Download template (.xlsx)
                     </a>
                 </div>
-                <form method="POST" action="{{ route('orders.import') }}" enctype="multipart/form-data" onsubmit="showProcessing('Importing orders from Excel. Large files may take up to a minute. Please do not close this page.');">
+                <form method="POST" action="{{ route('orders.import') }}" enctype="multipart/form-data" onsubmit="const ov=document.getElementById('processingOverlay'); document.getElementById('processingMsg').textContent='Importing orders from Excel. Large files may take up to a minute. Please do not close this page.'; ov.style.display='flex';">
                     @csrf
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Trip <span class="text-danger">*</span></label>

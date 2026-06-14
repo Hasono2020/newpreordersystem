@@ -106,7 +106,7 @@ body { padding-bottom: 0; }
         @endif
         @if(auth()->user()->hasPermission('purchasing.edit'))
         <form method="POST" action="{{ route('purchasing.destroy', $purchasing) }}"
-            onsubmit="if(confirm('Delete this purchase order?')){ showProcessing('Deleting purchase order and reversing stock allocation. Please do not close this page.'); return true; } return false;">
+            onsubmit="if(confirm('Delete this purchase order?')){ const ov=document.getElementById('processingOverlay'); document.getElementById('processingMsg').textContent='Deleting purchase order and reversing stock allocation. Please do not close this page.'; ov.style.display='flex'; return true; } return false;">
             @csrf @method('DELETE')
             <button type="submit" class="btn btn-sm btn-outline-danger py-1">
                 <i class="bi bi-trash3 me-1"></i><span class="d-none d-md-inline">Delete</span>
@@ -298,7 +298,9 @@ function submitArrival() {
             quantity_received: parseInt(RECEIVED[r.i] ?? r.received) || 0
         }));
         document.getElementById('itemsJsonField').value = JSON.stringify(payload);
-        showProcessing('Confirming arrival and allocating stock (FIFO). This may take a moment for large orders. Please do not close this page.');
+        const ov = document.getElementById('processingOverlay');
+        document.getElementById('processingMsg').textContent = 'Confirming arrival and allocating stock (FIFO). This may take a moment for large orders. Please do not close this page.';
+        ov.style.display = 'flex';
         document.getElementById('arrivalForm').submit();
     }
 }

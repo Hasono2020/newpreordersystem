@@ -133,7 +133,7 @@
 <div class="modal fade" id="importModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
-            <form method="POST" action="{{ route('shipping.import') }}" enctype="multipart/form-data" onsubmit="showProcessing('Importing shipping areas from Excel. Please do not close this page.');">
+            <form method="POST" action="{{ route('shipping.import') }}" enctype="multipart/form-data" onsubmit="const ov=document.getElementById('processingOverlay'); document.getElementById('processingMsg').textContent='Importing shipping areas from Excel. Please do not close this page.'; ov.style.display='flex';">
                 @csrf
                 <div class="modal-header">
                     <h5 class="modal-title"><i class="bi bi-upload me-2"></i>Import Shipping Areas</h5>

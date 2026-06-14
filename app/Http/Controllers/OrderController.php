@@ -97,6 +97,16 @@ class OrderController extends Controller
                     }
                 }
 
+                // If product has variants but none was selected — reject
+                if (!$variantId) {
+                    $hasVariants = \App\Models\ProductVariant::where('product_id', $itemData['product_id'])->exists();
+                    if ($hasVariants) {
+                        return back()->withInput()->withErrors([
+                            'items' => 'One or more items are missing a variant selection. Please pick a variant for each product.',
+                        ]);
+                    }
+                }
+
                 $key = $itemData['product_id'] . '_' . ($variantId ?? '0');
                 if (isset($mergedItems[$key])) {
                     // Same product+variant already added — merge quantities
