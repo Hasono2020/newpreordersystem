@@ -7,6 +7,7 @@ use App\Http\Controllers\TripController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\OrderController;
+use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\PromoController;
 use App\Http\Controllers\PurchasingController;
 use App\Http\Controllers\ShippingAreaController;
@@ -69,6 +70,12 @@ Route::middleware('auth')->group(function () {
     Route::delete('orders/{order}/items/{item}', [OrderController::class, 'removeItem'])->name('orders.items.remove');
     Route::post('orders/{order}/payments', [OrderController::class, 'addPayment'])->name('orders.payments.add');
     Route::post('payments/{payment}/void', [OrderController::class, 'voidPayment'])->middleware('perm:payments.void')->name('payments.void');
+
+    // Customer-level payment recording & reconciliation (finance)
+    Route::get('payments', [PaymentController::class, 'index'])->middleware('perm:payments.view')->name('payments.index');
+    Route::get('payments/customer/{customer}', [PaymentController::class, 'createForCustomer'])->middleware('perm:payments.record')->name('payments.create');
+    Route::post('payments', [PaymentController::class, 'store'])->middleware('perm:payments.record')->name('payments.store');
+    Route::post('payments/batch/{batchId}/void', [PaymentController::class, 'voidBatch'])->middleware('perm:payments.void')->name('payments.batch.void');
     Route::get('orders/{order}/invoice', [OrderController::class, 'invoice'])->name('orders.invoice');
     Route::get('customers/{customer}/combined-invoice', [OrderController::class, 'combinedInvoice'])->name('orders.combined-invoice');
 

@@ -277,6 +277,11 @@
         <a href="{{ route('orders.index') }}" class="nav-link {{ request()->routeIs('orders.*') ? 'active' : '' }}" onclick="closeSidebar()">
             <i class="bi bi-cart3"></i> Orders
         </a>
+        @if(auth()->user()->hasPermission('payments.view'))
+        <a href="{{ route('payments.index') }}" class="nav-link {{ request()->routeIs('payments.*') ? 'active' : '' }}" onclick="closeSidebar()">
+            <i class="bi bi-cash-coin"></i> Payments
+        </a>
+        @endif
         <a href="{{ route('purchasing.index') }}" class="nav-link {{ request()->routeIs('purchasing.*') ? 'active' : '' }}" onclick="closeSidebar()">
             <i class="bi bi-box-seam"></i> Purchasing
         </a>
