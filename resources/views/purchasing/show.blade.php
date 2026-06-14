@@ -291,6 +291,13 @@ function filterItems(q) {
 
 function submitArrival() {
     if (confirm('Confirm arrival and run FIFO allocation?\n\nThis will update all order item statuses.')) {
+        // Serialize RECEIVED into [{id, quantity_received}] array the controller expects.
+        // RECEIVED is keyed by row-index; look up the actual item id from ITEMS.
+        const payload = ITEMS.map(r => ({
+            id: r.id,
+            quantity_received: parseInt(RECEIVED[r.i] ?? r.received) || 0
+        }));
+        document.getElementById('itemsJsonField').value = JSON.stringify(payload);
         showProcessing('Confirming arrival and allocating stock (FIFO). This may take a moment for large orders. Please do not close this page.');
         document.getElementById('arrivalForm').submit();
     }

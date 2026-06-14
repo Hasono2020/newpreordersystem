@@ -76,6 +76,7 @@ Route::middleware('auth')->group(function () {
     Route::get('payments/customer/{customer}', [PaymentController::class, 'createForCustomer'])->middleware('perm:payments.record')->name('payments.create');
     Route::post('payments', [PaymentController::class, 'store'])->middleware('perm:payments.record')->name('payments.store');
     Route::post('payments/batch/{batchId}/void', [PaymentController::class, 'voidBatch'])->middleware('perm:payments.void')->name('payments.batch.void');
+    Route::get('payments/export', [PaymentController::class, 'export'])->middleware('perm:payments.view')->name('payments.export');
     Route::get('orders/{order}/invoice', [OrderController::class, 'invoice'])->name('orders.invoice');
     Route::get('customers/{customer}/combined-invoice', [OrderController::class, 'combinedInvoice'])->name('orders.combined-invoice');
 

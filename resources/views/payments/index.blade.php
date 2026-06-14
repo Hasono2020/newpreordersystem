@@ -17,6 +17,11 @@
                 @endforeach
             </select>
             <button class="btn btn-sm btn-outline-secondary">Filter</button>
+            <a href="{{ route('payments.export', ['trip_id' => $tripId]) }}"
+               class="btn btn-sm btn-outline-success ms-1"
+               onclick="showExport('Preparing export…')">
+                <i class="bi bi-file-earmark-excel me-1"></i>Export
+            </a>
             @if(!empty($search))
                 <a href="{{ route('payments.index', ['trip_id' => $tripId, 'tab' => $tab]) }}" class="btn btn-sm btn-link">Clear</a>
             @endif
@@ -111,9 +116,12 @@
                         <td data-label="Reference" class="small text-muted">{{ $payment->reference ?? '—' }}</td>
                         <td data-label="Recorded By" class="small text-muted">{{ $payment->recordedBy->name ?? '—' }}</td>
                         <td class="no-label text-end">
-                            @if(!$payment->isVoided() && $payment->batch_id && auth()->user()->hasPermission('payments.void'))
+                            @if(!$payment->isVoided() && auth()->user()->hasPermission('payments.void'))
                             <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2"
-                                onclick="showVoidModal('{{ $payment->batch_id }}', {{ $payment->amount }})">
+                                onclick="showVoidModal(
+                                    {{ $payment->batch_id ? "'batch/{$payment->batch_id}'" : "'{$payment->id}'" }},
+                                    {{ $payment->amount }},
+                                    {{ $payment->batch_id ? 'true' : 'false' }})">
                                 Void
                             </button>
                             @endif
@@ -168,9 +176,11 @@
 
 @push('scripts')
 <script>
-function showVoidModal(batchId, amount) {
+function showVoidModal(routeSuffix, amount, isBatch) {
     const form = document.getElementById('voidPaymentForm');
-    form.action = `/payments/batch/${batchId}/void`;
+    // isBatch=true  → /payments/batch/{batchId}/void
+    // isBatch=false → /payments/{id}/void
+    form.action = `/payments/${routeSuffix}/void`;
     form.querySelector('textarea').value = '';
     document.getElementById('voidAmountDisplay').textContent =
         'Rp ' + Math.round(amount).toLocaleString('id-ID');

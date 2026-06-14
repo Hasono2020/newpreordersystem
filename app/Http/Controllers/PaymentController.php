@@ -13,6 +13,8 @@ use Illuminate\Support\Str;
 
 class PaymentController extends Controller
 {
+    use \App\Traits\HandlesXlsx;
+
     /**
      * Payments home: outstanding balances + payment log.
      */
@@ -203,10 +205,203 @@ class PaymentController extends Controller
         return back()->with('success', 'Payment batch voided. Affected order balances restored.');
     }
 
+
     /**
-     * Recalculate an order's deposit_paid + payment_status from its
-     * non-voided payment rows. Mirrors OrderController::recalcOrderPayment.
+     * Export payments for a trip — two-sheet xlsx:
+     *   Sheet 1 — Outstanding Balances
+     *   Sheet 2 — Payment Log
      */
+    public function export(Request $request)
+    {
+        if (!Auth::user()->hasPermission('payments.view')) {
+            abort(403);
+        }
+
+        $trips  = Trip::orderByDesc('id')->get();
+        $tripId = $request->trip_id ?: ($trips->first()->id ?? null);
+        $trip   = Trip::find($tripId);
+        $label  = $trip ? preg_replace('/[^\w\-]/', '_', $trip->name) : 'trip';
+
+        // ── Sheet 1: Outstanding Balances ─────────────────────────────
+        $sheet1 = [
+            ['Customer', 'Phone', 'Type', 'Orders', 'Total Ordered (Rp)', 'Total Paid (Rp)', 'Balance Due (Rp)'],
+        ];
+        $orders = Order::with('customer')
+            ->where('trip_id', $tripId)
+            ->where('payment_status', '!=', 'paid')
+            ->get()
+            ->groupBy('customer_id');
+        foreach ($orders as $customerOrders) {
+            $c = $customerOrders->first()->customer;
+            $ordered = $customerOrders->sum('total_amount');
+            $paid    = $customerOrders->sum('deposit_paid');
+            $sheet1[] = [
+                $c->name ?? '—', $c->phone ?? '—', $c->type ?? '—',
+                $customerOrders->count(), $ordered, $paid, $ordered - $paid,
+            ];
+        }
+
+        // ── Sheet 2: Payment Log ──────────────────────────────────────
+        $sheet2 = [
+            ['Date', 'Customer', 'Phone', 'Order Number', 'Amount (Rp)', 'Method', 'Reference', 'Notes', 'Recorded By', 'Voided'],
+        ];
+        $payments = Payment::with(['order.customer', 'recordedBy'])
+            ->whereHas('order', fn($q) => $q->where('trip_id', $tripId))
+            ->orderBy('paid_at', 'desc')
+            ->get();
+        foreach ($payments as $p) {
+            $sheet2[] = [
+                $p->paid_at?->format('d/m/Y') ?? '—',
+                $p->order->customer->name ?? '—',
+                $p->order->customer->phone ?? '—',
+                $p->order->order_number ?? '—',
+                $p->amount,
+                ucfirst($p->method ?? '—'),
+                $p->reference ?? '—',
+                $p->notes ?? '—',
+                $p->recordedBy->name ?? '—',
+                $p->isVoided() ? 'Yes' : 'No',
+            ];
+        }
+
+        // ── Build two-sheet xlsx manually ─────────────────────────────
+        $filename = "payments_{$label}.xlsx";
+        $xlsx = $this->buildMultiSheetXlsx([
+            'Outstanding Balances' => $sheet1,
+            'Payment Log'          => $sheet2,
+        ]);
+
+        $tmp = tempnam(sys_get_temp_dir(), 'xlsx_dl_');
+        file_put_contents($tmp, $xlsx);
+        return response()->download($tmp, $filename, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ])->deleteFileAfterSend(true);
+    }
+
+    /**
+     * Build a multi-sheet xlsx binary from an associative array of
+     * sheetName => rows[][].
+     */
+    /**
+     * Build a multi-sheet xlsx binary. $sheets = ['Sheet Name' => $rows2d, ...]
+     */
+    private function buildMultiSheetXlsx(array $sheets): string
+    {
+        // Collect shared strings across all sheets
+        $sharedStrings = [];
+        $ssIndex = [];
+        foreach ($sheets as $rows) {
+            foreach ($rows as $row) {
+                foreach ($row as $cell) {
+                    $s = (string) $cell;
+                    if (!is_numeric($cell) && $s !== '' && !isset($ssIndex[$s])) {
+                        $ssIndex[$s] = count($sharedStrings);
+                        $sharedStrings[] = $s;
+                    }
+                }
+            }
+        }
+
+        // Build each sheet XML
+        $sheetXmls    = [];
+        $sheetEntries = '';
+        $relEntries   = '';
+        $ctEntries    = '';
+        $id = 1;
+
+        foreach ($sheets as $name => $rows) {
+            $sheetRows = '';
+            foreach ($rows as $ri => $row) {
+                $rowNum = $ri + 1;
+                $cells  = '';
+                foreach ($row as $ci => $cell) {
+                    $col = $this->xlsxIndexToCol($ci);
+                    $ref = $col . $rowNum;
+                    $s   = (string) $cell;
+                    if ($s === '') {
+                        $cells .= '<c r="' . $ref . '"/>';
+                    } elseif (is_numeric($cell)) {
+                        $cells .= '<c r="' . $ref . '"><v>' . $cell . '</v></c>';
+                    } else {
+                        $idx    = $ssIndex[$s];
+                        $cells .= '<c r="' . $ref . '" t="s"><v>' . $idx . '</v></c>';
+                    }
+                }
+                $sheetRows .= '<row r="' . $rowNum . '">' . $cells . '</row>';
+            }
+
+            $sheetXmls['xl/worksheets/sheet' . $id . '.xml'] =
+                '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                . '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+                . '<sheetData>' . $sheetRows . '</sheetData></worksheet>';
+
+            $safeName      = htmlspecialchars($name, ENT_XML1, 'UTF-8');
+            $sheetEntries .= '<sheet name="' . $safeName . '" sheetId="' . $id . '" r:id="rId' . $id . '"/>';
+            $relEntries   .= '<Relationship Id="rId' . $id . '"'
+                . ' Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"'
+                . ' Target="worksheets/sheet' . $id . '.xml"/>';
+            $ctEntries    .= '<Override PartName="/xl/worksheets/sheet' . $id . '.xml"'
+                . ' ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>';
+            $id++;
+        }
+
+        // Shared strings XML
+        $ssEntries = '';
+        foreach ($sharedStrings as $str) {
+            $ssEntries .= '<si><t>' . htmlspecialchars($str, ENT_XML1, 'UTF-8') . '</t></si>';
+        }
+        $ssXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            . '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
+            . ' count="' . count($sharedStrings) . '" uniqueCount="' . count($sharedStrings) . '">'
+            . $ssEntries . '</sst>';
+
+        $ssRelId = $id;
+
+        $workbookXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            . '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
+            . ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            . '<sheets>' . $sheetEntries . '</sheets></workbook>';
+
+        $workbookRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            . $relEntries
+            . '<Relationship Id="rId' . $ssRelId . '"'
+            . ' Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings"'
+            . ' Target="sharedStrings.xml"/>'
+            . '</Relationships>';
+
+        $contentTypes = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            . '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            . '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            . '<Default Extension="xml" ContentType="application/xml"/>'
+            . '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+            . $ctEntries
+            . '<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>'
+            . '</Types>';
+
+        $dotRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            . '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+            . '</Relationships>';
+
+        $tmp = tempnam(sys_get_temp_dir(), 'xlsx_');
+        $zip = new \ZipArchive();
+        $zip->open($tmp, \ZipArchive::CREATE | \ZipArchive::OVERWRITE);
+        $zip->addFromString('[Content_Types].xml',       $contentTypes);
+        $zip->addFromString('_rels/.rels',               $dotRels);
+        $zip->addFromString('xl/workbook.xml',           $workbookXml);
+        $zip->addFromString('xl/_rels/workbook.xml.rels',$workbookRels);
+        $zip->addFromString('xl/sharedStrings.xml',      $ssXml);
+        foreach ($sheetXmls as $path => $xml) {
+            $zip->addFromString($path, $xml);
+        }
+        $zip->close();
+
+        $content = file_get_contents($tmp);
+        unlink($tmp);
+        return $content;
+    }
+
     private function recalcOrderPayment(?Order $order): void
     {
         if (!$order) return;
