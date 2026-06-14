@@ -3,27 +3,8 @@ use App\Models\Order;
 use App\Models\Payment;
 use App\Models\User;
 
-// ── Helper ────────────────────────────────────────────────────────────
-function makePaymentFor(Tests\TestCase $t): Payment
-{
-    $trip    = $t->openTrip();
-    $area    = $t->shippingArea();
-    $staff   = $t->staffUser();
-    $cust    = $t->customer($staff);
-    $order   = Order::factory()->create([
-        'trip_id'        => $trip->id,
-        'customer_id'    => $cust->id,
-        'created_by'     => $staff->id,
-        'shipping_area_id' => $area->id,
-    ]);
-    return Payment::factory()->create([
-        'order_id'    => $order->id,
-        'recorded_by' => $staff->id,
-    ]);
-}
-
 test('new payment starts as unverified', function () {
-    $payment = makePaymentFor($this);
+    $payment = makePayment($this);
     expect($payment->verification_status)->toBe('unverified')
         ->and($payment->isUnverified())->toBeTrue()
         ->and($payment->isVerified())->toBeFalse();
@@ -31,7 +12,7 @@ test('new payment starts as unverified', function () {
 
 test('finance can verify a payment', function () {
     $finance = $this->financeUser();
-    $payment = makePaymentFor($this);
+    $payment = makePayment($this);
 
     $this->actingAs($finance)
          ->post("/payments/{$payment->id}/verify")
@@ -43,7 +24,7 @@ test('finance can verify a payment', function () {
 
 test('staff cannot verify a payment', function () {
     $staff   = $this->staffUser();
-    $payment = makePaymentFor($this);
+    $payment = makePayment($this);
 
     $this->actingAs($staff)
          ->post("/payments/{$payment->id}/verify")
@@ -54,7 +35,7 @@ test('staff cannot verify a payment', function () {
 
 test('finance can dispute a payment with a reason', function () {
     $finance = $this->financeUser();
-    $payment = makePaymentFor($this);
+    $payment = makePayment($this);
 
     $this->actingAs($finance)
          ->post("/payments/{$payment->id}/dispute", [
@@ -69,7 +50,7 @@ test('finance can dispute a payment with a reason', function () {
 
 test('dispute requires a reason', function () {
     $finance = $this->financeUser();
-    $payment = makePaymentFor($this);
+    $payment = makePayment($this);
 
     $this->actingAs($finance)
          ->post("/payments/{$payment->id}/dispute", ['dispute_note' => ''])
@@ -80,24 +61,23 @@ test('dispute requires a reason', function () {
 
 test('voided payment cannot be verified', function () {
     $finance = $this->financeUser();
-    $payment = makePaymentFor($this);
+    $payment = makePayment($this);
     $payment->update(['voided_at' => now(), 'void_reason' => 'test']);
 
     $this->actingAs($finance)
          ->post("/payments/{$payment->id}/verify")
          ->assertRedirect();
 
-    // Should redirect with error, not change status
     expect($payment->fresh()->verification_status)->toBe('unverified');
 });
 
 test('payment log shows only own orders for own_data staff', function () {
-    $staffA  = $this->ownDataStaff();
-    $staffB  = $this->ownDataStaff();
-    $trip    = $this->openTrip();
-    $area    = $this->shippingArea();
-    $custA   = $this->customer($staffA);
-    $custB   = $this->customer($staffB);
+    $staffA = $this->ownDataStaff();
+    $staffB = $this->ownDataStaff();
+    $trip   = $this->openTrip();
+    $area   = $this->shippingArea();
+    $custA  = $this->customer($staffA);
+    $custB  = $this->customer($staffB);
 
     $orderA = Order::factory()->create(['trip_id' => $trip->id, 'customer_id' => $custA->id, 'created_by' => $staffA->id, 'shipping_area_id' => $area->id]);
     $orderB = Order::factory()->create(['trip_id' => $trip->id, 'customer_id' => $custB->id, 'created_by' => $staffB->id, 'shipping_area_id' => $area->id]);
@@ -110,3 +90,22 @@ test('payment log shows only own orders for own_data staff', function () {
          ->assertSee($custA->name)
          ->assertDontSee($custB->name);
 });
+
+// ── Helper — inside file scope, using $this via closure binding ──────
+function makePayment($test): Payment
+{
+    $trip  = $test->openTrip();
+    $area  = $test->shippingArea();
+    $staff = $test->staffUser();
+    $cust  = $test->customer($staff);
+    $order = Order::factory()->create([
+        'trip_id'          => $trip->id,
+        'customer_id'      => $cust->id,
+        'created_by'       => $staff->id,
+        'shipping_area_id' => $area->id,
+    ]);
+    return Payment::factory()->create([
+        'order_id'    => $order->id,
+        'recorded_by' => $staff->id,
+    ]);
+}
