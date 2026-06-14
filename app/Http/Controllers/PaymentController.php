@@ -45,7 +45,7 @@ class PaymentController extends Controller
                     DB::raw('SUM(orders.total_amount) as total_ordered'),
                     DB::raw('SUM(orders.deposit_paid) as total_paid'),
                     DB::raw('(SUM(orders.total_amount) - SUM(orders.deposit_paid)) as balance_due'),
-                    DB::raw('GROUP_CONCAT(DISTINCT creators.name ORDER BY creators.name SEPARATOR ", ") as created_by_names'),
+                    DB::raw('GROUP_CONCAT(creators.name) as created_by_names'),
                 ])
                 ->where('orders.trip_id', $tripId)
                 ->where('orders.payment_status', '!=', 'paid')

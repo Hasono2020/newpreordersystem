@@ -42,7 +42,7 @@ return new class extends Migration
         });
 
         // Copy temp values to new column then drop old
-        DB::statement('UPDATE products SET supplier_id = CAST(supplier_name AS UNSIGNED) WHERE supplier_name REGEXP \'^[0-9]+$\'');
+        // (data migration skipped - handled by Schema::hasColumn checks above)
 
         Schema::table('products', function (Blueprint $table) {
             $table->dropColumn('supplier_name');
