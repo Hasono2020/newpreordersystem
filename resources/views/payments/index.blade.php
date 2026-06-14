@@ -17,11 +17,23 @@
                 @endforeach
             </select>
             <button class="btn btn-sm btn-outline-secondary">Filter</button>
-            <a href="{{ route('payments.export', ['trip_id' => $tripId]) }}"
-               class="btn btn-sm btn-outline-success ms-1"
-               onclick="showExport('Preparing export…')">
-                <i class="bi bi-file-earmark-excel me-1"></i>Export
-            </a>
+            @if(auth()->user()->hasPermission('payments.view'))
+            <div class="dropdown">
+                <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+                    <i class="bi bi-arrow-down-up me-1"></i>Export
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end" style="min-width:220px;">
+                    <li><h6 class="dropdown-header">Export</h6></li>
+                    <li>
+                        <a onclick="showExport('Preparing payment export…')"
+                           class="dropdown-item"
+                           href="{{ route('payments.export', ['trip_id' => $tripId]) }}">
+                            <i class="bi bi-download me-2 text-success"></i>Export payments as Excel
+                        </a>
+                    </li>
+                </ul>
+            </div>
+            @endif
             @if(!empty($search))
                 <a href="{{ route('payments.index', ['trip_id' => $tripId, 'tab' => $tab]) }}" class="btn btn-sm btn-link">Clear</a>
             @endif

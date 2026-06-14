@@ -36,6 +36,7 @@
             'payments.view'   => 'View payments',
             'payments.record' => 'Record payments',
             'payments.void'   => 'Void payments',
+            'payments.export' => 'Export payments',
         ],
         'Promo Rules' => [
             'promos.view'   => 'View promo rules',

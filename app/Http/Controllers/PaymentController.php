@@ -213,7 +213,7 @@ class PaymentController extends Controller
      */
     public function export(Request $request)
     {
-        if (!Auth::user()->hasPermission('payments.view')) {
+        if (!Auth::user()->hasPermission('payments.export')) {
             abort(403);
         }
 
