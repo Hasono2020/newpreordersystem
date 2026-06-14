@@ -3,6 +3,7 @@ namespace Tests;
 
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use App\Models\User;
 use App\Models\Trip;
 use App\Models\Customer;
@@ -11,6 +12,18 @@ use App\Models\ShippingArea;
 abstract class TestCase extends BaseTestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Register REGEXP function for SQLite so the old data migration works
+        if (DB::connection()->getDriverName() === 'sqlite') {
+            DB::connection()->getPdo()->sqliteCreateFunction('REGEXP', function ($pattern, $value) {
+                return preg_match('/' . $pattern . '/', $value) ? 1 : 0;
+            });
+        }
+    }
 
     // ── Helpers ───────────────────────────────────────────────────────
 
