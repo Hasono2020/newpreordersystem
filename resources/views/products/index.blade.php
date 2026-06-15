@@ -160,7 +160,7 @@
                                 </div>
                             @endif
                             <div>
-                                <div class="fw-semibold">{{ $product->name }}</div>
+                                <div class="fw-semibold">{{ $product->product_code ?? '—' }}</div>
                                 @if($product->brand)
                                     <div class="text-muted small">{{ $product->brand }}</div>
                                 @endif

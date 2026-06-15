@@ -1,6 +1,6 @@
 @extends('layouts.app')
-@section('title', $product->name)
-@section('page-title', $product->name)
+@section('title', $product->product_code)
+@section('page-title', $product->product_code)
 
 @section('content')
 <div class="d-flex gap-2 align-items-center mb-3">
@@ -15,14 +15,14 @@
     <span class="badge {{ $product->status === 'active' ? 'bg-success' : 'bg-secondary' }} align-self-center">
         {{ ucfirst($product->status) }}
     </span>
-    <h5 class="mb-0 ms-2 fw-bold">{{ $product->name }}</h5>
+    <h5 class="mb-0 ms-2 fw-bold">{{ $product->product_code }}</h5>
 </div>
 
 <div class="row g-3">
     <div class="col-lg-4">
         <div class="card p-3 mb-3">
             @if($product->image)
-                <img src="{{ asset('storage/'.$product->image) }}" class="img-fluid rounded mb-3" alt="{{ $product->name }}">
+                <img src="{{ asset('storage/'.$product->image) }}" class="img-fluid rounded mb-3" alt="{{ $product->product_code }}">
             @endif
             <table class="table table-sm mb-0 small">
                 <tr><td class="text-muted">Trip</td><td>{{ $product->trip->name }}</td></tr>

@@ -130,10 +130,7 @@
                         @foreach($topProducts as $p)
                         <tr>
                             <td>
-                                <div class="fw-semibold">{{ $p->name }}</div>
-                                @if($p->product_code)
-                                    <span class="font-monospace text-muted" style="font-size:.72rem;">{{ $p->product_code }}</span>
-                                @endif
+                                <div class="fw-semibold font-monospace">{{ $p->product_code ?? '—' }}</div>
                             </td>
                             <td class="fw-bold">{{ $p->total_qty ?? 0 }}</td>
                         </tr>

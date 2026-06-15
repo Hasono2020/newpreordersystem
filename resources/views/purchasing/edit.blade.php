@@ -134,7 +134,7 @@ foreach($purchasing->items as $item) {
         'item_id'      => $item->id,
         'product_id'   => $item->product_id,
         'variant_id'   => $item->product_variant_id,
-        'product'      => $item->product->name,
+        'product'      => $item->product->product_code ?? '',
         'code'         => $item->product->product_code ?? '',
         'variant'      => $item->variant?->label ?? 'Default',
         'qty'          => $item->quantity_ordered,

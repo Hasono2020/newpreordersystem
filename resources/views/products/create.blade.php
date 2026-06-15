@@ -62,13 +62,6 @@
 <div class="form-section">
     <div class="form-section-title"><i class="bi bi-tag-fill"></i> Basic Information</div>
     <div class="row g-3">
-        <div class="col-12">
-            <label class="form-label fw-semibold">Product Name <span class="text-danger">*</span></label>
-            <input type="text" name="name"
-                class="form-control @error('name') is-invalid @enderror"
-                value="{{ old('name') }}" placeholder="e.g. Floral Midi Dress" required autofocus>
-            @error('name')<div class="invalid-feedback">{{ $message }}</div>@enderror
-        </div>
         <div class="col-md-4">
             <label class="form-label fw-semibold">Product Code <span class="text-danger">*</span></label>
             <input type="text" name="product_code" id="productCodeInput"
@@ -451,7 +444,7 @@ function checkCodeUnique(val) {
             .then(r => r.json())
             .then(data => {
                 if (data.exists) {
-                    msg.textContent = `Already used by: ${data.product_name} (${data.trip_name})`;
+                    msg.textContent = `Already used by: ${data.product_code} (${data.trip_name})`;
                     warn.style.display = 'block';
                     ok.style.display   = 'none';
                 } else {

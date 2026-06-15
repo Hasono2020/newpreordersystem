@@ -73,8 +73,7 @@
                                             data-price="{{ $p->price }}"
                                             data-weight="{{ $p->weight_gram }}"
                                             data-variants="{{ json_encode($p->variants->map(fn($v) => ['id'=>$v->id,'label'=>$v->label,'price'=>$v->final_price])) }}">
-                                            {{ $p->name }}
-                                            @if($p->product_code) [{{ $p->product_code }}] @endif
+                                            {{ $p->product_code ?? '—' }}
                                         </option>
                                     @endforeach                                </select>
                             </div>
@@ -113,10 +112,7 @@
                         @foreach($order->items as $item)
                         <tr>
                             <td class="fw-semibold small">
-                                {{ $item->product->name }}
-                                @if($item->product->product_code)
-                                    <div class="text-muted font-monospace" style="font-size:.7rem;">{{ $item->product->product_code }}</div>
-                                @endif
+                                {{ $item->product->product_code ?? '—' }}
                             </td>
                             <td class="small text-muted">{{ $item->variant?->label ?? '—' }}</td>
                             <td>

@@ -50,7 +50,7 @@
                 <li class="list-group-item">
                     <div class="d-flex justify-content-between align-items-start">
                         <div>
-                            <div class="fw-semibold small">{{ $product->name }}</div>
+                            <div class="fw-semibold small">{{ $product->product_code ?? '—' }}</div>
                             <div class="text-muted" style="font-size:.75rem;">
                                 Rp {{ number_format($product->price, 0, ',', '.') }}
                                 @if($product->brand) · {{ $product->brand }} @endif

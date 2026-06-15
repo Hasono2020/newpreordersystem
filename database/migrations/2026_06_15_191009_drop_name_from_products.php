@@ -1,0 +1,1 @@
+drop_name_from_products

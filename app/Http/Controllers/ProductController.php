@@ -21,13 +21,12 @@ class ProductController extends Controller
         }
         if ($request->search) {
             $query->where(function ($q) use ($request) {
-                $q->where('name', 'like', '%'.$request->search.'%')
-                  ->orWhere('product_code', 'like', '%'.$request->search.'%')
+                $q->where('product_code', 'like', '%'.$request->search.'%')
                   ->orWhere('brand', 'like', '%'.$request->search.'%');
             });
         }
 
-        $products = $query->orderBy('name')->paginate($perPage)->withQueryString();
+        $products = $query->orderBy('product_code')->paginate($perPage)->withQueryString();
         $trips    = Trip::orderByDesc('id')->get();
         return view('products.index', compact('products', 'trips', 'perPage'));
     }
@@ -46,7 +45,6 @@ class ProductController extends Controller
         $data = $request->validate([
             'trip_id'          => 'required|exists:trips,id',
             'supplier_id'      => 'required|exists:suppliers,id',
-            'name'             => 'required|string|max:255',
             'sku'              => 'nullable|string|max:100',
             'product_code' => [
                 'required', 'string', 'max:50',
@@ -105,7 +103,6 @@ class ProductController extends Controller
     {
         $data = $request->validate([
             'trip_id'      => 'required|exists:trips,id',
-            'name'         => 'required|string|max:255',
             'sku'          => 'nullable|string|max:100',
             'product_code' => [
                 'required', 'string', 'max:50',
@@ -207,15 +204,15 @@ class ProductController extends Controller
     public function importTemplate()
     {
         return $this->streamXlsx('product_import_template.xlsx', [
-            ['Trip', 'Name', 'Code', 'SKU', 'Brand', 'Supplier', 'Price', 'Weight (gram)', 'Excluded from Promo', 'Status', 'Color', 'Size', 'Price Adjustment', 'Supplier Stock'],
+            ['Trip', 'Code', 'SKU', 'Brand', 'Supplier', 'Price', 'Weight (gram)', 'Excluded from Promo', 'Status', 'Color', 'Size', 'Price Adjustment', 'Supplier Stock'],
             // One row per variant. Same Code on multiple rows = same product, different variants.
             // Excluded from Promo: yes / no    Status: active / closed
-            ['Testing Trip', 'Baju', 'NA_01', '', 'Brand X', 'Shein', 250000, 30000, 'no', 'active', 'BLACK', 'L',  0, 25],
-            ['Testing Trip', 'Baju', 'NA_01', '', 'Brand X', 'Shein', 250000, 30000, 'no', 'active', 'BLACK', 'XL', 0, 20],
-            ['Testing Trip', 'Baju', 'NA_01', '', 'Brand X', 'Shein', 250000, 30000, 'no', 'active', 'BLACK', 'S',  0, 15],
-            ['Testing Trip', 'Baju', 'NA_01', '', 'Brand X', 'Shein', 250000, 30000, 'no', 'active', 'WHITE', 'S',  0, 20],
-            ['Testing Trip', 'Baju', 'NA_01', '', 'Brand X', 'Shein', 250000, 30000, 'no', 'active', 'WHITE', 'M',  0, 18],
-            ['Testing Trip', 'Celana Chino', 'NZ_01', '', 'Brand Y', 'Uniqlo', 500000, 40000, 'no', 'active', '', '', 0, 0],
+            ['Testing Trip', 'NA_01', '', 'Brand X', 'Shein', 250000, 30000, 'no', 'active', 'BLACK', 'L',  0, 25],
+            ['Testing Trip', 'NA_01', '', 'Brand X', 'Shein', 250000, 30000, 'no', 'active', 'BLACK', 'XL', 0, 20],
+            ['Testing Trip', 'NA_01', '', 'Brand X', 'Shein', 250000, 30000, 'no', 'active', 'BLACK', 'S',  0, 15],
+            ['Testing Trip', 'NA_01', '', 'Brand X', 'Shein', 250000, 30000, 'no', 'active', 'WHITE', 'S',  0, 20],
+            ['Testing Trip', 'NA_01', '', 'Brand X', 'Shein', 250000, 30000, 'no', 'active', 'WHITE', 'M',  0, 18],
+            ['Testing Trip', 'NZ_01', '', 'Brand Y', 'Uniqlo', 500000, 40000, 'no', 'active', '', '', 0, 0],
         ]);
     }
 
@@ -232,7 +229,7 @@ class ProductController extends Controller
 
         // Remove completely blank rows
         $rows = array_values(array_filter($rows, fn($r) =>
-            !empty(trim((string)($r[1] ?? ''))) || !empty(trim((string)($r[2] ?? '')))
+            !empty(trim((string)($r[0] ?? ''))) || !empty(trim((string)($r[1] ?? '')))
         ));
 
         if (empty($rows)) {
@@ -250,25 +247,23 @@ class ProductController extends Controller
         foreach ($rows as $i => $row) {
             $lineNum  = $i + 2;
             $tripName = trim((string)($row[0] ?? ''));
-            $name     = trim((string)($row[1] ?? ''));
-            $code     = strtoupper(trim((string)($row[2] ?? '')));
+            $code     = strtoupper(trim((string)($row[1] ?? '')));
 
             if (empty($tripName)) { $errors[] = "Row {$lineNum}: Trip is required."; continue; }
-            if (empty($name))     { $errors[] = "Row {$lineNum}: Name is required."; continue; }
-            if (empty($code))     { $errors[] = "Row {$lineNum} ({$name}): Product Code is required."; continue; }
+            if (empty($code))     { $errors[] = "Row {$lineNum}: Product Code is required."; continue; }
 
             // Trip must exist
             $tripKey = strtolower($tripName);
             $trip = $trips->get($tripKey) ?? $trips->first(fn($t) => str_contains(strtolower($t->name), $tripKey) || str_contains($tripKey, strtolower($t->name)));
             if (!$trip) {
-                $errors[] = "Row {$lineNum} ({$name}): Trip '{$tripName}' not found.";
+                $errors[] = "Row {$lineNum} ({$code}): Trip '{$tripName}' not found.";
                 continue;
             }
 
             // If same code seen before in this file, must be same trip (adding a variant)
             if (isset($seenCodes[$code])) {
                 if ($seenCodes[$code] !== $trip->id) {
-                    $errors[] = "Row {$lineNum} ({$name}): Code '{$code}' used in multiple trips — each code must belong to one trip.";
+                    $errors[] = "Row {$lineNum} ({$code}): Code '{$code}' used in multiple trips — each code must belong to one trip.";
                 }
                 continue; // same code = same product, adding a variant — OK
             }
@@ -289,21 +284,20 @@ class ProductController extends Controller
 
         foreach ($rows as $rowIdx => $row) {
             $tripName  = trim((string)($row[0] ?? ''));
-            $name      = trim((string)($row[1] ?? ''));
-            $code      = strtoupper(trim((string)($row[2] ?? '')));
-            $sku       = trim((string)($row[3] ?? ''));
-            $brand     = trim((string)($row[4] ?? ''));
-            $suppName  = trim((string)($row[5] ?? ''));
-            $price     = (float)($row[6] ?? 0);
-            $weight    = (int)($row[7] ?? 0);
-            $excluded  = strtolower(trim((string)($row[8] ?? ''))) === 'yes';
-            $status    = trim((string)($row[9] ?? 'active'));
-            $color     = trim((string)($row[10] ?? ''));
-            $size      = trim((string)($row[11] ?? ''));
-            $priceAdj  = (float)($row[12] ?? 0);
-            $suppStock = (int)($row[13] ?? 0);
+            $code      = strtoupper(trim((string)($row[1] ?? '')));
+            $sku       = trim((string)($row[2] ?? ''));
+            $brand     = trim((string)($row[3] ?? ''));
+            $suppName  = trim((string)($row[4] ?? ''));
+            $price     = (float)($row[5] ?? 0);
+            $weight    = (int)($row[6] ?? 0);
+            $excluded  = strtolower(trim((string)($row[7] ?? ''))) === 'yes';
+            $status    = trim((string)($row[8] ?? 'active'));
+            $color     = trim((string)($row[9] ?? ''));
+            $size      = trim((string)($row[10] ?? ''));
+            $priceAdj  = (float)($row[11] ?? 0);
+            $suppStock = (int)($row[12] ?? 0);
 
-            if (empty($name) || empty($code)) continue;
+            if (empty($code)) continue;
 
             $tripKey = strtolower($tripName);
             $trip = $trips->get($tripKey) ?? $trips->first(fn($t) => str_contains(strtolower($t->name), $tripKey));
@@ -332,7 +326,6 @@ class ProductController extends Controller
                 if ($existing) {
                     // Update product info with latest data from file
                     $existing->update(array_filter([
-                        'name'                => $name,
                         'sku'                 => $sku   ?: $existing->sku,
                         'brand'               => $brand ?: $existing->brand,
                         'supplier_id'         => $supplierId ?: $existing->supplier_id,
@@ -346,7 +339,6 @@ class ProductController extends Controller
                 } else {
                     $product = \App\Models\Product::create([
                         'trip_id'             => $trip->id,
-                        'name'                => $name,
                         'product_code'        => $code,
                         'sku'                 => $sku   ?: null,
                         'brand'               => $brand ?: null,
@@ -389,15 +381,14 @@ class ProductController extends Controller
     {
         $query = Product::with('trip', 'supplier', 'variants');
         if ($request->trip_id) $query->where('trip_id', $request->trip_id);
-        $products = $query->orderBy('name')->get();
+        $products = $query->orderBy('product_code')->get();
 
-        $header = ['trip','name','product_code','sku','brand','supplier','price','weight_gram','excluded_from_promo','status','color','size','price_adjustment','supplier_stock'];
+        $header = ['trip','product_code','sku','brand','supplier','price','weight_gram','excluded_from_promo','status','color','size','price_adjustment','supplier_stock'];
         $rows   = [$header];
 
         foreach ($products as $p) {
             $base = [
                 $p->trip->name,
-                $p->name,
                 $p->product_code ?? '',
                 $p->sku ?? '',
                 $p->brand ?? '',
@@ -448,7 +439,7 @@ class ProductController extends Controller
         if ($product) {
             return response()->json([
                 'exists'       => true,
-                'product_name' => $product->name,
+                'product_code' => $product->product_code,
                 'trip_name'    => $product->trip->name,
             ]);
         }

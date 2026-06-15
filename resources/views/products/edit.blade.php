@@ -1,6 +1,6 @@
 @extends('layouts.app')
-@section('title', 'Edit: ' . $product->name)
-@section('page-title', 'Edit: ' . $product->name)
+@section('title', 'Edit: ' . $product->product_code)
+@section('page-title', 'Edit: ' . $product->product_code)
 
 @push('styles')
 <style>
@@ -58,11 +58,6 @@
 <div class="form-section">
     <div class="form-section-title"><i class="bi bi-tag-fill"></i> Basic Information</div>
     <div class="row g-3">
-        <div class="col-12">
-            <label class="form-label fw-semibold">Product Name <span class="text-danger">*</span></label>
-            <input type="text" name="name" class="form-control"
-                value="{{ old('name', $product->name) }}" required>
-        </div>
         <div class="col-md-4">
             <label class="form-label fw-semibold">Product Code <span class="text-danger">*</span></label>
             <input type="text" name="product_code" id="productCodeInput"
@@ -304,7 +299,7 @@ function checkCodeUnique(val, excludeId) {
             .then(r => r.json())
             .then(data => {
                 if (data.exists) {
-                    msg.textContent = `Already used by: ${data.product_name} (${data.trip_name})`;
+                    msg.textContent = `Already used by: ${data.product_code} (${data.trip_name})`;
                     warn.style.display = 'block';
                 }
             }).catch(() => {});

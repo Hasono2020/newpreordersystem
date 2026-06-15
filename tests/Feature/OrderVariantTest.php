@@ -16,7 +16,6 @@ test('order with variant product requires variant selection', function () {
     $product = Product::create([
         'trip_id'      => $trip->id,
         'supplier_id'  => $supplier->id,
-        'name'         => 'Baju',
         'product_code' => 'BJ_01',
         'price'        => 250000,
         'weight_gram'  => 350,
@@ -54,7 +53,6 @@ test('order without variants saves successfully', function () {
     $product = Product::create([
         'trip_id'      => $trip->id,
         'supplier_id'  => $supplier->id,
-        'name'         => 'Baju Plain',
         'product_code' => 'BP_01',
         'price'        => 200000,
         'weight_gram'  => 300,

@@ -231,7 +231,7 @@ $itemsJson = $purchasing->items->map(function($item, $i) {
     return [
         'i'        => $i,
         'id'       => $item->id,
-        'product'  => $item->product->name,
+        'product'  => $item->product->product_code ?? '',
         'code'     => $item->product->product_code ?? '',
         'variant'  => $item->variant?->label ?? '—',
         'ordered'  => $item->quantity_ordered,

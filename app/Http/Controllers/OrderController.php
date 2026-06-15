@@ -529,7 +529,7 @@ class OrderController extends Controller
     {
         $products = $trip->products()->with('variants')->get()->map(fn($p) => [
             'id'       => $p->id,
-            'name'     => $p->name,
+            'name'     => $p->product_code,
             'code'     => $p->product_code,
             'price'    => $p->price,
             'weight'   => $p->weight_gram,

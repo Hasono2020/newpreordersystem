@@ -38,8 +38,7 @@
                         @forelse($supplier->products as $product)
                         <tr>
                             <td class="fw-semibold">
-                                <a href="{{ route('products.show', $product) }}" class="text-decoration-none">{{ $product->name }}</a>
-                                @if($product->product_code)<div class="text-muted font-monospace" style="font-size:.7rem;">{{ $product->product_code }}</div>@endif
+                                <a href="{{ route('products.show', $product) }}" class="text-decoration-none font-monospace">{{ $product->product_code ?? '—' }}</a>
                             </td>
                             <td class="text-muted">{{ $product->trip->name }}</td>
                             <td><span class="badge {{ $product->status === 'active' ? 'bg-success' : 'bg-secondary' }}">{{ ucfirst($product->status) }}</span></td>

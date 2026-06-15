@@ -184,7 +184,6 @@ td.r { text-align:right; }
     @foreach($colChunk as $productId => $rows)
     @php
         $firstRow    = $rows->first();
-        $productName = $firstRow['item']->product->name;
         $productCode = $firstRow['item']->product->product_code;
         $groupTotal  = $rows->sum(fn($r) => $r['item']->line_total);
         $groupQty    = $rows->sum(fn($r) => $r['item']->quantity);
@@ -192,8 +191,7 @@ td.r { text-align:right; }
     {{-- Product group header --}}
     <tr class="grp-hdr">
         <td colspan="3">
-            {{ $productName }}
-            @if($productCode)<span style="font-weight:400;color:#64748b;margin-left:4px;">{{ $productCode }}</span>@endif
+            {{ $productCode ?? '—' }}
         </td>
         <td class="r">Rp {{ number_format($groupTotal,0,',','.') }}</td>
         <td></td>

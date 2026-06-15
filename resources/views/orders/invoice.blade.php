@@ -184,10 +184,7 @@ td.right { text-align:right; }
             @php $soldOut = $item->status === 'sold_out'; @endphp
             <tr {{ $soldOut ? 'style=opacity:.55' : '' }}>
                 <td>
-                    <div class="item-name">{{ $item->product->name }}</div>
-                    @if($item->product->product_code)
-                        <div class="item-meta">Code: {{ $item->product->product_code }}</div>
-                    @endif
+                    <div class="item-name">{{ $item->product->product_code ?? '—' }}</div>
                 </td>
                 <td>{{ $item->variant?->label ?? '—' }}</td>
                 <td class="right">{{ $item->quantity }}</td>

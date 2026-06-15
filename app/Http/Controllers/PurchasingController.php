@@ -48,7 +48,7 @@ class PurchasingController extends Controller
                 'products.supplier_id',
                 DB::raw('COALESCE(suppliers.name, "(No Supplier)") as supplier_name'),
                 'products.id as product_id',
-                'products.name as product_name',
+                'products.product_code as product_name',
                 'products.product_code',
                 'product_variants.id as variant_id',
                 'product_variants.color',
@@ -58,12 +58,12 @@ class PurchasingController extends Controller
             ])
             ->groupBy([
                 'products.supplier_id', 'supplier_name',
-                'products.id', 'products.name', 'products.product_code',
+                'products.id', 'products.product_code',
                 'product_variants.id', 'product_variants.color', 'product_variants.size',
                 'product_variants.supplier_stock',
             ])
             ->orderBy('supplier_name')
-            ->orderBy('products.name')
+            ->orderBy('products.product_code')
             ->get();
 
         // Suppliers with a CONFIRMED (sent) PO — hide demand (already ordered, awaiting arrival).
@@ -249,7 +249,7 @@ class PurchasingController extends Controller
             ->whereIn('order_items.status', ['pending', 'confirmed'])
             ->select([
                 'products.id as product_id',
-                'products.name as product_name',
+                'products.product_code as product_name',
                 'products.product_code',
                 'product_variants.id as variant_id',
                 'product_variants.color',
@@ -258,11 +258,11 @@ class PurchasingController extends Controller
                 DB::raw('SUM(order_items.quantity) as total_demanded'),
             ])
             ->groupBy([
-                'products.id','products.name','products.product_code',
+                'products.id','products.product_code',
                 'product_variants.id','product_variants.color','product_variants.size',
                 'product_variants.supplier_stock',
             ])
-            ->orderBy('products.name')
+            ->orderBy('products.product_code')
             ->get();
 
         // Get qty already in ALL active POs for this trip (keyed by product+variant)
