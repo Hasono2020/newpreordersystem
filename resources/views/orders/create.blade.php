@@ -414,10 +414,15 @@ function doPhoneLookup() {
                     ? document.querySelector('.product-search-input')
                     : document.getElementById('tripSelect');
                 nextFocus?.focus();
-            } else if (q.length >= 5) {
-                // Not found → show inline quick-add with phone pre-filled
+            } else if (q.length >= 3) {
+                // Not found → show inline quick-add
                 phoneInput.classList.add('is-invalid-phone');
                 customerNotFound.style.display = 'block';
+                // If the typed value looks like a name (not mostly digits), pre-fill the name
+                const digits = q.replace(/\D/g,'');
+                if (!(digits.length >= 5 && digits.length >= q.length - 2)) {
+                    document.getElementById('qcName').value = q;
+                }
                 document.getElementById('qcName').focus();
             }
         })
@@ -434,8 +439,32 @@ phoneInput.addEventListener('input', function() {
     phoneTimer = setTimeout(() => {
         fetch(`/api/customers/search?q=${encodeURIComponent(q)}`).then(r=>r.json()).then(data => {
             if (document.getElementById('customerId').value) return;
-            if (!data.length) { dd.style.display='none'; return; }
             res.innerHTML = '';
+            if (!data.length) {
+                // No match — offer to create a new customer
+                const add = document.createElement('div');
+                add.className = 'cust-item';
+                add.style.cssText = 'padding:.55rem 1rem;cursor:pointer;color:#2563eb;font-weight:600;font-size:.88rem;';
+                add.innerHTML = '<i class="bi bi-plus-circle me-1"></i>Add new customer \u201C' + q + '\u201D';
+                add.addEventListener('mousedown', e => {
+                    e.preventDefault();
+                    dd.style.display = 'none';
+                    customerNotFound.style.display = 'block';
+                    // Pre-fill: if input is mostly digits treat as phone, else as name
+                    const digits = q.replace(/\D/g,'');
+                    if (digits.length >= 5 && digits.length >= q.length - 2) {
+                        document.getElementById('qcName').value = '';
+                    } else {
+                        document.getElementById('qcName').value = q;
+                    }
+                    document.getElementById('qcName').focus();
+                });
+                add.addEventListener('mouseover', () => add.style.background='#f0f9ff');
+                add.addEventListener('mouseout',  () => add.style.background='');
+                res.appendChild(add);
+                dd.style.display = 'block';
+                return;
+            }
             data.slice(0,8).forEach(c => {
                 const div = document.createElement('div');
                 div.className = 'cust-item';

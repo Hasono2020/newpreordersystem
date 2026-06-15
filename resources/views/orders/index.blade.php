@@ -134,9 +134,10 @@
                 </div>
                 <div class="alert alert-light border small mb-3">
                     <strong>Columns (14) — Order Import format:</strong><br>
-                    <code class="small">KET · NO · NAMA · IG/WA · NO HP · KOTA · KODE · WARNA · SIZE · HARGA SATUAN · DP · TGL DP · AN · KET</code>
+                    <code class="small">DIBUAT OLEH · NO · NAMA · IG/WA · NO HP · KOTA · KODE · WARNA · SIZE · HARGA SATUAN · DP · TGL DP · AN · KET</code>
                     <span class="text-muted d-block mt-1">
                         • <strong>Each row = 1 order + 1 item.</strong> Row order = FIFO priority (row 1 gets stock first).<br>
+                        • <strong>DIBUAT OLEH</strong> is set automatically to the logged-in user — ignored on import.<br>
                         • <strong>IG/WA</strong> = CS agent who handled the livechat — <strong>required</strong>, must match an existing CS agent name.<br>
                         • <strong>NO HP</strong> = customer phone number.<br>
                         • <strong>KODE</strong> must exist in the selected trip. <strong>WARNA/SIZE</strong> must match exactly.<br>
