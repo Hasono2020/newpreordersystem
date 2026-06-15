@@ -279,7 +279,7 @@
                             @if(!$payment->isVoided() && auth()->user()->hasPermission('payments.void'))
                             @php $voidRoute = $payment->batch_id ? "batch/{$payment->batch_id}" : $payment->id; @endphp
                             <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2 ms-1"
-                                onclick="showVoidModal('{{ $voidRoute }}', {{ $payment->amount }}, {{ $payment->batch_id ? 'true' : 'false' }})">
+                                onclick="showVoidModal('{{ $voidRoute }}', {{ $payment->amount }}, {{ $payment->batch_id ? 'true' : 'false' }}, {{ $payment->isVerified() ? 'true' : 'false' }})">
                                 Void
                             </button>
                             @endif
@@ -343,6 +343,10 @@
             <form id="voidPaymentForm" method="POST">
                 @csrf
                 <div class="modal-body">
+                    <div id="voidVerifiedWarning" class="alert alert-danger py-2 small" style="display:none;">
+                        <i class="bi bi-shield-exclamation me-1"></i>
+                        <strong>This payment was already verified by finance.</strong> Only void it if it was a genuine error (refund, duplicate, or chargeback).
+                    </div>
                     <div class="alert alert-warning py-2 small">
                         <i class="bi bi-exclamation-triangle-fill me-1"></i>
                         Voiding restores the order balance. The record is kept for audit.
@@ -372,11 +376,14 @@ function showDisputeModal(paymentId, customerName, amount) {
     new bootstrap.Modal(document.getElementById('disputeModal')).show();
 }
 
-function showVoidModal(routeSuffix, amount, isBatch) {
+function showVoidModal(routeSuffix, amount, isBatch, isVerified) {
     const form = document.getElementById('voidPaymentForm');
     form.action = `/payments/${routeSuffix}/void`;
     form.querySelector('textarea').value = '';
     document.getElementById('voidAmountDisplay').textContent = 'Rp ' + Math.round(amount).toLocaleString('id-ID');
+    // Extra warning when voiding an already-verified payment
+    const warn = document.getElementById('voidVerifiedWarning');
+    if (warn) warn.style.display = isVerified ? 'block' : 'none';
     new bootstrap.Modal(document.getElementById('voidPaymentModal')).show();
 }
 </script>
