@@ -136,7 +136,7 @@
                 </tbody>
             </table>
         </div>
-        @if($outstanding && $outstanding->hasPages())
+        @if($outstanding && method_exists($outstanding, 'hasPages') && $outstanding->hasPages())
         <div class="card-footer bg-white d-flex justify-content-between align-items-center py-2">
             <span class="small text-muted">{{ $outstanding->total() }} customer(s) with balance due</span>
             <div>{{ $outstanding->links() }}</div>
@@ -261,7 +261,7 @@
                 </tbody>
             </table>
         </div>
-        @if($log->hasPages())
+        @if($log && method_exists($log, 'hasPages') && $log->hasPages())
         <div class="card-footer bg-white d-flex justify-content-between align-items-center py-2">
             <span class="small text-muted">{{ $log->total() }} payment(s)</span>
             <div>{{ $log->links() }}</div>

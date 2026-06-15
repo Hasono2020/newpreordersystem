@@ -31,7 +31,7 @@ class PaymentController extends Controller
         $createdByFilter = !Auth::user()->isOwnDataOnly() ? $request->get('created_by', '') : '';
 
         // ── Outstanding: pure aggregate query — only_full_group_by safe ──────
-        $outstanding = collect();
+        $outstanding = new \Illuminate\Pagination\LengthAwarePaginator([], 0, 50);
         if ($tripId) {
             $query = DB::table('orders')
                 ->join('customers', 'customers.id', '=', 'orders.customer_id')
