@@ -17,6 +17,11 @@
         <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
     </form>
     @endif
+    @if(auth()->user()->hasPermission('orders.create'))
+    <a href="{{ route('orders.create', ['trip_id' => $order->trip_id]) }}" class="btn btn-sm btn-success ms-auto">
+        <i class="bi bi-plus-lg me-1"></i>New Order
+    </a>
+    @endif
 </div>
 
 <div class="row g-3">
