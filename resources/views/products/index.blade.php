@@ -98,11 +98,11 @@
             </div>
             <div class="modal-body">
                 <div class="alert alert-light border small mb-3">
-                    <strong>Columns (14) — Product Import format:</strong><br>
-                    <code class="small">Trip · Name · Code · SKU · Brand · Supplier · Price · Weight (gram) · Excluded from Promo · Status · Color · Size · Price Adjustment · Supplier Stock</code>
+                    <strong>Columns (13) — Product Import format:</strong><br>
+                    <code class="small">Trip · Code · SKU · Brand · Supplier · Price · Weight (gram) · Excluded from Promo · Status · Color · Size · Price Adjustment · Supplier Stock</code>
                     <span class="text-muted mt-1 d-block">
                         • <strong>One row per variant.</strong> Repeat the same Code on each row for different variants.<br>
-                        • All rows must have Trip, Name, and Code — any missing value blocks the entire import.<br>
+                        • All rows must have Trip and Code — any missing value blocks the entire import.<br>
                         • Supplier is auto-created if it doesn't exist yet.<br>
                         • <strong>Excluded from Promo:</strong> yes / no &nbsp;|&nbsp; <strong>Status:</strong> active / closed
                     </span>

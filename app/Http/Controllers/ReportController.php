@@ -72,7 +72,7 @@ class ReportController extends Controller
      */
     public function exportOrders(Request $request)
     {
-        $query = Order::with('customer', 'trip', 'shippingArea', 'items.product', 'items.variant', 'payments', 'csAgent')
+        $query = Order::with('customer', 'trip', 'shippingArea', 'items.product', 'items.variant', 'payments', 'csAgent', 'createdBy')
             ->orderBy('ordered_at');
         if (\Illuminate\Support\Facades\Auth::user()->isOwnDataOnly()) {
             $query->where('created_by', \Illuminate\Support\Facades\Auth::id());
@@ -81,7 +81,7 @@ class ReportController extends Controller
         $orders = $query->get();
 
         $rows = [[
-            'KET', 'NO', 'NAMA', 'IG/WA', 'NO HP', 'KOTA',
+            'DIBUAT OLEH', 'NO', 'NAMA', 'IG/WA', 'NO HP', 'KOTA',
             'KODE', 'WARNA', 'SIZE', 'HARGA SATUAN',
             'DP', 'TGL DP', 'AN', 'KET',
         ]];
@@ -95,7 +95,7 @@ class ReportController extends Controller
 
             foreach ($o->items as $item) {
                 $rows[] = [
-                    $item->status !== 'pending' ? ucfirst($item->status) : '', // KET (status)
+                    $o->createdBy?->name ?? '',          // DIBUAT OLEH (created by)
                     $no,
                     $o->customer->name,                  // NAMA
                     $o->csAgent?->name ?? '',            // IG/WA (CS who handled livechat)
@@ -119,7 +119,7 @@ class ReportController extends Controller
             // If order has no items
             if ($o->items->isEmpty()) {
                 $rows[] = [
-                    '', $no, $o->customer->name,
+                    $o->createdBy?->name ?? '', $no, $o->customer->name,
                     $o->csAgent?->name ?? '',
                     $o->customer->phone ?? '',
                     $o->shippingArea?->name ?? '',
@@ -161,7 +161,7 @@ class ReportController extends Controller
     public function orderImportTemplate()
     {
         return $this->streamXlsx('order_import_template.xlsx', [
-            ['KET', 'NO', 'NAMA', 'IG/WA', 'NO HP', 'KOTA', 'KODE', 'WARNA', 'SIZE', 'HARGA SATUAN', 'DP', 'TGL DP', 'AN', 'KET'],
+            ['DIBUAT OLEH', 'NO', 'NAMA', 'IG/WA', 'NO HP', 'KOTA', 'KODE', 'WARNA', 'SIZE', 'HARGA SATUAN', 'DP', 'TGL DP', 'AN', 'KET'],
             // Each row = 1 order item. Row order = FIFO priority (top = first).
             // IG/WA = CS who handled the livechat (must match a CS agent name).
             // NO HP = customer phone. Leave HARGA SATUAN blank to use system product price.
