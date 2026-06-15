@@ -46,6 +46,11 @@ class PaymentController extends Controller
                     DB::raw('(SUM(orders.total_amount) - SUM(orders.deposit_paid)) as balance_due'),
                     DB::raw('COUNT(DISTINCT orders.created_by) as creator_count'),
                     DB::raw('MAX(creators.name) as creator_name'),
+                    // Per-customer payment verification counts (non-voided payments on this customer's orders in this trip)
+                    DB::raw('(SELECT COUNT(*) FROM payments p JOIN orders po ON po.id = p.order_id WHERE po.customer_id = orders.customer_id AND po.trip_id = orders.trip_id AND p.voided_at IS NULL) as pay_total'),
+                    DB::raw('(SELECT COUNT(*) FROM payments p JOIN orders po ON po.id = p.order_id WHERE po.customer_id = orders.customer_id AND po.trip_id = orders.trip_id AND p.voided_at IS NULL AND p.verification_status = \'verified\') as pay_verified'),
+                    DB::raw('(SELECT COUNT(*) FROM payments p JOIN orders po ON po.id = p.order_id WHERE po.customer_id = orders.customer_id AND po.trip_id = orders.trip_id AND p.voided_at IS NULL AND p.verification_status = \'unverified\') as pay_unverified'),
+                    DB::raw('(SELECT COUNT(*) FROM payments p JOIN orders po ON po.id = p.order_id WHERE po.customer_id = orders.customer_id AND po.trip_id = orders.trip_id AND p.voided_at IS NULL AND p.verification_status = \'disputed\') as pay_disputed'),
                 ])
                 ->join('users as creators', 'creators.id', '=', 'orders.created_by')
                 ->where('orders.trip_id', $tripId)

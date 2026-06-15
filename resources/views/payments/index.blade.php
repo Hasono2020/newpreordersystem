@@ -102,6 +102,7 @@
                         <th class="text-end">Total Ordered</th>
                         <th class="text-end">Paid</th>
                         <th class="text-end">Balance Due</th>
+                        <th class="text-center">Payments</th>
                         <th>Created By</th>
                         <th></th>
                     </tr>
@@ -114,6 +115,29 @@
                         <td class="text-end">Rp {{ number_format($row->total_ordered, 0, ',', '.') }}</td>
                         <td class="text-end text-success">Rp {{ number_format($row->total_paid, 0, ',', '.') }}</td>
                         <td class="text-end fw-semibold text-danger">Rp {{ number_format($row->balance_due, 0, ',', '.') }}</td>
+                        <td class="text-center small">
+                            @php
+                                $payTotal      = (int)($row->pay_total ?? 0);
+                                $payVerified   = (int)($row->pay_verified ?? 0);
+                                $payUnverified = (int)($row->pay_unverified ?? 0);
+                                $payDisputed   = (int)($row->pay_disputed ?? 0);
+                            @endphp
+                            @if($payTotal === 0)
+                                <span class="text-muted">No payments</span>
+                            @elseif($payUnverified === 0 && $payDisputed === 0)
+                                <span class="badge bg-success" title="All payments verified">
+                                    <i class="bi bi-check-circle me-1"></i>All verified
+                                </span>
+                            @else
+                                <span class="text-muted">{{ $payVerified }}/{{ $payTotal }} verified</span>
+                                @if($payUnverified > 0)
+                                    <span class="badge bg-warning text-dark ms-1" title="{{ $payUnverified }} unverified payment(s)">{{ $payUnverified }} unverified</span>
+                                @endif
+                                @if($payDisputed > 0)
+                                    <span class="badge bg-danger ms-1" title="{{ $payDisputed }} disputed payment(s)">{{ $payDisputed }} disputed</span>
+                                @endif
+                            @endif
+                        </td>
                         <td class="small text-muted">
                             @if(($row->creator_count ?? 0) > 1)
                                 Multiple
