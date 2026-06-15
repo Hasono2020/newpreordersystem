@@ -31,9 +31,7 @@ class User extends Authenticatable
 
     public function isAdmin(): bool     { return $this->role === 'admin'; }
     public function isFinance(): bool   { return in_array($this->role, ['admin', 'finance']); }
-    public function isPurchasing(): bool{ return in_array($this->role, ['admin', 'purchasing']); }
     public function isStaff(): bool     { return $this->role === 'staff'; }
-    public function isViewer(): bool    { return $this->role === 'viewer'; }
     public function isOwnDataOnly(): bool { return $this->role !== 'admin' && $this->hasPermission('own_data'); }
     public function isActive(): bool    { return $this->is_active; }
 
@@ -97,32 +95,6 @@ class User extends Authenticatable
                 'promos.edit'      => false, 'promos.delete'    => false,
                 'settings.view'    => false, 'settings.edit'    => false,
             ],
-            'purchasing' => [
-                'orders.view'      => true,  'orders.create'    => false,
-                'orders.edit'      => false, 'orders.delete'    => false,
-                'orders.import'    => false, 'orders.export'    => false,
-                'customers.view'   => true,  'customers.create' => false,
-                'customers.edit'   => false, 'customers.delete' => false,
-                'customers.import' => false, 'customers.export' => false,
-                'products.view'    => true,  'products.create'  => true,
-                'products.edit'    => true,  'products.delete'  => false,
-                'products.import'  => false, 'products.export'  => false,
-                'suppliers.view'   => true,  'suppliers.create' => false,
-                'suppliers.edit'   => false, 'suppliers.delete' => false,
-                'shipping.view'    => true,  'shipping.create'  => false,
-                'shipping.edit'    => false, 'shipping.delete'  => false,
-                'shipping.import'  => false,
-                'purchasing.view'  => true,  'purchasing.edit'  => true,
-                'payments.view'    => false, 'payments.record'  => false,
-                'payments.void'    => false, 'payments.export'  => false,
-                'invoices.view'    => false,
-                'trips.view'       => true,  'trips.edit'       => false,
-                'trips.new_order'  => false,
-                'reports.view'     => false,
-                'promos.view'      => false, 'promos.create'    => false,
-                'promos.edit'      => false, 'promos.delete'    => false,
-                'settings.view'    => false, 'settings.edit'    => false,
-            ],
             'staff' => [
                 'own_data'         => true,
                 'orders.view'      => true,  'orders.create'    => true,
@@ -146,32 +118,6 @@ class User extends Authenticatable
                 'invoices.view'    => true,
                 'trips.view'       => true,  'trips.edit'       => false,
                 'trips.new_order'  => true,
-                'reports.view'     => false,
-                'promos.view'      => true,  'promos.create'    => false,
-                'promos.edit'      => false, 'promos.delete'    => false,
-                'settings.view'    => false, 'settings.edit'    => false,
-            ],
-            'viewer' => [
-                'orders.view'      => true,  'orders.create'    => false,
-                'orders.edit'      => false, 'orders.delete'    => false,
-                'orders.import'    => false, 'orders.export'    => false,
-                'customers.view'   => true,  'customers.create' => false,
-                'customers.edit'   => false, 'customers.delete' => false,
-                'customers.import' => false, 'customers.export' => false,
-                'products.view'    => true,  'products.create'  => false,
-                'products.edit'    => false, 'products.delete'  => false,
-                'products.import'  => false, 'products.export'  => false,
-                'suppliers.view'   => true,  'suppliers.create' => false,
-                'suppliers.edit'   => false, 'suppliers.delete' => false,
-                'shipping.view'    => true,  'shipping.create'  => false,
-                'shipping.edit'    => false, 'shipping.delete'  => false,
-                'shipping.import'  => false,
-                'purchasing.view'  => true,  'purchasing.edit'  => false,
-                'payments.view'    => false, 'payments.record'  => false,
-                'payments.void'    => false, 'payments.export'  => false,
-                'invoices.view'    => true,
-                'trips.view'       => true,  'trips.edit'       => false,
-                'trips.new_order'  => false,
                 'reports.view'     => false,
                 'promos.view'      => true,  'promos.create'    => false,
                 'promos.edit'      => false, 'promos.delete'    => false,

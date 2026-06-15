@@ -186,7 +186,7 @@ function openEditModal(userId) {
 function onRoleChange(selectEl, prefix) {
     const role    = selectEl.value;
     const defaults = {!! json_encode(
-        collect(['admin','finance','purchasing','staff','viewer'])
+        collect(['admin','finance','staff'])
             ->mapWithKeys(fn($r) => [$r => \App\Models\User::roleDefaults($r)])
     ) !!};
 

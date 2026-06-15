@@ -20,7 +20,7 @@ class StaffController extends Controller
     {
         $this->requireAdmin();
         $staff = User::orderBy('role')->orderBy('name')->get();
-        $roles = ['admin', 'finance', 'purchasing', 'staff', 'viewer'];
+        $roles = ['admin', 'finance', 'staff'];
         $allPermissions = array_keys(User::roleDefaults('admin'));
         return view('staff.index', compact('staff', 'roles', 'allPermissions'));
     }

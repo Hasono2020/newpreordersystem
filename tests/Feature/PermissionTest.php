@@ -35,9 +35,9 @@ test('staff cannot access purchasing edit', function () {
     expect($staff->hasPermission('purchasing.edit'))->toBeFalse();
 });
 
-test('viewer cannot create orders', function () {
-    $viewer = User::factory()->viewer()->create();
-    expect($viewer->hasPermission('orders.create'))->toBeFalse();
+test('staff without orders.create permission cannot create orders', function () {
+    $staff = User::factory()->staff()->create(['permissions' => ['orders.create' => false]]);
+    expect($staff->hasPermission('orders.create'))->toBeFalse();
 });
 
 test('per-user permission override works', function () {
@@ -54,9 +54,9 @@ test('inactive user has no permissions', function () {
 
 // ── Route access ─────────────────────────────────────────────────────
 
-test('viewer cannot access order create page', function () {
-    $viewer = User::factory()->viewer()->create();
-    $this->actingAs($viewer)->get('/orders/create')->assertStatus(403);
+test('staff without orders.create permission cannot access order create page', function () {
+    $staff = User::factory()->staff()->create(['permissions' => ['orders.create' => false]]);
+    $this->actingAs($staff)->get('/orders/create')->assertStatus(403);
 });
 
 test('staff can access order create page', function () {

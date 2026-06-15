@@ -27,7 +27,6 @@ class UserFactory extends Factory
     public function admin(): static    { return $this->state(['role' => 'admin']); }
     public function finance(): static  { return $this->state(['role' => 'finance']); }
     public function staff(): static    { return $this->state(['role' => 'staff']); }
-    public function viewer(): static   { return $this->state(['role' => 'viewer']); }
     public function inactive(): static { return $this->state(['is_active' => false]); }
 
     public function ownDataOnly(): static {
