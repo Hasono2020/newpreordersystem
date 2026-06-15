@@ -112,12 +112,6 @@
                                             @endforeach
                                         </select>
                                     </form>
-                                    @if(auth()->user()->isAdmin())
-                                    <form method="POST" action="{{ route('orders.items.remove', [$order, $item]) }}" onsubmit="return confirm('Remove item?')">
-                                        @csrf @method('DELETE')
-                                        <button type="submit" class="btn btn-sm btn-outline-danger">×</button>
-                                    </form>
-                                    @endif
                                 </div>
                             </td>
                         </tr>
