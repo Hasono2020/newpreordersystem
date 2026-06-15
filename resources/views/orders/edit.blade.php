@@ -267,9 +267,9 @@
                         <input type="number" name="shipping_fee" class="form-control form-control-sm" value="{{ $order->shipping_fee }}" step="1">
                     </div>
                     <div class="mb-3">
-                        <label class="form-label small fw-semibold">Customer Service</label>
-                        <select name="cs_agent_id" class="form-select form-select-sm">
-                            <option value="">— none —</option>
+                        <label class="form-label small fw-semibold">Customer Service <span class="text-danger">*</span></label>
+                        <select name="cs_agent_id" class="form-select form-select-sm" required>
+                            <option value="">— select CS —</option>
                             @foreach($csAgents as $cs)
                                 <option value="{{ $cs->id }}" {{ $order->cs_agent_id == $cs->id ? 'selected' : '' }}>
                                     {{ $cs->name }}

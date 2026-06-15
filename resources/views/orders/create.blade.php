@@ -225,9 +225,9 @@
                     </div>
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label fw-semibold">Customer Service</label>
-                    <select name="cs_agent_id" id="csAgentSelect" class="form-select">
-                        <option value="">— none —</option>
+                    <label class="form-label fw-semibold">Customer Service <span class="text-danger">*</span></label>
+                    <select name="cs_agent_id" id="csAgentSelect" class="form-select" required>
+                        <option value="">— select CS —</option>
                         @foreach($csAgents as $cs)
                             <option value="{{ $cs->id }}" {{ old('cs_agent_id') == $cs->id ? 'selected' : '' }}>
                                 {{ $cs->name }}

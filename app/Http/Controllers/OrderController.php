@@ -55,7 +55,7 @@ class OrderController extends Controller
             'trip_id'          => 'required|exists:trips,id',
             'customer_id'      => 'required|exists:customers,id',
             'shipping_area_id' => 'nullable|exists:shipping_areas,id',
-            'cs_agent_id'      => 'nullable|exists:cs_agents,id',
+            'cs_agent_id'      => 'required|exists:cs_agents,id',
             'notes'            => 'nullable|string',
             'ordered_at'       => 'nullable|date',
             'items'                          => 'required|array|min:1',
@@ -64,6 +64,7 @@ class OrderController extends Controller
             'items.*.quantity'               => 'required|integer|min:1',
             'items.*.unit_price'             => 'required|numeric|min:0',
         ], [
+            'cs_agent_id.required'        => 'Please select which Customer Service handled this order.',
             'items.required'              => 'Please add at least one product before creating the order.',
             'items.min'                   => 'Please add at least one product before creating the order.',
             'items.*.product_id.required' => 'Each item row must have a product selected.',
@@ -226,7 +227,7 @@ class OrderController extends Controller
     {
         $request->validate([
             'shipping_area_id' => 'nullable|exists:shipping_areas,id',
-            'cs_agent_id'      => 'nullable|exists:cs_agents,id',
+            'cs_agent_id'      => 'required|exists:cs_agents,id',
             'notes'            => 'nullable|string',
             'ordered_at'       => 'nullable|date',
         ]);
