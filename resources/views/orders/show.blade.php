@@ -142,7 +142,7 @@
                         <div class="row g-2 align-items-end">
                             <div class="col-md-2">
                                 <label class="form-label small">Amount (Rp)</label>
-                                <input type="number" name="amount" class="form-control form-control-sm" required step="1000" min="0">
+                                <input type="number" name="amount" class="form-control form-control-sm" required step="1" min="0">
                             </div>
                             <div class="col-md-2">
                                 <label class="form-label small">Type</label>

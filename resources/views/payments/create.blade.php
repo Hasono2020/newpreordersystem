@@ -30,7 +30,7 @@
                 <div class="fw-semibold mb-3">Payment Details</div>
 
                 <label class="form-label small fw-semibold">Amount Received (Rp) <span class="text-danger">*</span></label>
-                <input type="number" id="amountReceived" class="form-control mb-1" placeholder="0" step="1000" min="0">
+                <input type="number" id="amountReceived" class="form-control mb-1" placeholder="0" step="1" min="0">
                 <div class="form-text mb-3">Total balance due: <strong>Rp {{ number_format($totalDue, 0, ',', '.') }}</strong></div>
 
                 <div class="d-flex gap-2 mb-3">
@@ -90,7 +90,7 @@
                                     <input type="hidden" name="allocations[{{ $i }}][order_id]" value="{{ $order->id }}">
                                     <input type="number" name="allocations[{{ $i }}][amount]"
                                         class="form-control form-control-sm text-end alloc-input"
-                                        data-balance="{{ $bal }}" value="0" min="0" max="{{ $bal }}" step="1000">
+                                        data-balance="{{ $bal }}" value="0" min="0" max="{{ $bal }}" step="1">
                                 </td>
                             </tr>
                             @endforeach
