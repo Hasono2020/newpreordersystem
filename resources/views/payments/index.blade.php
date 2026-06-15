@@ -123,18 +123,22 @@
                                 $payDisputed   = (int)($row->pay_disputed ?? 0);
                             @endphp
                             @if($payTotal === 0)
-                                <span class="text-muted">No payments</span>
-                            @elseif($payUnverified === 0 && $payDisputed === 0)
-                                <span class="badge bg-success" title="All payments verified">
-                                    <i class="bi bi-check-circle me-1"></i>All verified
-                                </span>
+                                <span class="badge bg-light text-dark border" title="No active payments recorded yet">No payments</span>
                             @else
-                                <span class="text-muted">{{ $payVerified }}/{{ $payTotal }} verified</span>
-                                @if($payUnverified > 0)
-                                    <span class="badge bg-warning text-dark ms-1" title="{{ $payUnverified }} unverified payment(s)">{{ $payUnverified }} unverified</span>
-                                @endif
-                                @if($payDisputed > 0)
-                                    <span class="badge bg-danger ms-1" title="{{ $payDisputed }} disputed payment(s)">{{ $payDisputed }} disputed</span>
+                                {{-- Every row here still owes money (balance_due > 0), so never say 'fully settled'. --}}
+                                @if($payUnverified === 0 && $payDisputed === 0)
+                                    {{-- All existing payments checked, but balance remains --}}
+                                    <span class="badge bg-info text-dark" title="The {{ $payVerified }} payment(s) so far are verified — but a balance is still owed">
+                                        <i class="bi bi-check2 me-1"></i>{{ $payVerified }} verified · balance owed
+                                    </span>
+                                @else
+                                    <span class="text-muted">{{ $payVerified }}/{{ $payTotal }} verified</span>
+                                    @if($payUnverified > 0)
+                                        <span class="badge bg-warning text-dark ms-1" title="{{ $payUnverified }} payment(s) waiting for finance to verify">{{ $payUnverified }} unverified</span>
+                                    @endif
+                                    @if($payDisputed > 0)
+                                        <span class="badge bg-danger ms-1" title="{{ $payDisputed }} disputed payment(s)">{{ $payDisputed }} disputed</span>
+                                    @endif
                                 @endif
                             @endif
                         </td>
