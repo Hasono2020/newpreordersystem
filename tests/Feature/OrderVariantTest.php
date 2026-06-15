@@ -3,12 +3,14 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Supplier;
+use App\Models\CsAgent;
 
 test('order with variant product requires variant selection', function () {
     $staff    = $this->staffUser();
     $trip     = $this->openTrip();
     $area     = $this->shippingArea();
     $cust     = $this->customer($staff);
+    $cs       = CsAgent::factory()->create();
     $supplier = Supplier::create(['name' => 'Supplier', 'contact' => null, 'notes' => null]);
 
     $product = Product::create([
@@ -33,6 +35,7 @@ test('order with variant product requires variant selection', function () {
         'trip_id'          => $trip->id,
         'customer_id'      => $cust->id,
         'shipping_area_id' => $area->id,
+        'cs_agent_id'      => $cs->id,
         'ordered_at'       => now()->format('Y-m-d\TH:i'),
         'items'            => [
             ['product_id' => $product->id, 'product_variant_id' => '', 'quantity' => 1, 'unit_price' => 250000],
@@ -45,6 +48,7 @@ test('order without variants saves successfully', function () {
     $trip     = $this->openTrip();
     $area     = $this->shippingArea();
     $cust     = $this->customer($staff);
+    $cs       = CsAgent::factory()->create();
     $supplier = Supplier::create(['name' => 'Supplier', 'contact' => null, 'notes' => null]);
 
     $product = Product::create([
@@ -61,6 +65,7 @@ test('order without variants saves successfully', function () {
         'trip_id'          => $trip->id,
         'customer_id'      => $cust->id,
         'shipping_area_id' => $area->id,
+        'cs_agent_id'      => $cs->id,
         'ordered_at'       => now()->format('Y-m-d\TH:i'),
         'items'            => [
             ['product_id' => $product->id, 'product_variant_id' => '', 'quantity' => 2, 'unit_price' => 200000],
