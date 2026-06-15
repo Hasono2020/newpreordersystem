@@ -44,8 +44,9 @@ class OrderController extends Controller
         if (!Auth::user()->hasPermission('orders.create')) abort(403);
         $trips         = Trip::where('status', 'open')->orderByDesc('id')->get();
         $shippingAreas = ShippingArea::where('is_active', true)->orderBy('name')->get();
+        $csAgents      = \App\Models\CsAgent::where('is_active', true)->orderBy('name')->get();
         $selectedTrip  = $request->trip_id ? Trip::find($request->trip_id) : null;
-        return view('orders.create', compact('trips', 'shippingAreas', 'selectedTrip'));
+        return view('orders.create', compact('trips', 'shippingAreas', 'csAgents', 'selectedTrip'));
     }
 
     public function store(Request $request)
@@ -54,6 +55,7 @@ class OrderController extends Controller
             'trip_id'          => 'required|exists:trips,id',
             'customer_id'      => 'required|exists:customers,id',
             'shipping_area_id' => 'nullable|exists:shipping_areas,id',
+            'cs_agent_id'      => 'nullable|exists:cs_agents,id',
             'notes'            => 'nullable|string',
             'ordered_at'       => 'nullable|date',
             'items'                          => 'required|array|min:1',
@@ -85,6 +87,7 @@ class OrderController extends Controller
                 'trip_id'          => $request->trip_id,
                 'customer_id'      => $request->customer_id,
                 'shipping_area_id' => $shippingAreaId,
+                'cs_agent_id'      => $request->cs_agent_id ?: null,
                 'notes'            => $request->notes,
                 'ordered_at'       => $request->ordered_at ?: now(),
                 'created_by'       => Auth::id(),
@@ -162,7 +165,7 @@ class OrderController extends Controller
 
     public function show(Order $order)
     {
-        $order->load(['customer', 'trip', 'shippingArea', 'items.product', 'items.variant', 'payments', 'createdBy']);
+        $order->load(['customer', 'trip', 'shippingArea', 'items.product', 'items.variant', 'payments', 'createdBy', 'csAgent']);
         $shippingAreas = ShippingArea::where('is_active', true)->orderBy('name')->get();
 
         // Determine which promo applies (for display only — no DB writes)
@@ -215,13 +218,15 @@ class OrderController extends Controller
             'createdBy',
         ]);
         $shippingAreas = ShippingArea::where('is_active', true)->orderBy('name')->get();
-        return view('orders.edit', compact('order', 'shippingAreas'));
+        $csAgents      = \App\Models\CsAgent::where('is_active', true)->orderBy('name')->get();
+        return view('orders.edit', compact('order', 'shippingAreas', 'csAgents'));
     }
 
     public function update(Request $request, Order $order)
     {
         $request->validate([
             'shipping_area_id' => 'nullable|exists:shipping_areas,id',
+            'cs_agent_id'      => 'nullable|exists:cs_agents,id',
             'notes'            => 'nullable|string',
             'ordered_at'       => 'nullable|date',
         ]);
@@ -233,6 +238,7 @@ class OrderController extends Controller
 
         $order->update([
             'shipping_area_id' => $shippingAreaId,
+            'cs_agent_id'      => $request->cs_agent_id ?: null,
             'notes'            => $request->notes,
             'ordered_at'       => $request->ordered_at ?: $order->ordered_at,
         ]);

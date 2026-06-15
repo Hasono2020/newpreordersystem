@@ -10,7 +10,7 @@ class Order extends Model
     use HasFactory;
 
     protected $fillable = [
-        'order_number', 'trip_id', 'customer_id', 'shipping_area_id', 'created_by',
+        'order_number', 'trip_id', 'customer_id', 'shipping_area_id', 'created_by', 'cs_agent_id',
         'subtotal', 'discount_amount', 'shipping_fee', 'shipping_discount',
         'shipping_weight_gram', 'shipping_kg_charged',
         'total_amount', 'deposit_paid', 'payment_status', 'notes', 'ordered_at',
@@ -24,6 +24,7 @@ class Order extends Model
     public function items()       { return $this->hasMany(OrderItem::class); }
     public function payments()    { return $this->hasMany(Payment::class); }
     public function createdBy()   { return $this->belongsTo(User::class, 'created_by'); }
+    public function csAgent()     { return $this->belongsTo(CsAgent::class); }
 
     public function getActiveItemsCountAttribute(): int
     {

@@ -301,6 +301,9 @@
         <a href="{{ route('shipping.index') }}" class="nav-link {{ request()->routeIs('shipping.*') ? 'active' : '' }}" onclick="closeSidebar()">
             <i class="bi bi-truck"></i> Shipping Areas
         </a>
+        <a href="{{ route('cs-agents.index') }}" class="nav-link {{ request()->routeIs('cs-agents.*') ? 'active' : '' }}" onclick="closeSidebar()">
+            <i class="bi bi-headset"></i> CS Agents
+        </a>
         <a href="{{ route('promos.index') }}" class="nav-link {{ request()->routeIs('promos.*') ? 'active' : '' }}" onclick="closeSidebar()">
             <i class="bi bi-percent"></i> Promo Rules
         </a>

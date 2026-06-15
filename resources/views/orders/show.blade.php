@@ -44,6 +44,9 @@
                     <div class="col-md-3">
                         <div class="text-muted small">Created by</div>
                         <div>{{ $order->createdBy->name }}</div>
+                        @if($order->csAgent)
+                        <div class="text-muted small mt-1">CS: <span class="text-dark">{{ $order->csAgent->name }}</span></div>
+                        @endif
                         <div class="text-muted small">{{ $order->created_at->format('d M Y H:i') }}</div>
                         <div class="small mt-1">
                             <span class="text-muted">Ordered:</span>

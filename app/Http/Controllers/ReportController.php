@@ -72,7 +72,7 @@ class ReportController extends Controller
      */
     public function exportOrders(Request $request)
     {
-        $query = Order::with('customer', 'trip', 'shippingArea', 'items.product', 'items.variant', 'payments')
+        $query = Order::with('customer', 'trip', 'shippingArea', 'items.product', 'items.variant', 'payments', 'csAgent')
             ->orderBy('ordered_at');
         if (\Illuminate\Support\Facades\Auth::user()->isOwnDataOnly()) {
             $query->where('created_by', \Illuminate\Support\Facades\Auth::id());
@@ -81,7 +81,7 @@ class ReportController extends Controller
         $orders = $query->get();
 
         $rows = [[
-            'KET', 'NO', 'NAMA', 'IG/WA', 'KOTA',
+            'KET', 'NO', 'NAMA', 'IG/WA', 'NO HP', 'KOTA',
             'KODE', 'WARNA', 'SIZE', 'HARGA SATUAN',
             'DP', 'TGL DP', 'AN', 'KET',
         ]];
@@ -97,17 +97,18 @@ class ReportController extends Controller
                 $rows[] = [
                     $item->status !== 'pending' ? ucfirst($item->status) : '', // KET (status)
                     $no,
-                    $o->customer->name,
-                    $o->customer->phone ?? '',
-                    $o->shippingArea?->name ?? '',
-                    $item->product->product_code ?? '',
-                    $item->variant?->color ?? '',
-                    $item->variant?->size ?? '',
-                    $item->unit_price,
-                    $dp,
-                    $tglDp,
-                    $an,
-                    '', // KET (trailing notes)
+                    $o->customer->name,                  // NAMA
+                    $o->csAgent?->name ?? '',            // IG/WA (CS who handled livechat)
+                    $o->customer->phone ?? '',           // NO HP (customer phone)
+                    $o->shippingArea?->name ?? '',       // KOTA
+                    $item->product->product_code ?? '',  // KODE
+                    $item->variant?->color ?? '',        // WARNA
+                    $item->variant?->size ?? '',         // SIZE
+                    $item->unit_price,                   // HARGA SATUAN
+                    $dp,                                 // DP
+                    $tglDp,                              // TGL DP
+                    $an,                                 // AN
+                    '',                                  // KET
                 ];
                 $no++;
                 // Only show DP on first item row per order
@@ -118,7 +119,9 @@ class ReportController extends Controller
             // If order has no items
             if ($o->items->isEmpty()) {
                 $rows[] = [
-                    '', $no, $o->customer->name, $o->customer->phone ?? '',
+                    '', $no, $o->customer->name,
+                    $o->csAgent?->name ?? '',
+                    $o->customer->phone ?? '',
                     $o->shippingArea?->name ?? '',
                     '', '', '', '',
                     $dp, $tglDp, $an, '',
@@ -158,14 +161,15 @@ class ReportController extends Controller
     public function orderImportTemplate()
     {
         return $this->streamXlsx('order_import_template.xlsx', [
-            ['Notes', 'No', 'Name', 'Phone', 'Shipping Area', 'Code', 'Color', 'Size', 'Unit Price', 'Deposit', 'Deposit Date', 'Recipient Name', 'Notes'],
-            // Each row = 1 order with 1 item. Row order = FIFO priority (top = first).
-            // Leave Unit Price blank to use system product price.
-            ['', 1, 'JASMINE 7911', '08123456789', 'SURABAYA', 'NA_03', 'GREY',  'FZ', '', 500000, '2026-05-03', 'JASMINE',  ''],
-            ['', 2, 'JASMINE 7911', '',            '',         'NA_03', 'BROWN', 'FZ', '', '',     '',           '',         ''],
-            ['', 3, 'JASMINE 7911', '',            '',         'NA_03', 'GREY',  'FZ', '', '',     '',           '',         ''],
-            ['', 4, 'SARI 0812',    '08129876543', 'JAKARTA',  'NZ_01', 'BLACK', 'M',  '', 300000, '2026-05-04', 'SARI',     'fragile'],
-            ['', 5, 'SARI 0812',    '',            '',         'NA_03', 'NAVY',  'FZ', '', '',     '',           '',         ''],
+            ['KET', 'NO', 'NAMA', 'IG/WA', 'NO HP', 'KOTA', 'KODE', 'WARNA', 'SIZE', 'HARGA SATUAN', 'DP', 'TGL DP', 'AN', 'KET'],
+            // Each row = 1 order item. Row order = FIFO priority (top = first).
+            // IG/WA = CS who handled the livechat (must match a CS agent name).
+            // NO HP = customer phone. Leave HARGA SATUAN blank to use system product price.
+            ['', 1, 'JASMINE 7911', 'Rina', '08123456789', 'SURABAYA', 'NA_03', 'GREY',  'FZ', '', 500000, '2026-05-03', 'JASMINE', ''],
+            ['', 2, 'JASMINE 7911', 'Rina', '',            '',         'NA_03', 'BROWN', 'FZ', '', '',     '',           '',        ''],
+            ['', 3, 'JASMINE 7911', 'Rina', '',            '',         'NA_03', 'GREY',  'FZ', '', '',     '',           '',        ''],
+            ['', 4, 'SARI 0812',    'Dewi', '08129876543', 'JAKARTA',  'NZ_01', 'BLACK', 'M',  '', 300000, '2026-05-04', 'SARI',    'fragile'],
+            ['', 5, 'SARI 0812',    'Dewi', '',            '',         'NA_03', 'NAVY',  'FZ', '', '',     '',           '',        ''],
         ]);
     }
 
@@ -210,19 +214,21 @@ class ReportController extends Controller
     /**
      * Import orders from Excel.
      *
-     * COLUMNS (12 total — one row per item line):
-     *  0  No          – row number (ignored)
-     *  1  Name        – customer name (first row per customer; repeat or leave blank)
-     *  2  Phone       – customer phone (first row per customer only)
-     *  3  Area        – shipping area (first row per customer only)
-     *  4  Code        – product code (required; must exist in selected trip)
-     *  5  Color       – variant color
-     *  6  Size        – variant size
-     *  7  Qty         – quantity ordered (default 1)
-     *  8  Price       – unit price (blank = use product price)
-     *  9  DP          – deposit amount (first row per customer only)
-     * 10  Date of DP  – deposit date YYYY-MM-DD or DD/MM/YYYY
-     * 11  Notes       – order notes (first row per customer only)
+     * COLUMNS (14 total — one row per item line):
+     *  0  KET          – status/remark (ignored on import)
+     *  1  NO           – row number (FIFO order; ignored otherwise)
+     *  2  NAMA         – customer name
+     *  3  IG/WA        – CS agent who handled the livechat (matched by name)
+     *  4  NO HP        – customer phone
+     *  5  KOTA         – shipping area name
+     *  6  KODE         – product code (required; must exist in selected trip)
+     *  7  WARNA        – variant color
+     *  8  SIZE         – variant size
+     *  9  HARGA SATUAN – unit price (blank = use product price)
+     * 10  DP           – deposit amount
+     * 11  TGL DP       – deposit date YYYY-MM-DD or DD/MM/YYYY
+     * 12  AN           – atas nama / order notes
+     * 13  KET          – additional notes
      */
     public function importOrders(Request $request)
     {
@@ -247,7 +253,7 @@ class ReportController extends Controller
 
         // Remove completely blank rows
         $rows = array_values(array_filter($rows, fn($r) =>
-            !empty(trim((string)($r[2] ?? ''))) || !empty(trim((string)($r[5] ?? '')))
+            !empty(trim((string)($r[2] ?? ''))) || !empty(trim((string)($r[6] ?? '')))
         ));
 
         if (empty($rows)) {
@@ -265,14 +271,18 @@ class ReportController extends Controller
 
         $shippingAreasById = $shippingAreas->keyBy('id'); // for fast lookup by ID during import
 
+        // Pre-load CS agents (match by name, case-insensitive)
+        $csAgents = \App\Models\CsAgent::all()
+            ->keyBy(fn($a) => strtolower(trim($a->name)));
+
         // ── Full validation pass — check EVERY row before importing anything ──
         $errors = [];
         foreach ($rows as $i => $row) {
             $lineNum = $i + 2;
             $name    = trim((string)($row[2] ?? ''));
-            $code    = strtoupper(trim((string)($row[5] ?? '')));
-            $color   = trim((string)($row[6] ?? ''));
-            $size    = trim((string)($row[7] ?? ''));
+            $code    = strtoupper(trim((string)($row[6] ?? '')));
+            $color   = trim((string)($row[7] ?? ''));
+            $size    = trim((string)($row[8] ?? ''));
 
             if (empty($name) && empty($code)) continue; // skip truly blank rows
 
@@ -338,16 +348,20 @@ class ReportController extends Controller
 
         foreach ($rows as $rowIdx => $row) {
             $name    = trim((string)($row[2] ?? ''));
-            $contact = trim((string)($row[3] ?? ''));
-            $area    = trim((string)($row[4] ?? ''));
-            $code    = strtoupper(trim((string)($row[5] ?? '')));
-            $color   = trim((string)($row[6] ?? ''));
-            $size    = trim((string)($row[7] ?? ''));
-            $price   = (float)($row[8] ?? 0);
-            $dp      = (float)($row[9] ?? 0);
-            $dpRaw   = $row[10] ?? '';
-            $an      = trim((string)($row[11] ?? ''));
-            $ketPost = trim((string)($row[12] ?? ''));
+            $csName  = trim((string)($row[3] ?? ''));   // IG/WA = CS agent
+            $contact = trim((string)($row[4] ?? ''));   // NO HP = customer phone
+            $area    = trim((string)($row[5] ?? ''));
+            $code    = strtoupper(trim((string)($row[6] ?? '')));
+            $color   = trim((string)($row[7] ?? ''));
+            $size    = trim((string)($row[8] ?? ''));
+            $price   = (float)($row[9] ?? 0);
+            $dp      = (float)($row[10] ?? 0);
+            $dpRaw   = $row[11] ?? '';
+            $an      = trim((string)($row[12] ?? ''));
+            $ketPost = trim((string)($row[13] ?? ''));
+
+            // Resolve CS agent by name (case-insensitive); blank/unknown = null
+            $csAgentId = $csName !== '' ? ($csAgents[strtolower($csName)]->id ?? null) : null;
 
             if (empty($name) || empty($code)) continue;
 
@@ -445,6 +459,7 @@ class ReportController extends Controller
                 'trip_id'              => $trip->id,
                 'customer_id'          => $customerId,
                 'shipping_area_id'     => $areaId,
+                'cs_agent_id'          => $csAgentId,
                 'notes'                => $notes,
                 'ordered_at'           => $orderedAt,
                 'created_by'           => $createdBy,

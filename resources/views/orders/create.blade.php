@@ -225,6 +225,20 @@
                     </div>
                 </div>
                 <div class="col-md-4">
+                    <label class="form-label fw-semibold">Customer Service</label>
+                    <select name="cs_agent_id" id="csAgentSelect" class="form-select">
+                        <option value="">— none —</option>
+                        @foreach($csAgents as $cs)
+                            <option value="{{ $cs->id }}" {{ old('cs_agent_id') == $cs->id ? 'selected' : '' }}>
+                                {{ $cs->name }}
+                            </option>
+                        @endforeach
+                    </select>
+                    <div class="form-text text-muted" style="font-size:.72rem;">
+                        <i class="bi bi-headset me-1"></i>Who handled the livechat.
+                    </div>
+                </div>
+                <div class="col-md-4">
                     <label class="form-label fw-semibold">Notes</label>
                     <input type="text" name="notes" class="form-control" value="{{ old('notes') }}" placeholder="Special instructions…">
                 </div>
@@ -994,5 +1008,24 @@ document.addEventListener('keydown', e => {
 document.querySelectorAll('.product-search-wrap').forEach(w => initProductSearch(w));
 const tripSel = document.getElementById('tripSelect');
 if (tripSel.value) tripSel.dispatchEvent(new Event('change'));
+
+/* ── CS Agent auto-select (remembers last used per browser) ── */
+(function() {
+    const csSelect = document.getElementById('csAgentSelect');
+    if (!csSelect) return;
+    const KEY = 'lastCsAgentId';
+    // On load: if nothing chosen yet (no old() value), restore last used
+    if (!csSelect.value) {
+        const last = localStorage.getItem(KEY);
+        if (last && csSelect.querySelector(`option[value="${last}"]`)) {
+            csSelect.value = last;
+        }
+    }
+    // Remember whenever it changes
+    csSelect.addEventListener('change', function() {
+        if (this.value) localStorage.setItem(KEY, this.value);
+        else localStorage.removeItem(KEY);
+    });
+})();
 </script>
 @endpush

@@ -14,6 +14,7 @@ use App\Http\Controllers\ShippingAreaController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\StaffController;
 use App\Http\Controllers\SupplierController;
+use App\Http\Controllers\CsAgentController;
 use App\Http\Controllers\SettingsController;
 
 // Auth
@@ -134,6 +135,12 @@ Route::middleware('auth')->group(function () {
     // Suppliers
     Route::delete('suppliers/bulk-destroy', [SupplierController::class, 'bulkDestroy'])->name('suppliers.bulk-destroy');
     Route::resource('suppliers', \App\Http\Controllers\SupplierController::class);
+
+    // CS Agents (customer service who handle livechat)
+    Route::get('cs-agents', [CsAgentController::class, 'index'])->name('cs-agents.index');
+    Route::post('cs-agents', [CsAgentController::class, 'store'])->name('cs-agents.store');
+    Route::put('cs-agents/{csAgent}', [CsAgentController::class, 'update'])->name('cs-agents.update');
+    Route::delete('cs-agents/{csAgent}', [CsAgentController::class, 'destroy'])->name('cs-agents.destroy');
 
     // Store Settings (admin only)
     Route::get('settings', [SettingsController::class, 'index'])->name('settings.index');
