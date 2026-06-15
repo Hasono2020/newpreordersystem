@@ -45,6 +45,12 @@
             'suppliers.edit'   => 'Edit suppliers',
             'suppliers.delete' => 'Delete suppliers',
         ],
+        'CS Agents' => [
+            'cs_agents.view'   => 'View CS agents',
+            'cs_agents.create' => 'Add CS agents',
+            'cs_agents.edit'   => 'Edit CS agents',
+            'cs_agents.delete' => 'Delete CS agents',
+        ],
         'Payments'   => [
             'payments.view'   => 'View payments',
             'payments.record' => 'Record payments',

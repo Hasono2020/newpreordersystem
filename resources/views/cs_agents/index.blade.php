@@ -17,9 +17,11 @@
             <a href="{{ route('cs-agents.index') }}" class="btn btn-sm btn-outline-secondary">Clear</a>
         @endif
     </form>
+    @if(auth()->user()->hasPermission('cs_agents.create'))
     <button class="btn btn-sm btn-primary ms-auto" data-bs-toggle="modal" data-bs-target="#addModal">
         <i class="bi bi-plus-lg me-1"></i>Add CS Agent
     </button>
+    @endif
 </div>
 
 @if(session('success'))
@@ -55,13 +57,20 @@
                         @endif
                     </td>
                     <td class="text-end">
+                        @if(auth()->user()->hasPermission('cs_agents.edit'))
                         <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editModal-{{ $agent->id }}">
                             <i class="bi bi-pencil"></i>
                         </button>
+                        @endif
+                        @if(auth()->user()->hasPermission('cs_agents.delete'))
                         <form method="POST" action="{{ route('cs-agents.destroy', $agent) }}" class="d-inline" onsubmit="return confirm('Delete this CS agent? Their name will be removed from {{ $agent->orders_count }} order(s), but the orders stay.')">
                             @csrf @method('DELETE')
                             <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
                         </form>
+                        @endif
+                        @if(!auth()->user()->hasPermission('cs_agents.edit') && !auth()->user()->hasPermission('cs_agents.delete'))
+                        <span class="text-muted small">—</span>
+                        @endif
                     </td>
                 </tr>
                 @empty
@@ -113,6 +122,7 @@
 </div>
 
 {{-- Edit Modals --}}
+@if(auth()->user()->hasPermission('cs_agents.edit'))
 @foreach($agents as $agent)
 <div class="modal fade" id="editModal-{{ $agent->id }}" tabindex="-1">
     <div class="modal-dialog">
@@ -150,4 +160,5 @@
     </div>
 </div>
 @endforeach
+@endif
 @endsection

@@ -133,13 +133,15 @@
                     <strong>If importing multiple files: import earliest orders first, latest orders last.</strong>
                 </div>
                 <div class="alert alert-light border small mb-3">
-                    <strong>Columns (13) — Order Import format:</strong><br>
-                    <code class="small">Notes · No · Name · Phone · Shipping Area · Code · Color · Size · Unit Price · Deposit · Deposit Date · Recipient Name · Notes</code>
+                    <strong>Columns (14) — Order Import format:</strong><br>
+                    <code class="small">KET · NO · NAMA · IG/WA · NO HP · KOTA · KODE · WARNA · SIZE · HARGA SATUAN · DP · TGL DP · AN · KET</code>
                     <span class="text-muted d-block mt-1">
                         • <strong>Each row = 1 order + 1 item.</strong> Row order = FIFO priority (row 1 gets stock first).<br>
-                        • <strong>Code</strong> must exist in the selected trip. <strong>Color/Size</strong> must match exactly.<br>
-                        • Leave <strong>Unit Price</strong> blank to use system product price.<br>
-                        • <strong>Recipient Name</strong> = Atas Nama / order notes.<br>
+                        • <strong>IG/WA</strong> = CS agent who handled the livechat (must match a CS agent name).<br>
+                        • <strong>NO HP</strong> = customer phone number.<br>
+                        • <strong>KODE</strong> must exist in the selected trip. <strong>WARNA/SIZE</strong> must match exactly.<br>
+                        • Leave <strong>HARGA SATUAN</strong> blank to use system product price.<br>
+                        • <strong>AN</strong> = Atas Nama / order notes.<br>
                         • All rows are validated before import — any error blocks the entire file.
                     </span>
                     <a onclick="showExport('Preparing template download…')" href="{{ route('orders.import.template') }}" class="small mt-1 d-inline-block">

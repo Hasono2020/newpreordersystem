@@ -137,10 +137,10 @@ Route::middleware('auth')->group(function () {
     Route::resource('suppliers', \App\Http\Controllers\SupplierController::class);
 
     // CS Agents (customer service who handle livechat)
-    Route::get('cs-agents', [CsAgentController::class, 'index'])->name('cs-agents.index');
-    Route::post('cs-agents', [CsAgentController::class, 'store'])->name('cs-agents.store');
-    Route::put('cs-agents/{csAgent}', [CsAgentController::class, 'update'])->name('cs-agents.update');
-    Route::delete('cs-agents/{csAgent}', [CsAgentController::class, 'destroy'])->name('cs-agents.destroy');
+    Route::get('cs-agents', [CsAgentController::class, 'index'])->middleware('perm:cs_agents.view')->name('cs-agents.index');
+    Route::post('cs-agents', [CsAgentController::class, 'store'])->middleware('perm:cs_agents.create')->name('cs-agents.store');
+    Route::put('cs-agents/{csAgent}', [CsAgentController::class, 'update'])->middleware('perm:cs_agents.edit')->name('cs-agents.update');
+    Route::delete('cs-agents/{csAgent}', [CsAgentController::class, 'destroy'])->middleware('perm:cs_agents.delete')->name('cs-agents.destroy');
 
     // Store Settings (admin only)
     Route::get('settings', [SettingsController::class, 'index'])->name('settings.index');
