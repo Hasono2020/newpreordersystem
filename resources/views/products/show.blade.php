@@ -52,7 +52,7 @@
                 @csrf
                 <div class="mb-2"><input type="text" name="color" class="form-control form-control-sm" placeholder="Color"></div>
                 <div class="mb-2"><input type="text" name="size" class="form-control form-control-sm" placeholder="Size"></div>
-                <div class="mb-3"><input type="number" name="price_adjustment" class="form-control form-control-sm" placeholder="Price adjustment (Rp)" value="0" step="1000"></div>
+                <div class="mb-3"><input type="number" name="price_adjustment" class="form-control form-control-sm" placeholder="Price adjustment (Rp)" value="0" step="1"></div>
                 <button type="submit" class="btn btn-sm btn-primary w-100">Add Variant</button>
             </form>
         </div>

@@ -27,18 +27,18 @@
         </div>
         <div class="col-md-4">
             <label class="form-label fw-semibold">Flat Discount (Rp)</label>
-            <input type="number" name="discount_flat" class="form-control" value="{{ old('discount_flat', $promo->discount_flat ?? 0) }}" step="1000" min="0">
+            <input type="number" name="discount_flat" class="form-control" value="{{ old('discount_flat', $promo->discount_flat ?? 0) }}" step="1" min="0">
         </div>
         <div class="col-md-4">
             <label class="form-label fw-semibold">Discount per Item (Rp)</label>
-            <input type="number" name="discount_per_item" class="form-control" value="{{ old('discount_per_item', $promo->discount_per_item ?? 0) }}" step="1000" min="0">
+            <input type="number" name="discount_per_item" class="form-control" value="{{ old('discount_per_item', $promo->discount_per_item ?? 0) }}" step="1" min="0">
         </div>
     </div>
 
     <div class="row g-3 mb-3">
         <div class="col-md-4">
             <label class="form-label fw-semibold">Max Shipping Subsidy (Rp)</label>
-            <input type="number" name="max_shipping_subsidy" class="form-control" value="{{ old('max_shipping_subsidy', $promo->max_shipping_subsidy ?? 0) }}" step="1000" min="0">
+            <input type="number" name="max_shipping_subsidy" class="form-control" value="{{ old('max_shipping_subsidy', $promo->max_shipping_subsidy ?? 0) }}" step="1" min="0">
             <div class="form-text">Max free shipping given</div>
         </div>
         <div class="col-md-4">

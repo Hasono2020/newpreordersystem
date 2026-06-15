@@ -137,7 +137,7 @@
             <div class="input-group">
                 <span class="input-group-text text-muted">Rp</span>
                 <input type="number" name="price" class="form-control"
-                    value="{{ old('price', $product->price) }}" min="0" step="1000" required>
+                    value="{{ old('price', $product->price) }}" min="0" step="1" required>
             </div>
         </div>
         <div class="col-md-3">

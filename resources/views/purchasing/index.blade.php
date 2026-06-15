@@ -418,7 +418,7 @@ function buildPOForm(key, container) {
                 <div class="vc">
                     <input type="number" name="items[${fi}][unit_cost]"
                         class="form-control form-control-sm po-cost"
-                        value="0" step="1000" min="0" required placeholder="Supplier cost"
+                        value="0" step="1" min="0" required placeholder="Supplier cost"
                         oninput="updateStickyBar()">
                     <div style="font-size:.65rem;color:#9ca3af;text-align:center;">unit cost</div>
                 </div>

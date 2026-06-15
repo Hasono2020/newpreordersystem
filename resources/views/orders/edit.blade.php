@@ -90,7 +90,7 @@
                             </div>
                             <div class="col-md-2">
                                 <label class="form-label small fw-semibold">Price (Rp)</label>
-                                <input type="number" name="unit_price" id="aiPrice" class="form-control form-control-sm" value="0" step="1000" oninput="updateLineTotal()">
+                                <input type="number" name="unit_price" id="aiPrice" class="form-control form-control-sm" value="0" step="1" oninput="updateLineTotal()">
                             </div>
                             <div class="col-md-1">
                                 <label class="form-label small fw-semibold">Total</label>
@@ -177,7 +177,7 @@
                         <div class="row g-2 align-items-end">
                             <div class="col-md-2">
                                 <label class="form-label small">Amount (Rp)</label>
-                                <input type="number" name="amount" class="form-control form-control-sm" required step="1000" min="0">
+                                <input type="number" name="amount" class="form-control form-control-sm" required step="1" min="0">
                             </div>
                             <div class="col-md-2">
                                 <label class="form-label small">Type</label>
@@ -264,7 +264,7 @@
                     @csrf @method('PUT')
                     <div class="mb-3">
                         <label class="form-label small fw-semibold">Shipping Fee (Rp)</label>
-                        <input type="number" name="shipping_fee" class="form-control form-control-sm" value="{{ $order->shipping_fee }}" step="1000">
+                        <input type="number" name="shipping_fee" class="form-control form-control-sm" value="{{ $order->shipping_fee }}" step="1">
                     </div>
                     <div class="mb-3">
                         <label class="form-label small fw-semibold">Notes</label>

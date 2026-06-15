@@ -266,7 +266,7 @@ function renderChunk() {
             </td>
             <td>
                 <input type="number" class="form-control form-control-sm cost-input"
-                    value="${r.cost||0}" min="0" step="1000"
+                    value="${r.cost||0}" min="0" step="1"
                     data-row="${rowId}"
                     oninput="onCostChange('${rowId}', this)">
             </td>

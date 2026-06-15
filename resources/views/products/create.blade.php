@@ -148,7 +148,7 @@
                 <span class="input-group-text text-muted">Rp</span>
                 <input type="number" name="price"
                     class="form-control @error('price') is-invalid @enderror"
-                    value="{{ old('price', 0) }}" min="0" step="1000" required>
+                    value="{{ old('price', 0) }}" min="0" step="1" required>
             </div>
             @error('price')<div class="invalid-feedback">{{ $message }}</div>@enderror
         </div>
@@ -243,7 +243,7 @@
             <div class="col-md-4">
                 <div class="input-group input-group-sm">
                     <input type="number" name="variants[0][price_adjustment]"
-                        class="form-control" placeholder="Extra price for this variant (Rp), 0 = same price" value="0" step="1000">
+                        class="form-control" placeholder="Extra price for this variant (Rp), 0 = same price" value="0" step="1">
                     <span class="input-group-text text-muted">Rp extra</span>
                 </div>
             </div>
@@ -517,7 +517,7 @@ document.getElementById('addVariant').addEventListener('click', function () {
         <div class="col-md-4">
             <div class="input-group input-group-sm">
                 <input type="number" name="variants[${variantIndex}][price_adjustment]"
-                    class="form-control" placeholder="Extra price for this variant (Rp)" value="0" step="1000">
+                    class="form-control" placeholder="Extra price for this variant (Rp)" value="0" step="1">
                 <span class="input-group-text text-muted">Rp extra</span>
             </div>
         </div>
