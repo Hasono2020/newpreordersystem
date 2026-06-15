@@ -280,6 +280,7 @@ class ReportController extends Controller
         foreach ($rows as $i => $row) {
             $lineNum = $i + 2;
             $name    = trim((string)($row[2] ?? ''));
+            $csName  = trim((string)($row[3] ?? ''));   // IG/WA = CS agent
             $code    = strtoupper(trim((string)($row[6] ?? '')));
             $color   = trim((string)($row[7] ?? ''));
             $size    = trim((string)($row[8] ?? ''));
@@ -288,6 +289,14 @@ class ReportController extends Controller
 
             if (empty($name)) {
                 $errors[] = "Row {$lineNum}: Name is required.";
+                continue;
+            }
+            if (empty($csName)) {
+                $errors[] = "Row {$lineNum} ({$name}): IG/WA (Customer Service) is required.";
+                continue;
+            }
+            if (!isset($csAgents[strtolower($csName)])) {
+                $errors[] = "Row {$lineNum} ({$name}): CS agent '{$csName}' not found. Add them in CS Agents first.";
                 continue;
             }
             if (empty($code)) {
