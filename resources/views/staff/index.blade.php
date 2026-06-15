@@ -15,6 +15,9 @@
 .perm-row { display:flex;align-items:center;gap:.5rem;font-size:.82rem;padding:2px 0; }
 .perm-row .form-check-input { margin:0; }
 .perm-override { color:#6366f1;font-size:.68rem;margin-left:.25rem; }
+/* Safety net: keep modals fully hidden until Bootstrap opens them.
+   Prevents both create + edit forms rendering inline if JS is slow/fails. */
+.modal.fade:not(.show) { display: none !important; }
 </style>
 @endpush
 
