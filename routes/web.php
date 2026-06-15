@@ -78,6 +78,7 @@ Route::middleware('auth')->group(function () {
     Route::post('payments', [PaymentController::class, 'store'])->middleware('perm:payments.record')->name('payments.store');
     Route::post('payments/batch/{batchId}/void', [PaymentController::class, 'voidBatch'])->middleware('perm:payments.void')->name('payments.batch.void');
     Route::post('payments/{payment}/verify',  [PaymentController::class, 'verify'])->middleware('perm:payments.verify')->name('payments.verify');
+    Route::post('payments/batch/{batchId}/verify', [PaymentController::class, 'verifyBatch'])->middleware('perm:payments.verify')->name('payments.batch.verify');
     Route::post('payments/{payment}/dispute', [PaymentController::class, 'dispute'])->middleware('perm:payments.verify')->name('payments.dispute');
     Route::get('payments/export', [PaymentController::class, 'export'])->middleware('perm:payments.export')->name('payments.export');
     Route::get('orders/{order}/invoice', [OrderController::class, 'invoice'])->name('orders.invoice');

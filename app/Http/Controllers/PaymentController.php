@@ -464,6 +464,37 @@ class PaymentController extends Controller
         return back()->with('success', 'Payment of Rp ' . number_format($payment->amount, 0, ',', '.') . ' verified.');
     }
 
+    /**
+     * Verify an entire payment batch at once (all non-voided rows sharing the batch_id).
+     * Useful when one customer transfer was split across several orders.
+     */
+    public function verifyBatch(Request $request, string $batchId)
+    {
+        if (!Auth::user()->hasPermission('payments.verify')) abort(403);
+
+        $payments = Payment::where('batch_id', $batchId)
+            ->whereNull('voided_at')
+            ->where('verification_status', '!=', 'verified')
+            ->get();
+
+        if ($payments->isEmpty()) {
+            return back()->with('error', 'No payments to verify in this batch.');
+        }
+
+        $total = 0;
+        foreach ($payments as $payment) {
+            $payment->update([
+                'verification_status' => 'verified',
+                'verified_by'         => Auth::id(),
+                'verified_at'         => now(),
+                'dispute_note'        => null,
+            ]);
+            $total += $payment->amount;
+        }
+
+        return back()->with('success', $payments->count() . ' payment(s) totaling Rp ' . number_format($total, 0, ',', '.') . ' verified.');
+    }
+
     public function dispute(Request $request, Payment $payment)
     {
         if (!Auth::user()->hasPermission('payments.verify')) abort(403);

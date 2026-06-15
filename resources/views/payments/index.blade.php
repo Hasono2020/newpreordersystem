@@ -256,10 +256,12 @@
                         <td class="text-end" style="white-space:nowrap">
                             {{-- Verify/Dispute actions for finance --}}
                             @if(!$payment->isVoided() && auth()->user()->hasPermission('payments.verify') && !$payment->isVerified())
-                                <form method="POST" action="{{ route('payments.verify', $payment) }}" class="d-inline">
+                                @php $verifyRoute = $payment->batch_id ? route('payments.batch.verify', $payment->batch_id) : route('payments.verify', $payment); @endphp
+                                <form method="POST" action="{{ $verifyRoute }}" class="d-inline">
                                     @csrf
-                                    <button type="submit" class="btn btn-sm btn-outline-success py-0 px-2">
-                                        <i class="bi bi-check-lg"></i> Verify
+                                    <button type="submit" class="btn btn-sm btn-outline-success py-0 px-2"
+                                        title="{{ $payment->batch_id ? 'Verify all payments in this batch' : 'Verify this payment' }}">
+                                        <i class="bi bi-check-lg"></i> Verify{{ $payment->batch_id ? ' batch' : '' }}
                                     </button>
                                 </form>
                                 @if(!$payment->isDisputed())
