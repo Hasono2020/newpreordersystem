@@ -409,8 +409,9 @@ class ProductController extends Controller
                         $rows[] = array_merge($base, [$v->color ?? '', $v->size ?? '', $v->price_adjustment, $v->supplier_stock]);
                     } else {
                         // Subsequent variant rows — only code + variant columns, rest blank
+                        // 13 cols: trip, product_code, sku, brand, supplier, price, weight, excluded, status, color, size, price_adj, supplier_stock
                         $rows[] = [
-                            '', '', $p->product_code ?? '', '', '', '', '', '', '', '',
+                            '', $p->product_code ?? '', '', '', '', '', '', '', '',
                             $v->color ?? '', $v->size ?? '', $v->price_adjustment, $v->supplier_stock,
                         ];
                     }
