@@ -114,7 +114,13 @@
                         <td class="text-end">Rp {{ number_format($row->total_ordered, 0, ',', '.') }}</td>
                         <td class="text-end text-success">Rp {{ number_format($row->total_paid, 0, ',', '.') }}</td>
                         <td class="text-end fw-semibold text-danger">Rp {{ number_format($row->balance_due, 0, ',', '.') }}</td>
-                        <td class="small text-muted">{{ $row->created_by_names ?? '—' }}</td>
+                        <td class="small text-muted">
+                            @if(($row->creator_count ?? 0) > 1)
+                                Multiple
+                            @else
+                                {{ $row->creator_name ?? '—' }}
+                            @endif
+                        </td>
                         <td class="text-end">
                             @if(auth()->user()->hasPermission('payments.record'))
                             <a href="{{ route('payments.create', ['customer' => $row->customer_id, 'trip_id' => $tripId]) }}"

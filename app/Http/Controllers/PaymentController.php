@@ -35,7 +35,6 @@ class PaymentController extends Controller
         if ($tripId) {
             $query = DB::table('orders')
                 ->join('customers', 'customers.id', '=', 'orders.customer_id')
-                ->join('users as creators', 'creators.id', '=', 'orders.created_by')
                 ->select([
                     'orders.customer_id',
                     'customers.name as customer_name',
@@ -45,8 +44,10 @@ class PaymentController extends Controller
                     DB::raw('SUM(orders.total_amount) as total_ordered'),
                     DB::raw('SUM(orders.deposit_paid) as total_paid'),
                     DB::raw('(SUM(orders.total_amount) - SUM(orders.deposit_paid)) as balance_due'),
-                    DB::raw('GROUP_CONCAT(creators.name) as created_by_names'),
+                    DB::raw('COUNT(DISTINCT orders.created_by) as creator_count'),
+                    DB::raw('MAX(creators.name) as creator_name'),
                 ])
+                ->join('users as creators', 'creators.id', '=', 'orders.created_by')
                 ->where('orders.trip_id', $tripId)
                 ->where('orders.payment_status', '!=', 'paid')
                 ->when(Auth::user()->isOwnDataOnly(), fn($q) => $q->where('orders.created_by', Auth::id()))
