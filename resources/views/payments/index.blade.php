@@ -181,7 +181,7 @@
         @endif
     </div>
 
-@else
+@elseif($tab === 'log')
     {{-- Verification summary bar (finance/admin only) --}}
     @if(auth()->user()->hasPermission('payments.verify'))
     <div class="row g-2 mb-3">
@@ -307,9 +307,7 @@
         </div>
         @endif
     </div>
-@endif
-
-@if($tab === 'pack')
+@elseif($tab === 'pack')
     <div class="card">
         <div class="card-body p-0">
             @if(!$tripId)
