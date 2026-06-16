@@ -81,37 +81,34 @@ class CustomerController extends Controller
 
         $oldAreaId = $customer->default_shipping_area_id;
         $newAreaId = $data['default_shipping_area_id'];
+        $oldType   = $customer->type;
 
         $customer->update($data);
 
-        // If shipping area changed, apply it to all this customer's orders
-        // that currently have no shipping area set, then recalculate
+        $promoSvc = app(\App\Services\PromoService::class);
+
+        // If shipping area changed, apply it to this customer's orders that have none
         if ($newAreaId && $newAreaId != $oldAreaId) {
-            $ordersToUpdate = $customer->orders()
-                ->whereNull('shipping_area_id')
-                ->with('items.product', 'items.variant', 'shippingArea')
-                ->get();
+            $customer->orders()->whereNull('shipping_area_id')
+                ->update(['shipping_area_id' => $newAreaId]);
+        }
 
-            $promoSvc = app(\App\Services\PromoService::class);
+        // If the customer type changed (affects promo tier) OR the shipping area changed,
+        // recombine shipping + promo across all the customer's orders, per trip.
+        $typeChanged = $oldType !== $customer->type;
+        $areaChanged = $newAreaId && $newAreaId != $oldAreaId;
 
-            foreach ($ordersToUpdate as $order) {
-                $order->update(['shipping_area_id' => $newAreaId]);
-                $calc = $promoSvc->recalculate($order->fresh());
-                $order->update([
-                    'subtotal'             => $calc['subtotal'],
-                    'discount_amount'      => $calc['discount_amount'],
-                    'shipping_fee'         => $calc['shipping_fee'],
-                    'shipping_discount'    => $calc['shipping_discount'],
-                    'shipping_weight_gram' => $calc['shipping_weight_gram'],
-                    'shipping_kg_charged'  => $calc['shipping_kg_charged'],
-                    'total_amount'         => $calc['total_amount'],
-                ]);
+        if ($typeChanged || $areaChanged) {
+            $tripIds = $customer->orders()->distinct()->pluck('trip_id')->filter();
+            foreach ($tripIds as $tripId) {
+                $promoSvc->recalcCustomerShipping($customer->id, $tripId);
             }
 
-            $count = $ordersToUpdate->count();
             $msg = 'Customer updated.';
-            if ($count > 0) {
-                $msg .= " Applied shipping area to {$count} order(s) that had none, and recalculated totals.";
+            if ($typeChanged) {
+                $msg .= " Customer type changed — promo and totals recalculated across {$tripIds->count()} trip(s).";
+            } elseif ($areaChanged) {
+                $msg .= ' Shipping area applied and totals recalculated.';
             }
             return redirect()->route('customers.show', $customer)->with('success', $msg);
         }
