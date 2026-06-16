@@ -114,7 +114,14 @@
                         <td class="text-end">{{ $row->order_count }}</td>
                         <td class="text-end">Rp {{ number_format($row->total_ordered, 0, ',', '.') }}</td>
                         <td class="text-end text-success">Rp {{ number_format($row->total_paid, 0, ',', '.') }}</td>
-                        <td class="text-end fw-semibold text-danger">Rp {{ number_format($row->balance_due, 0, ',', '.') }}</td>
+                        <td class="text-end fw-semibold text-danger">
+                            Rp {{ number_format($row->balance_due, 0, ',', '.') }}
+                            @if(($row->per_order_shipping_sum ?? 0) > ($row->combined_shipping ?? 0))
+                                <div class="text-success" style="font-size:.68rem;font-weight:500;" title="Shipping combined into one parcel">
+                                    <i class="bi bi-box-seam"></i> combined shipping
+                                </div>
+                            @endif
+                        </td>
                         <td class="text-center small">
                             @php
                                 $payTotal      = (int)($row->pay_total ?? 0);
