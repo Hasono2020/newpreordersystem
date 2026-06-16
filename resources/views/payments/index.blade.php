@@ -89,6 +89,15 @@
             @endif
         </a>
     </li>
+    <li class="nav-item">
+        <a class="nav-link {{ $tab === 'pack' ? 'active' : '' }}"
+           href="{{ route('payments.index', ['trip_id' => $tripId, 'tab' => 'pack', 'search' => $search ?? '']) }}">
+            <i class="bi bi-box-seam me-1"></i>Ready to Pack
+            @if(($readyCount ?? 0) > 0)
+                <span class="badge bg-success ms-1">{{ $readyCount }}</span>
+            @endif
+        </a>
+    </li>
 </ul>
 
 @if($tab === 'outstanding')
@@ -150,11 +159,6 @@
                             @endif
                         </td>
                         <td class="text-end">
-                            <a href="{{ route('orders.combined-invoice', $row->customer_id) }}?trip_id={{ $tripId }}"
-                               target="_blank" class="btn btn-sm btn-outline-secondary me-1"
-                               title="Final bill — combines all this customer's orders in this trip with shipping charged once">
-                                <i class="bi bi-receipt me-1"></i>Final Bill
-                            </a>
                             @if(auth()->user()->hasPermission('payments.record'))
                             <a href="{{ route('payments.create', ['customer' => $row->customer_id, 'trip_id' => $tripId]) }}"
                                class="btn btn-sm btn-outline-primary">
@@ -227,26 +231,10 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @php $shownBatches = []; @endphp
                     @forelse($log as $payment)
                     @php
                         $rowClass = $payment->isDisputed() ? 'table-danger' : ($payment->isVerified() ? 'table-success bg-opacity-25' : '');
-                        // Show a batch banner once, before the first row of a batch with 2+ orders
-                        $bid  = $payment->batch_id;
-                        $meta = $bid ? ($batchMeta[$bid] ?? null) : null;
-                        $showBanner = $bid && $meta && $meta['count'] > 1 && !in_array($bid, $shownBatches);
-                        if ($showBanner) $shownBatches[] = $bid;
                     @endphp
-                    @if($showBanner)
-                    <tr class="table-info">
-                        <td colspan="9" class="small py-2">
-                            <i class="bi bi-link-45deg me-1"></i>
-                            <strong>One transfer — Rp {{ number_format($meta['total'], 0, ',', '.') }}</strong>
-                            split across {{ $meta['count'] }} orders for {{ $payment->order->customer->name ?? 'this customer' }}.
-                            Verify or void the whole group together.
-                        </td>
-                    </tr>
-                    @endif
                     <tr class="{{ $rowClass }} {{ $payment->isVoided() ? 'text-muted' : '' }}">
                         <td class="small">{{ $payment->paid_at?->format('d M Y') }}</td>
                         <td>{{ $payment->order->customer->name ?? '—' }}</td>
@@ -254,9 +242,6 @@
                         <td class="text-end {{ $payment->type === 'refund' ? 'text-danger' : '' }}">
                             {{ $payment->type === 'refund' ? '-' : '' }}Rp {{ number_format($payment->amount, 0, ',', '.') }}
                             @if($payment->isVoided())<span class="badge bg-secondary ms-1">Voided</span>@endif
-                            @if($bid && $meta && $meta['count'] > 1)
-                                <span class="badge bg-info-subtle text-info-emphasis ms-1" style="font-size:.62rem;" title="Part of a Rp {{ number_format($meta['total'], 0, ',', '.') }} transfer across {{ $meta['count'] }} orders">batch</span>
-                            @endif
                         </td>
                         <td class="small">{{ ucfirst($payment->method ?? '—') }}</td>
                         <td class="small text-muted">{{ $payment->reference ?? '—' }}</td>
@@ -321,6 +306,77 @@
             <div>{{ $log->links() }}</div>
         </div>
         @endif
+    </div>
+@endif
+
+@if($tab === 'pack')
+    <div class="card">
+        <div class="card-body p-0">
+            @if(!$tripId)
+                <div class="p-4 text-center text-muted">Select a trip to see customers ready to pack.</div>
+            @elseif($readyToPack->isEmpty())
+                <div class="p-4 text-center text-muted">
+                    <i class="bi bi-inbox d-block mb-2" style="font-size:1.5rem;"></i>
+                    No customers ready to pack yet — orders must be fully paid and all payments verified.
+                </div>
+            @else
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Customer</th>
+                            <th class="text-center">Orders</th>
+                            <th class="text-end">Total</th>
+                            <th class="text-center">Printed</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($readyToPack as $row)
+                        <tr class="{{ $row->printed_at ? 'table-success bg-opacity-25' : '' }}">
+                            <td>
+                                <div class="fw-semibold">{{ $row->customer_name }}</div>
+                                <div class="small text-muted">{{ $row->customer_phone }}</div>
+                            </td>
+                            <td class="text-center">{{ $row->order_count }}</td>
+                            <td class="text-end fw-semibold">Rp {{ number_format($row->total_amount, 0, ',', '.') }}</td>
+                            <td class="text-center">
+                                @if($row->printed_at)
+                                    <span class="badge bg-success"><i class="bi bi-check-lg me-1"></i>Printed</span>
+                                    <div class="small text-muted" style="font-size:.7rem;">{{ \Carbon\Carbon::parse($row->printed_at)->format('d M H:i') }}</div>
+                                @else
+                                    <span class="badge bg-light text-dark border">Not yet</span>
+                                @endif
+                            </td>
+                            <td class="text-end">
+                                <a href="{{ route('orders.combined-invoice', $row->customer_id) }}?trip_id={{ $tripId }}"
+                                   target="_blank" class="btn btn-sm btn-outline-primary me-1">
+                                    <i class="bi bi-printer me-1"></i>Print Invoice
+                                </a>
+                                <form method="POST" action="{{ route('payments.mark-printed') }}" class="d-inline">
+                                    @csrf
+                                    <input type="hidden" name="customer_id" value="{{ $row->customer_id }}">
+                                    <input type="hidden" name="trip_id" value="{{ $tripId }}">
+                                    <button type="submit" class="btn btn-sm {{ $row->printed_at ? 'btn-outline-secondary' : 'btn-success' }}">
+                                        @if($row->printed_at)
+                                            <i class="bi bi-arrow-counterclockwise me-1"></i>Undo
+                                        @else
+                                            <i class="bi bi-check2-square me-1"></i>Mark Printed
+                                        @endif
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+            <div class="d-flex justify-content-between align-items-center p-3">
+                <span class="small text-muted">{{ $readyToPack->total() }} customer(s) ready to pack</span>
+                <div>{{ $readyToPack->links() }}</div>
+            </div>
+            @endif
+        </div>
     </div>
 @endif
 

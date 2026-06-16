@@ -14,9 +14,10 @@ class Order extends Model
         'subtotal', 'discount_amount', 'shipping_fee', 'shipping_discount',
         'shipping_weight_gram', 'shipping_kg_charged',
         'total_amount', 'deposit_paid', 'payment_status', 'notes', 'ordered_at',
+        'invoice_printed_at', 'invoice_printed_by',
     ];
 
-    protected $casts = ['ordered_at' => 'datetime'];
+    protected $casts = ['ordered_at' => 'datetime', 'invoice_printed_at' => 'datetime'];
 
     public function trip()        { return $this->belongsTo(Trip::class); }
     public function customer()    { return $this->belongsTo(Customer::class); }
@@ -25,6 +26,7 @@ class Order extends Model
     public function payments()    { return $this->hasMany(Payment::class); }
     public function createdBy()   { return $this->belongsTo(User::class, 'created_by'); }
     public function csAgent()     { return $this->belongsTo(CsAgent::class); }
+    public function invoicePrintedBy() { return $this->belongsTo(User::class, 'invoice_printed_by'); }
 
     public function getActiveItemsCountAttribute(): int
     {

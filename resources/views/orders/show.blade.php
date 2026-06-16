@@ -11,10 +11,6 @@
     <a href="{{ route('orders.invoice', $order) }}" class="btn btn-sm btn-outline-primary" target="_blank">
         <i class="bi bi-printer me-1"></i>Print Invoice
     </a>
-    <a href="{{ route('orders.combined-invoice', $order->customer_id) }}?trip_id={{ $order->trip_id }}" class="btn btn-sm btn-outline-dark" target="_blank"
-       title="Final bill combining all this customer's orders in this trip (shipping charged once)">
-        <i class="bi bi-receipt me-1"></i>Final Bill (all orders)
-    </a>
     @if(auth()->user()->hasPermission('orders.delete') && auth()->user()->isAdmin())
     <form method="POST" action="{{ route('orders.destroy', $order) }}" onsubmit="return confirm('Delete this order?')">
         @csrf @method('DELETE')

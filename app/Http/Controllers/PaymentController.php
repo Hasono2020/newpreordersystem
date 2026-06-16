@@ -111,21 +111,6 @@ class PaymentController extends Controller
 
         $log = $logQuery->paginate(50)->withQueryString();
 
-        // Batch metadata: for each batch_id on this page, total amount + order count.
-        // Lets finance see that N payment rows came from ONE customer transfer.
-        $batchIds = collect($log->items())->pluck('batch_id')->filter()->unique()->values();
-        $batchMeta = [];
-        if ($batchIds->isNotEmpty()) {
-            $batchMeta = Payment::whereIn('batch_id', $batchIds)
-                ->whereNull('voided_at')
-                ->selectRaw('batch_id, COUNT(*) as cnt, SUM(amount) as total')
-                ->groupBy('batch_id')
-                ->get()
-                ->keyBy('batch_id')
-                ->map(fn($r) => ['count' => (int) $r->cnt, 'total' => (float) $r->total])
-                ->all();
-        }
-
         // Verification counts for the tab badges and summary bar (scoped to trip)
         $vcBase = Payment::whereHas('order', fn($q) => $q->where('trip_id', $tripId));
         $vcBase->whereNull('voided_at');
@@ -139,8 +124,45 @@ class PaymentController extends Controller
             'verified_amount' => (clone $vcBase)->where('verification_status', 'verified')->sum('amount'),
         ];
 
+        // ── Ready to Pack: customers whose orders in this trip are ALL paid + verified ──
+        $readyToPack = collect();
+        $readyCount  = 0;
+        if ($tripId) {
+            $tidInt = (int) $tripId;
+            // Customers who have at least one order in this trip
+            $custQuery = DB::table('orders')
+                ->join('customers', 'customers.id', '=', 'orders.customer_id')
+                ->where('orders.trip_id', $tidInt)
+                ->when(Auth::user()->isOwnDataOnly(), fn($q) => $q->where('orders.created_by', Auth::id()))
+                ->when($createdByFilter, fn($q) => $q->where('orders.created_by', $createdByFilter))
+                ->when($search, fn($q) => $q->where(fn($w) =>
+                    $w->where('customers.name', 'like', "%{$search}%")
+                      ->orWhere('customers.phone', 'like', "%{$search}%")))
+                ->groupBy('orders.customer_id', 'customers.name', 'customers.phone')
+                ->select([
+                    'orders.customer_id',
+                    'customers.name as customer_name',
+                    'customers.phone as customer_phone',
+                    DB::raw('COUNT(orders.id) as order_count'),
+                    DB::raw('SUM(orders.total_amount) as total_amount'),
+                    // # of orders NOT fully paid
+                    DB::raw("SUM(CASE WHEN orders.payment_status != 'paid' THEN 1 ELSE 0 END) as unpaid_count"),
+                    // # of orders with any non-voided unverified/disputed payment
+                    DB::raw("(SELECT COUNT(DISTINCT po.id) FROM orders po JOIN payments p ON p.order_id = po.id WHERE po.customer_id = orders.customer_id AND po.trip_id = {$tidInt} AND p.voided_at IS NULL AND p.verification_status != 'verified') as unverified_order_count"),
+                    // when the combined invoice / anchor was printed (max across the customer's orders)
+                    DB::raw('MAX(orders.invoice_printed_at) as printed_at'),
+                ])
+                // Fully paid AND fully verified = ready to pack
+                ->having('unpaid_count', '=', 0)
+                ->having('unverified_order_count', '=', 0)
+                ->orderBy('customers.name');
+
+            $readyToPack = $custQuery->paginate(50, ['*'], 'pack_page')->withQueryString();
+            $readyCount  = $readyToPack->total();
+        }
+
         $staffList = \App\Models\User::where('is_active', true)->orderBy('name')->get(['id','name','role']);
-        return view('payments.index', compact('trips', 'tripId', 'tab', 'outstanding', 'log', 'search', 'verificationFilter', 'verificationCounts', 'createdByFilter', 'staffList', 'batchMeta'));
+        return view('payments.index', compact('trips', 'tripId', 'tab', 'outstanding', 'log', 'search', 'verificationFilter', 'verificationCounts', 'createdByFilter', 'staffList', 'readyToPack', 'readyCount'));
     }
 
     /**
@@ -484,6 +506,35 @@ class PaymentController extends Controller
      * Verify an entire payment batch at once (all non-voided rows sharing the batch_id).
      * Useful when one customer transfer was split across several orders.
      */
+    /**
+     * Mark a customer's invoice as printed (stamps all their orders in the trip).
+     * Toggle: if already printed, clicking again clears it (in case of reprint/mistake).
+     */
+    public function markPrinted(Request $request)
+    {
+        $data = $request->validate([
+            'customer_id' => 'required|exists:customers,id',
+            'trip_id'     => 'required|exists:trips,id',
+        ]);
+
+        $orders = Order::where('customer_id', $data['customer_id'])
+            ->where('trip_id', $data['trip_id'])
+            ->get();
+
+        // If any is unprinted, mark all printed. If all already printed, toggle to unprinted.
+        $allPrinted = $orders->every(fn($o) => $o->invoice_printed_at !== null);
+
+        foreach ($orders as $order) {
+            $order->update([
+                'invoice_printed_at' => $allPrinted ? null : now(),
+                'invoice_printed_by' => $allPrinted ? null : Auth::id(),
+            ]);
+        }
+
+        $msg = $allPrinted ? 'Marked as NOT printed.' : 'Marked as printed — ready to pack.';
+        return back()->with('success', $msg);
+    }
+
     public function verifyBatch(Request $request, string $batchId)
     {
         if (!Auth::user()->hasPermission('payments.verify')) abort(403);

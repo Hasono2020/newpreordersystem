@@ -26,14 +26,7 @@ class OrderController extends Controller
             $query->where('created_by', Auth::id());
         }
         if ($request->trip_id)        $query->where('trip_id', $request->trip_id);
-        if ($request->payment_status === 'paid_verified') {
-            // Ready to pack: fully paid AND every non-voided payment verified
-            $query->where('payment_status', 'paid')
-                  ->whereDoesntHave('payments', fn($p) => $p->whereNull('voided_at')
-                                                            ->where('verification_status', '!=', 'verified'));
-        } elseif ($request->payment_status) {
-            $query->where('payment_status', $request->payment_status);
-        }
+        if ($request->payment_status) $query->where('payment_status', $request->payment_status);
         if ($request->created_by)     $query->where('created_by', $request->created_by);
         if ($request->search) {
             $query->whereHas('customer', fn($q) => $q->where('name', 'like', '%'.$request->search.'%')

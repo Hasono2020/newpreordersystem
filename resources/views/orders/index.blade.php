@@ -32,7 +32,6 @@
                 <option value="unpaid" {{ request('payment_status')=='unpaid'?'selected':'' }}>Unpaid</option>
                 <option value="partial" {{ request('payment_status')=='partial'?'selected':'' }}>Partial</option>
                 <option value="paid" {{ request('payment_status')=='paid'?'selected':'' }}>Paid</option>
-                <option value="paid_verified" {{ request('payment_status')=='paid_verified'?'selected':'' }}>✓ Ready to Pack (paid + verified)</option>
             </select>
             @if(!auth()->user()->isOwnDataOnly())
             <select name="created_by" class="form-select form-select-sm" style="width:auto;">
