@@ -369,6 +369,11 @@
                                    target="_blank" class="btn btn-sm btn-outline-primary me-1">
                                     <i class="bi bi-printer me-1"></i>Print Invoice
                                 </a>
+                                <a href="{{ route('orders.combined-invoice', $row->customer_id) }}?trip_id={{ $tripId }}&autoprint=1"
+                                   target="_blank" class="btn btn-sm btn-outline-dark me-1"
+                                   title="Opens the invoice and starts the Save-as-PDF dialog automatically">
+                                    <i class="bi bi-file-earmark-pdf me-1"></i>Save PDF
+                                </a>
                                 <form method="POST" action="{{ route('payments.mark-printed') }}" class="d-inline">
                                     @csrf
                                     <input type="hidden" name="customer_id" value="{{ $row->customer_id }}">

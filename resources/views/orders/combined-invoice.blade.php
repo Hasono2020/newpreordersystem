@@ -271,5 +271,11 @@ td.r { text-align:right; }
 </div>
 
 </div>
+<script>
+    // Auto-open the print/save dialog when ?autoprint=1 is in the URL
+    if (new URLSearchParams(window.location.search).get('autoprint') === '1') {
+        window.addEventListener('load', () => setTimeout(() => window.print(), 400));
+    }
+</script>
 </body>
 </html>
