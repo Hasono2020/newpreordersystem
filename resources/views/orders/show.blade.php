@@ -8,9 +8,6 @@
 @if(auth()->user()->hasPermission('orders.edit') && (auth()->user()->isAdmin() || auth()->user()->role !== 'staff' || $order->created_by === auth()->id()))
     <a href="{{ route('orders.edit', $order) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil me-1"></i>Edit</a>
     @endif
-    <a href="{{ route('orders.invoice', $order) }}" class="btn btn-sm btn-outline-primary" target="_blank">
-        <i class="bi bi-printer me-1"></i>Print Invoice
-    </a>
     @if(auth()->user()->hasPermission('orders.delete') && auth()->user()->isAdmin())
     <form method="POST" action="{{ route('orders.destroy', $order) }}" onsubmit="return confirm('Delete this order?')">
         @csrf @method('DELETE')

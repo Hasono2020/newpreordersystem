@@ -36,7 +36,7 @@ body { font-family:'Segoe UI',Arial,sans-serif; font-size:11px; color:#1a1a1a; b
 .info-row { display:flex; gap:12px; margin-bottom:12px; }
 .info-box { flex:1; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:8px 12px; }
 .info-box h5 { font-size:8px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:#94a3b8; margin-bottom:5px; }
-.info-box .nm { font-weight:700; font-size:12px; }
+.info-box .nm { font-weight:800; font-size:18px; }
 .info-box .sm { font-size:10px; color:#475569; line-height:1.5; }
 .type-pill { display:inline-block; padding:1px 7px; border-radius:8px; font-size:9px; font-weight:700; }
 .sec-title { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:#64748b; margin-bottom:5px; }
@@ -77,9 +77,10 @@ td.r { text-align:right; }
 .pay-box { flex:1; }
 .pay-box h4 { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:#64748b; margin-bottom:6px; }
 .pay-row { display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px solid #f1f5f9; font-size:10px; }
+@page { size: A5; margin: 8mm; }
 @media print {
     .no-print { display:none !important; }
-    .page { padding:14px 18px; }
+    .page { padding:0; }
     body { font-size:10px; }
     table tbody td { padding:3px 7px; }
 }
@@ -91,6 +92,7 @@ td.r { text-align:right; }
 <div class="no-print" style="margin-bottom:14px;display:flex;gap:8px;">
     <button onclick="window.print()" style="padding:7px 18px;background:#1e2a3a;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:12px;">&#128424; Print / Save PDF</button>
     <button onclick="window.history.length > 1 ? window.history.back() : window.location.href='/customers'" style="padding:7px 18px;background:#f1f5f9;color:#1e2a3a;border:1px solid #e2e8f0;border-radius:5px;cursor:pointer;font-size:12px;">&#8592; Back</button>
+    <span style="font-size:10px;color:#94a3b8;align-self:center;">Tip: in the print dialog, choose <strong>"Save as PDF"</strong> as the destination to save. Paper size is set to A5.</span>
 </div>
 
 {{-- Header --}}

@@ -20,27 +20,6 @@
     <a href="{{ route('orders.index', ['search' => $customer->name]) }}" class="btn btn-sm btn-outline-info ms-auto">
         <i class="bi bi-receipt me-1"></i>View Orders
     </a>
-    <div class="dropdown">
-        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
-            <i class="bi bi-printer me-1"></i>Combined Invoice
-        </button>
-        <ul class="dropdown-menu dropdown-menu-end" style="min-width:220px;">
-            <li><h6 class="dropdown-header small">Select trip to print all orders</h6></li>
-            @foreach($customer->orders->pluck('trip')->unique('id') as $t)
-            <li>
-                <a class="dropdown-item small" href="{{ route('orders.combined-invoice', $customer) }}?trip_id={{ $t->id }}" target="_blank">
-                    <i class="bi bi-printer me-1"></i>{{ $t->name }}
-                </a>
-            </li>
-            @endforeach
-            <li><hr class="dropdown-divider"></li>
-            <li>
-                <a class="dropdown-item small" href="{{ route('orders.combined-invoice', $customer) }}" target="_blank">
-                    <i class="bi bi-printer me-1"></i>All trips combined
-                </a>
-            </li>
-        </ul>
-    </div>
 </div>
 
 <div class="row g-3">
