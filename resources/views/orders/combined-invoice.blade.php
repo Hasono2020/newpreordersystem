@@ -11,6 +11,9 @@
     $grandShipDiscount = $combinedShipDiscount;
     $grandTotal        = max(0, $grandSubtotal - $grandDiscount + $grandShipping - $grandShipDiscount);
     $grandBalance      = $grandTotal - $grandPaid;
+    // Sum of per-order shipping (what was charged separately) vs combined shipping — shows the saving
+    $sumPerOrderShipping = $orders->sum('shipping_fee');
+    $shippingSaving      = max(0, $sumPerOrderShipping - $grandShipping);
     $allItems          = $orders->flatMap(fn($o) => $o->items->map(fn($i) => ['item' => $i, 'order' => $o]));
     $allPayments       = $orders->flatMap(fn($o) => $o->payments)->sortBy('paid_at');
 @endphp
@@ -232,7 +235,13 @@ td.r { text-align:right; }
         @if($grandDiscount > 0)
             <div class="g-row"><span class="lbl">Discount</span><span class="disc">&ndash; Rp {{ number_format($grandDiscount, 0, ',', '.') }}</span></div>
         @endif
-        <div class="g-row"><span class="lbl">Shipping</span><span>Rp {{ number_format($grandShipping, 0, ',', '.') }}</span></div>
+        <div class="g-row"><span class="lbl">Shipping (combined {{ $chargeableKg }}kg)</span><span>Rp {{ number_format($grandShipping, 0, ',', '.') }}</span></div>
+        @if($shippingSaving > 0)
+            <div class="g-row" style="font-size:10px;color:#16a34a;">
+                <span class="lbl">Combined shipping saving</span>
+                <span>&ndash; Rp {{ number_format($shippingSaving, 0, ',', '.') }}</span>
+            </div>
+        @endif
         @if($grandShipDiscount > 0)
             <div class="g-row"><span class="lbl">Ship. Discount</span><span class="disc">&ndash; Rp {{ number_format($grandShipDiscount, 0, ',', '.') }}</span></div>
         @endif

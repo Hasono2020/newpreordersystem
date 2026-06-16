@@ -150,6 +150,11 @@
                             @endif
                         </td>
                         <td class="text-end">
+                            <a href="{{ route('orders.combined-invoice', $row->customer_id) }}?trip_id={{ $tripId }}"
+                               target="_blank" class="btn btn-sm btn-outline-secondary me-1"
+                               title="Final bill — combines all this customer's orders in this trip with shipping charged once">
+                                <i class="bi bi-receipt me-1"></i>Final Bill
+                            </a>
                             @if(auth()->user()->hasPermission('payments.record'))
                             <a href="{{ route('payments.create', ['customer' => $row->customer_id, 'trip_id' => $tripId]) }}"
                                class="btn btn-sm btn-outline-primary">
