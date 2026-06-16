@@ -169,6 +169,10 @@
                         <div class="mt-2">
                             <input type="text" name="notes" class="form-control form-control-sm" placeholder="Notes (optional)">
                         </div>
+                        <div class="mt-2 small text-muted">
+                            <i class="bi bi-info-circle me-1"></i>
+                            Use <strong>Refund</strong> when giving money back to the customer (e.g. partial refund of an overpayment). It subtracts from the paid total. For a full duplicate payment, use <strong>Void</strong> on that payment row instead.
+                        </div>
                     </form>
                 </div>
             </div>
