@@ -101,4 +101,68 @@ class PromoService
             'promo_rule'           => $promo ? $promo['rule'] : null,
         ];
     }
+
+    /**
+     * Recalculate shipping across ALL of a customer's orders in a trip so shipping is
+     * charged ONCE (combined weight) on the oldest order (the shipment "anchor"),
+     * and zeroed on the rest. Keeps every screen consistent: the per-order totals
+     * now sum to the true combined amount the customer owes.
+     *
+     * Called after any order create / update / item change / delete.
+     */
+    public function recalcCustomerShipping(int $customerId, int $tripId): void
+    {
+        $orders = \App\Models\Order::with('items.product', 'items.variant', 'customer', 'shippingArea')
+            ->where('customer_id', $customerId)
+            ->where('trip_id', $tripId)
+            ->whereNotIn('payment_status', []) // all statuses
+            ->orderBy('ordered_at')->orderBy('id')
+            ->get();
+
+        if ($orders->isEmpty()) return;
+
+        // Combined weight across all active items of all the customer's orders
+        $allActiveItems = $orders->flatMap(fn($o) =>
+            $o->items->whereNotIn('status', ['cancelled', 'sold_out'])
+        );
+        $combinedGrams = $this->calcTotalWeightGram($allActiveItems);
+
+        // Pick a shipping area (first order that has one)
+        $shippingArea = $orders->first(fn($o) => $o->shippingArea)?->shippingArea;
+        $combinedShippingFee = $shippingArea ? $shippingArea->calcShippingFee($combinedGrams) : 0;
+        $combinedKg          = \App\Models\ShippingArea::calcChargeableKg($combinedGrams);
+
+        // The anchor = first order that still has active items (oldest). It carries all the shipping.
+        $anchor = $orders->first(fn($o) =>
+            $o->items->whereNotIn('status', ['cancelled', 'sold_out'])->isNotEmpty()
+        ) ?? $orders->first();
+
+        foreach ($orders as $order) {
+            $activeItems = $order->items->whereNotIn('status', ['cancelled', 'sold_out']);
+            $subtotal    = $activeItems->sum('line_total');
+
+            $isAnchor    = $order->id === $anchor->id;
+            $shippingFee = $isAnchor ? $combinedShippingFee : 0;
+            $weightGram  = $isAnchor ? $combinedGrams : 0;
+            $kgCharged   = $isAnchor ? $combinedKg : 0;
+
+            // Promo per order (discount still per order; shipping subsidy applies to the anchor's shipping)
+            $promo              = $this->getBestPromo($order->customer->type, $order->trip_id, $activeItems);
+            $discount           = $promo ? $promo['discount'] : 0;
+            $maxShippingSubsidy = $promo ? $promo['max_shipping_subsidy'] : 0;
+            $shippingDiscount   = min($shippingFee, $maxShippingSubsidy);
+
+            $total = max(0, $subtotal - $discount + $shippingFee - $shippingDiscount);
+
+            $order->update([
+                'subtotal'             => $subtotal,
+                'discount_amount'      => $discount,
+                'shipping_fee'         => $shippingFee,
+                'shipping_discount'    => $shippingDiscount,
+                'shipping_weight_gram' => $weightGram,
+                'shipping_kg_charged'  => $kgCharged,
+                'total_amount'         => $total,
+            ]);
+        }
+    }
 }

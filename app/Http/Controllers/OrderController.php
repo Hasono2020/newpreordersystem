@@ -168,6 +168,9 @@ class OrderController extends Controller
             return $order;
         });
 
+        // Combine shipping across all this customer's orders in the trip (charge once)
+        $this->promoService->recalcCustomerShipping($order->customer_id, $order->trip_id);
+
         return redirect()->route('orders.show', $order)->with('success', 'Order created successfully.');
     }
 
@@ -251,16 +254,8 @@ class OrderController extends Controller
             'ordered_at'       => $request->ordered_at ?: $order->ordered_at,
         ]);
 
-        $calc = $this->promoService->recalculate($order);
-        $order->update([
-            'subtotal'             => $calc['subtotal'],
-            'discount_amount'      => $calc['discount_amount'],
-            'shipping_fee'         => $calc['shipping_fee'],
-            'shipping_discount'    => $calc['shipping_discount'],
-            'shipping_weight_gram' => $calc['shipping_weight_gram'],
-            'shipping_kg_charged'  => $calc['shipping_kg_charged'],
-            'total_amount'         => $calc['total_amount'],
-        ]);
+        // Recalculate combined shipping across all the customer's orders in this trip
+        $this->promoService->recalcCustomerShipping($order->customer_id, $order->trip_id);
 
         return redirect()->route('orders.show', $order)->with('success', 'Order updated.');
     }
@@ -303,7 +298,11 @@ class OrderController extends Controller
     public function destroy(Order $order)
     {
         $this->adminOnly('delete orders');
+        $customerId = $order->customer_id;
+        $tripId     = $order->trip_id;
         $order->delete();
+        // Re-combine shipping for the customer's remaining orders (anchor may have changed)
+        $this->promoService->recalcCustomerShipping($customerId, $tripId);
         return redirect()->route('orders.index')->with('success', 'Order deleted.');
     }
 
@@ -606,15 +605,8 @@ class OrderController extends Controller
 
     private function _recalcAndSave(Order $order): void
     {
-        $calc = $this->promoService->recalculate($order->fresh());
-        $order->update([
-            'subtotal'             => $calc['subtotal'],
-            'discount_amount'      => $calc['discount_amount'],
-            'shipping_fee'         => $calc['shipping_fee'],
-            'shipping_discount'    => $calc['shipping_discount'],
-            'shipping_weight_gram' => $calc['shipping_weight_gram'],
-            'shipping_kg_charged'  => $calc['shipping_kg_charged'],
-            'total_amount'         => $calc['total_amount'],
-        ]);
+        // Recalc combined shipping across all the customer's orders in this trip
+        // (charges shipping once on the oldest order, zeroes the rest).
+        $this->promoService->recalcCustomerShipping($order->customer_id, $order->trip_id);
     }
 }
