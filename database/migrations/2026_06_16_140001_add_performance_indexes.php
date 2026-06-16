@@ -15,19 +15,19 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('payments', function (Blueprint $table) {
-            if (!$this->hasIndex('payments', 'payments_verification_idx')) {
+            if (!$this->indexExists('payments', 'payments_verification_idx')) {
                 $table->index('verification_status', 'payments_verification_idx');
             }
-            if (!$this->hasIndex('payments', 'payments_batch_idx')) {
+            if (!$this->indexExists('payments', 'payments_batch_idx')) {
                 $table->index('batch_id', 'payments_batch_idx');
             }
-            if (!$this->hasIndex('payments', 'payments_voided_idx')) {
+            if (!$this->indexExists('payments', 'payments_voided_idx')) {
                 $table->index('voided_at', 'payments_voided_idx');
             }
         });
 
         Schema::table('orders', function (Blueprint $table) {
-            if (!$this->hasIndex('orders', 'orders_created_at_idx')) {
+            if (!$this->indexExists('orders', 'orders_created_at_idx')) {
                 $table->index('created_at', 'orders_created_at_idx');
             }
         });
@@ -45,11 +45,21 @@ return new class extends Migration
         });
     }
 
-    private function hasIndex(string $table, string $index): bool
+    /**
+     * Database-agnostic index check (works on MySQL in production and SQLite in tests).
+     * Uses Laravel's schema introspection rather than raw "SHOW INDEX" (MySQL-only).
+     */
+    private function indexExists(string $table, string $index): bool
     {
-        $rows = \Illuminate\Support\Facades\DB::select(
-            "SHOW INDEX FROM `{$table}` WHERE Key_name = ?", [$index]
-        );
-        return count($rows) > 0;
+        try {
+            foreach (Schema::getIndexes($table) as $idx) {
+                if (($idx['name'] ?? null) === $index) {
+                    return true;
+                }
+            }
+        } catch (\Throwable $e) {
+            return false;
+        }
+        return false;
     }
 };
