@@ -111,6 +111,21 @@ class PaymentController extends Controller
 
         $log = $logQuery->paginate(50)->withQueryString();
 
+        // Batch metadata: for each batch_id on this page, total amount + order count.
+        // Lets finance see that N payment rows came from ONE customer transfer.
+        $batchIds = collect($log->items())->pluck('batch_id')->filter()->unique()->values();
+        $batchMeta = [];
+        if ($batchIds->isNotEmpty()) {
+            $batchMeta = Payment::whereIn('batch_id', $batchIds)
+                ->whereNull('voided_at')
+                ->selectRaw('batch_id, COUNT(*) as cnt, SUM(amount) as total')
+                ->groupBy('batch_id')
+                ->get()
+                ->keyBy('batch_id')
+                ->map(fn($r) => ['count' => (int) $r->cnt, 'total' => (float) $r->total])
+                ->all();
+        }
+
         // Verification counts for the tab badges and summary bar (scoped to trip)
         $vcBase = Payment::whereHas('order', fn($q) => $q->where('trip_id', $tripId));
         $vcBase->whereNull('voided_at');
@@ -125,7 +140,7 @@ class PaymentController extends Controller
         ];
 
         $staffList = \App\Models\User::where('is_active', true)->orderBy('name')->get(['id','name','role']);
-        return view('payments.index', compact('trips', 'tripId', 'tab', 'outstanding', 'log', 'search', 'verificationFilter', 'verificationCounts', 'createdByFilter', 'staffList'));
+        return view('payments.index', compact('trips', 'tripId', 'tab', 'outstanding', 'log', 'search', 'verificationFilter', 'verificationCounts', 'createdByFilter', 'staffList', 'batchMeta'));
     }
 
     /**

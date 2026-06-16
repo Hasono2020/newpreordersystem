@@ -227,10 +227,26 @@
                     </tr>
                 </thead>
                 <tbody>
+                    @php $shownBatches = []; @endphp
                     @forelse($log as $payment)
                     @php
                         $rowClass = $payment->isDisputed() ? 'table-danger' : ($payment->isVerified() ? 'table-success bg-opacity-25' : '');
+                        // Show a batch banner once, before the first row of a batch with 2+ orders
+                        $bid  = $payment->batch_id;
+                        $meta = $bid ? ($batchMeta[$bid] ?? null) : null;
+                        $showBanner = $bid && $meta && $meta['count'] > 1 && !in_array($bid, $shownBatches);
+                        if ($showBanner) $shownBatches[] = $bid;
                     @endphp
+                    @if($showBanner)
+                    <tr class="table-info">
+                        <td colspan="9" class="small py-2">
+                            <i class="bi bi-link-45deg me-1"></i>
+                            <strong>One transfer — Rp {{ number_format($meta['total'], 0, ',', '.') }}</strong>
+                            split across {{ $meta['count'] }} orders for {{ $payment->order->customer->name ?? 'this customer' }}.
+                            Verify or void the whole group together.
+                        </td>
+                    </tr>
+                    @endif
                     <tr class="{{ $rowClass }} {{ $payment->isVoided() ? 'text-muted' : '' }}">
                         <td class="small">{{ $payment->paid_at?->format('d M Y') }}</td>
                         <td>{{ $payment->order->customer->name ?? '—' }}</td>
@@ -238,6 +254,9 @@
                         <td class="text-end {{ $payment->type === 'refund' ? 'text-danger' : '' }}">
                             {{ $payment->type === 'refund' ? '-' : '' }}Rp {{ number_format($payment->amount, 0, ',', '.') }}
                             @if($payment->isVoided())<span class="badge bg-secondary ms-1">Voided</span>@endif
+                            @if($bid && $meta && $meta['count'] > 1)
+                                <span class="badge bg-info-subtle text-info-emphasis ms-1" style="font-size:.62rem;" title="Part of a Rp {{ number_format($meta['total'], 0, ',', '.') }} transfer across {{ $meta['count'] }} orders">batch</span>
+                            @endif
                         </td>
                         <td class="small">{{ ucfirst($payment->method ?? '—') }}</td>
                         <td class="small text-muted">{{ $payment->reference ?? '—' }}</td>
