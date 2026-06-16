@@ -121,7 +121,7 @@ class PromoService
 
         if ($orders->isEmpty()) return;
 
-        // Combined weight across all active items of all the customer's orders
+        // Combined weight + items across ALL the customer's orders
         $allActiveItems = $orders->flatMap(fn($o) =>
             $o->items->whereNotIn('status', ['cancelled', 'sold_out'])
         );
@@ -132,7 +132,14 @@ class PromoService
         $combinedShippingFee = $shippingArea ? $shippingArea->calcShippingFee($combinedGrams) : 0;
         $combinedKg          = \App\Models\ShippingArea::calcChargeableKg($combinedGrams);
 
-        // The anchor = first order that still has active items (oldest). It carries all the shipping.
+        // Evaluate the promo ONCE on all combined items (so multi-order customers reach
+        // item-count thresholds like '5+ items'). Discount + shipping subsidy land on the anchor.
+        $customerType       = $orders->first()->customer->type;
+        $combinedPromo      = $this->getBestPromo($customerType, $tripId, $allActiveItems);
+        $combinedDiscount   = $combinedPromo ? $combinedPromo['discount'] : 0;
+        $combinedShipSubsidy= $combinedPromo ? $combinedPromo['max_shipping_subsidy'] : 0;
+
+        // The anchor = first order that still has active items (oldest). It carries shipping + promo.
         $anchor = $orders->first(fn($o) =>
             $o->items->whereNotIn('status', ['cancelled', 'sold_out'])->isNotEmpty()
         ) ?? $orders->first();
@@ -146,11 +153,9 @@ class PromoService
             $weightGram  = $isAnchor ? $combinedGrams : 0;
             $kgCharged   = $isAnchor ? $combinedKg : 0;
 
-            // Promo per order (discount still per order; shipping subsidy applies to the anchor's shipping)
-            $promo              = $this->getBestPromo($order->customer->type, $order->trip_id, $activeItems);
-            $discount           = $promo ? $promo['discount'] : 0;
-            $maxShippingSubsidy = $promo ? $promo['max_shipping_subsidy'] : 0;
-            $shippingDiscount   = min($shippingFee, $maxShippingSubsidy);
+            // Combined promo applies to the anchor only (discount + shipping subsidy charged once)
+            $discount         = $isAnchor ? $combinedDiscount : 0;
+            $shippingDiscount = $isAnchor ? min($shippingFee, $combinedShipSubsidy) : 0;
 
             $total = max(0, $subtotal - $discount + $shippingFee - $shippingDiscount);
 
