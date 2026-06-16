@@ -101,6 +101,46 @@
 </ul>
 
 @if($tab === 'outstanding')
+    @if($overpaid->isNotEmpty())
+    <div class="card mb-3 border-warning">
+        <div class="card-header bg-warning bg-opacity-10 fw-semibold">
+            <i class="bi bi-exclamation-triangle me-1 text-warning"></i>
+            Overpaid — these customers are owed a refund or have credit ({{ $overpaid->count() }})
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Customer</th>
+                        <th class="text-end">Ordered</th>
+                        <th class="text-end">Paid</th>
+                        <th class="text-end">Credit / Refund Due</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($overpaid as $oc)
+                    <tr>
+                        <td>
+                            <div class="fw-semibold">{{ $oc->customer_name }}</div>
+                            <div class="small text-muted">{{ $oc->customer_phone }}</div>
+                        </td>
+                        <td class="text-end">Rp {{ number_format($oc->total_ordered, 0, ',', '.') }}</td>
+                        <td class="text-end">Rp {{ number_format($oc->total_paid, 0, ',', '.') }}</td>
+                        <td class="text-end fw-semibold text-warning">Rp {{ number_format($oc->credit, 0, ',', '.') }}</td>
+                        <td class="text-end">
+                            <a href="{{ route('customers.show', $oc->customer_id) }}" class="btn btn-sm btn-outline-secondary">View orders</a>
+                        </td>
+                    </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
+        <div class="card-footer small text-muted">
+            To resolve: open the customer's order and <strong>Void the duplicate payment</strong>, or record a <strong>refund</strong>. Credit can also be left for their next order.
+        </div>
+    </div>
+    @endif
     <div class="card">
         <div class="table-responsive">
             <table class="table table-hover mb-0">

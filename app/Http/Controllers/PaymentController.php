@@ -172,7 +172,33 @@ class PaymentController extends Controller
         }
 
         $staffList = \App\Models\User::where('is_active', true)->orderBy('name')->get(['id','name','role']);
-        return view('payments.index', compact('trips', 'tripId', 'tab', 'outstanding', 'log', 'search', 'verificationFilter', 'verificationCounts', 'createdByFilter', 'staffList', 'readyToPack', 'readyCount', 'batchMeta'));
+        // ── Overpaid / Credit: customers who paid MORE than their order total (owed a refund) ──
+        $overpaid = collect();
+        if ($tripId) {
+            $tidC = (int) $tripId;
+            $overpaid = DB::table('orders')
+                ->join('customers', 'customers.id', '=', 'orders.customer_id')
+                ->where('orders.trip_id', $tidC)
+                ->when(Auth::user()->isOwnDataOnly(), fn($q) => $q->where('orders.created_by', Auth::id()))
+                ->when($createdByFilter, fn($q) => $q->where('orders.created_by', $createdByFilter))
+                ->when($search, fn($q) => $q->where(fn($w) =>
+                    $w->where('customers.name', 'like', "%{$search}%")
+                      ->orWhere('customers.phone', 'like', "%{$search}%")))
+                ->groupBy('orders.customer_id', 'customers.name', 'customers.phone')
+                ->select([
+                    'orders.customer_id',
+                    'customers.name as customer_name',
+                    'customers.phone as customer_phone',
+                    DB::raw('SUM(orders.total_amount) as total_ordered'),
+                    DB::raw('SUM(orders.deposit_paid) as total_paid'),
+                    DB::raw('(SUM(orders.deposit_paid) - SUM(orders.total_amount)) as credit'),
+                ])
+                ->having('credit', '>', 0)
+                ->orderByDesc('credit')
+                ->get();
+        }
+
+        return view('payments.index', compact('trips', 'tripId', 'tab', 'outstanding', 'log', 'search', 'verificationFilter', 'verificationCounts', 'createdByFilter', 'staffList', 'readyToPack', 'readyCount', 'batchMeta', 'overpaid'));
     }
 
     /**
