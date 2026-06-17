@@ -89,12 +89,17 @@ class PaymentController extends Controller
             $logQuery->whereHas('order', fn($q) => $q->where('created_by', Auth::id()));
         }
         if ($search) {
-            $logQuery->where(function ($q) use ($search) {
+            // If the search looks like money (digits, dots, commas, optional 'Rp'), match the amount too.
+            $numeric = preg_replace('/[^0-9]/', '', $search);
+            $logQuery->where(function ($q) use ($search, $numeric) {
                 $q->whereHas('order.customer', fn($c) =>
                         $c->where('name', 'like', "%{$search}%")
                           ->orWhere('phone', 'like', "%{$search}%"))
                   ->orWhereHas('order', fn($o) => $o->where('order_number', 'like', "%{$search}%"))
                   ->orWhere('reference', 'like', "%{$search}%");
+                if ($numeric !== '' && strlen($numeric) >= 3) {
+                    $q->orWhere('amount', (int) $numeric);
+                }
             });
         }
 

@@ -10,7 +10,7 @@
         <form class="d-flex gap-2 flex-wrap">
             <input type="hidden" name="tab" value="{{ $tab }}">
             <input type="text" name="search" class="form-control form-control-sm" style="width:220px;"
-                   placeholder="Name, phone, order, ref…" value="{{ $search ?? '' }}">
+                   placeholder="Name, phone, order, ref, amount…" value="{{ $search ?? '' }}">
             <select name="trip_id" class="form-select form-select-sm" style="width:auto;">
                 @foreach($trips as $trip)
                     <option value="{{ $trip->id }}" {{ $tripId == $trip->id ? 'selected' : '' }}>{{ $trip->name }}</option>
