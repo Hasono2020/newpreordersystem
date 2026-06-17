@@ -266,7 +266,7 @@
             <div class="d-flex gap-2 align-items-start mb-2">
                 <div style="flex:0 0 280px;">
                     <label class="form-label small mb-1">Product</label>
-                    <div class="product-search-wrap position-relative" id="gridProductWrap">
+                    <div class="position-relative" id="gridProductWrap">
                         <input type="text" class="form-control form-control-sm" id="gridProductInput" placeholder="Search code or name…" autocomplete="off">
                         <div class="product-dropdown" id="gridProductDropdown"></div>
                     </div>
@@ -664,6 +664,7 @@ function initProductSearch(wrap) {
     const searchInput = wrap.querySelector('.product-search-input');
     const dropdown    = wrap.querySelector('.product-dropdown');
     const row         = wrap.closest('.item-row');
+    if (!searchInput || !dropdown) return;  // skip wrappers that aren't item-row product searches
 
     searchInput.addEventListener('input', function() {
         const q = this.value.trim().toLowerCase();
