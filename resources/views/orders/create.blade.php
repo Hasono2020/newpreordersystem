@@ -252,11 +252,43 @@
             <span class="fw-semibold">Order Items</span>
             <div class="d-flex align-items-center gap-2">
                 <span class="text-muted small"><span class="kbd-hint">Alt+N</span> add item</span>
+                <button type="button" class="btn btn-sm btn-success" id="gridToggleBtn">
+                    <i class="bi bi-grid-3x3-gap me-1"></i>Quick add by size
+                </button>
                 <button type="button" class="btn btn-sm btn-outline-primary" id="addItemBtn">
                     <i class="bi bi-plus-lg me-1"></i>Add Item
                 </button>
             </div>
         </div>
+
+        {{-- ── Quick add by size: color × size matrix ── --}}
+        <div class="card-body border-bottom bg-light" id="sizeGridPanel" style="display:none;">
+            <div class="d-flex gap-2 align-items-start mb-2">
+                <div style="flex:0 0 280px;">
+                    <label class="form-label small mb-1">Product</label>
+                    <div class="product-search-wrap position-relative" id="gridProductWrap">
+                        <input type="text" class="form-control form-control-sm" id="gridProductInput" placeholder="Search code or name…" autocomplete="off">
+                        <div class="product-dropdown" id="gridProductDropdown"></div>
+                    </div>
+                </div>
+                <div class="align-self-end">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="gridCancelBtn">Close grid</button>
+                </div>
+            </div>
+            <div id="gridMatrixWrap" class="table-responsive" style="display:none;">
+                <table class="table table-sm table-bordered mb-2" id="gridMatrix" style="width:auto;">
+                    <thead class="table-light"><tr id="gridHeadRow"></tr></thead>
+                    <tbody id="gridBody"></tbody>
+                </table>
+                <div class="d-flex align-items-center gap-3">
+                    <button type="button" class="btn btn-sm btn-success" id="gridAddBtn">
+                        <i class="bi bi-plus-lg me-1"></i>Add filled sizes to order
+                    </button>
+                    <span class="small text-muted" id="gridSummary">Type quantities in the cells you want.</span>
+                </div>
+            </div>
+        </div>
+
         <div class="card-body" id="itemsContainer">
             <div class="item-row" data-index="0">
                 <div class="d-flex gap-2 align-items-start">
@@ -1055,6 +1087,186 @@ if (tripSel.value) tripSel.dispatchEvent(new Event('change'));
         if (this.value) localStorage.setItem(KEY, this.value);
         else localStorage.removeItem(KEY);
     });
+})();
+
+// ══════════════════════════════════════════════════════════════════
+// Quick add by size — color × size matrix
+// ══════════════════════════════════════════════════════════════════
+(function() {
+    const panel      = document.getElementById('sizeGridPanel');
+    const toggleBtn  = document.getElementById('gridToggleBtn');
+    const cancelBtn  = document.getElementById('gridCancelBtn');
+    const input      = document.getElementById('gridProductInput');
+    const dropdown   = document.getElementById('gridProductDropdown');
+    const matrixWrap = document.getElementById('gridMatrixWrap');
+    const headRow    = document.getElementById('gridHeadRow');
+    const body       = document.getElementById('gridBody');
+    const addBtn     = document.getElementById('gridAddBtn');
+    const summary    = document.getElementById('gridSummary');
+    if (!panel) return;
+
+    let gridProduct = null;
+
+    toggleBtn.addEventListener('click', () => {
+        const showing = panel.style.display !== 'none';
+        panel.style.display = showing ? 'none' : 'block';
+        if (!showing) setTimeout(() => input.focus(), 50);
+    });
+    cancelBtn.addEventListener('click', () => { panel.style.display = 'none'; resetGrid(); });
+
+    function resetGrid() {
+        gridProduct = null;
+        input.value = '';
+        matrixWrap.style.display = 'none';
+        headRow.innerHTML = '';
+        body.innerHTML = '';
+    }
+
+    // Product search (reuses tripProducts loaded for the trip)
+    input.addEventListener('input', function() {
+        const q = this.value.trim().toLowerCase();
+        dropdown.innerHTML = '';
+        if (!q) { dropdown.style.display = 'none'; return; }
+        const matches = tripProducts.filter(p =>
+            (p.code || '').toLowerCase().includes(q) || (p.name || '').toLowerCase().includes(q)
+        ).slice(0, 8);
+        if (!matches.length) {
+            dropdown.innerHTML = '<div class="prod-no-result">No products found</div>';
+        } else {
+            matches.forEach(p => {
+                const div = document.createElement('div');
+                div.className = 'prod-item';
+                div.innerHTML = `${p.code ? `<span class="prod-code">[${p.code}]</span>` : ''}<span>${p.name}</span>`;
+                div.addEventListener('mousedown', e => { e.preventDefault(); pickGridProduct(p); });
+                dropdown.appendChild(div);
+            });
+        }
+        dropdown.style.display = 'block';
+    });
+    input.addEventListener('blur', () => setTimeout(() => dropdown.style.display = 'none', 150));
+
+    function pickGridProduct(p) {
+        gridProduct = p;
+        input.value = (p.code ? `[${p.code}] ` : '') + p.name;
+        dropdown.style.display = 'none';
+        buildMatrix(p);
+    }
+
+    function buildMatrix(p) {
+        const variants = p.variants || [];
+        if (!variants.length) {
+            matrixWrap.style.display = 'none';
+            summary.textContent = 'This product has no variants — use "Add Item" instead.';
+            return;
+        }
+        // Unique colors (rows) and sizes (columns), preserving order of appearance
+        const colors = [];
+        const sizes  = [];
+        variants.forEach(v => {
+            const c = v.color || '—';
+            const s = v.size  || '—';
+            if (!colors.includes(c)) colors.push(c);
+            if (!sizes.includes(s))  sizes.push(s);
+        });
+        // Map "color|size" -> variant for quick lookup
+        const vmap = {};
+        variants.forEach(v => { vmap[`${v.color||'—'}|${v.size||'—'}`] = v; });
+
+        // Header
+        headRow.innerHTML = '<th class="text-muted small">Color \\ Size</th>' +
+            sizes.map(s => `<th class="text-center small">${s}</th>`).join('');
+
+        // Body rows
+        body.innerHTML = '';
+        colors.forEach(c => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td class="fw-semibold small">${c}</td>`;
+            sizes.forEach(s => {
+                const v = vmap[`${c}|${s}`];
+                const td = document.createElement('td');
+                td.className = 'text-center';
+                if (v) {
+                    const price = parseFloat(v.price) || parseFloat(p.price) || 0;
+                    td.innerHTML = `<input type="number" min="0" step="1" class="form-control form-control-sm grid-qty text-center"
+                        style="width:62px;margin:auto;" data-var-id="${v.id}" data-price="${price}"
+                        data-color="${c}" data-size="${s}" placeholder="0">`;
+                } else {
+                    td.innerHTML = '<span class="text-muted">—</span>';
+                }
+                tr.appendChild(td);
+            });
+            body.appendChild(tr);
+        });
+        matrixWrap.style.display = 'block';
+        summary.textContent = 'Type quantities in the cells you want, then click "Add filled sizes".';
+        setTimeout(() => body.querySelector('.grid-qty')?.focus(), 50);
+    }
+
+    addBtn.addEventListener('click', () => {
+        if (!gridProduct) return;
+        const cells = [...body.querySelectorAll('.grid-qty')].filter(i => parseInt(i.value) > 0);
+        if (!cells.length) { summary.textContent = 'Enter at least one quantity first.'; return; }
+
+        let added = 0;
+        cells.forEach(cell => {
+            const qty   = parseInt(cell.value);
+            const varId = cell.dataset.varId;
+            const price = cell.dataset.price;
+            addFilledItem(gridProduct, varId, price,
+                `${cell.dataset.color} / ${cell.dataset.size}`, qty);
+            added++;
+        });
+
+        // Remove any empty starter rows (no product chosen) to keep the list clean
+        document.querySelectorAll('.item-row').forEach(r => {
+            if (!r.querySelector('.product-id-input')?.value) r.remove();
+        });
+
+        recalc();
+        summary.textContent = `Added ${added} size(s) to the order.`;
+        // Reset cells so the same grid can be reused
+        cells.forEach(c => c.value = '');
+    });
+
+    // Build a fully-populated item row directly (product + variant + qty already set)
+    function addFilledItem(p, varId, price, variantLabel, qty) {
+        const div = document.createElement('div');
+        div.className = 'item-row active-row';
+        div.dataset.index = itemIndex;
+        div.innerHTML = `
+            <div class="d-flex gap-2 align-items-start">
+                <div style="flex:0 0 240px;">
+                    <div class="small text-muted mb-1">Product</div>
+                    <input type="hidden" name="items[${itemIndex}][product_id]" class="product-id-input" value="${p.id}">
+                    <input type="hidden" name="items[${itemIndex}][product_variant_id]" class="variant-id-input" value="${varId}">
+                    <input type="hidden" name="items[${itemIndex}][unit_price]" class="item-price" value="${price}">
+                    <div class="product-selected-badge mt-1" style="display:flex;align-items:center;">
+                        <span class="font-monospace" style="font-size:.75rem;color:#2563eb">${p.code ? '['+p.code+']' : ''}</span>
+                        <span class="ms-1">${p.name}</span>
+                    </div>
+                </div>
+                <div style="flex:1;min-width:0;">
+                    <div class="small text-muted mb-1">Variant</div>
+                    <div class="var-tags"><span class="var-tag selected" data-var-id="${varId}" data-var-price="${price}">${variantLabel}</span></div>
+                </div>
+                <div style="flex:0 0 72px;">
+                    <div class="small text-muted mb-1">Qty</div>
+                    <input type="number" name="items[${itemIndex}][quantity]" class="form-control form-control-sm item-qty text-center" value="${qty}" min="1" required>
+                </div>
+                <div style="flex:0 0 32px;margin-top:20px;">
+                    <button type="button" class="btn btn-sm btn-outline-danger remove-item w-100 px-0">×</button>
+                </div>
+            </div>
+            <div class="small text-muted mt-1 ps-1">
+                Line: <strong class="line-total">Rp 0</strong>
+                &nbsp;·&nbsp; <span class="line-weight">0g</span>
+                &nbsp;·&nbsp; <span class="product-code text-info font-monospace">${p.code || '—'}</span>
+            </div>`;
+        document.getElementById('itemsContainer').appendChild(div);
+        div.querySelector('.item-qty').addEventListener('input', recalc);
+        div.querySelector('.remove-item').addEventListener('click', () => { div.remove(); recalc(); });
+        itemIndex++;
+    }
 })();
 </script>
 @endpush

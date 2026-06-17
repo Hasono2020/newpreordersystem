@@ -535,6 +535,8 @@ class OrderController extends Controller
             'variants' => $p->variants->map(fn($v) => [
                 'id'    => $v->id,
                 'label' => $v->label,
+                'color' => $v->color,
+                'size'  => $v->size,
                 'price' => $v->final_price,
             ]),
         ]);
