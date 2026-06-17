@@ -59,7 +59,7 @@ class PaymentController extends Controller
                 ->where('orders.payment_status', '!=', 'paid')
                 ->when(Auth::user()->isOwnDataOnly(), fn($q) => $q->where('orders.created_by', Auth::id()))
                 ->when($createdByFilter, fn($q) => $q->where('orders.created_by', $createdByFilter))
-                ->when($search, fn($q) => $q->where(fn($w) =>
+                ->when($search && !$this->isMoneySearch($search), fn($q) => $q->where(fn($w) =>
                     $w->where('customers.name', 'like', "%{$search}%")
                       ->orWhere('customers.phone', 'like', "%{$search}%")
                 ))
@@ -70,8 +70,15 @@ class PaymentController extends Controller
                     'customers.type'
                 )
                 // Note: created_by_names uses GROUP_CONCAT so no groupBy needed
-                ->having('balance_due', '>', 0)
-                ->orderByDesc('balance_due');
+                ->having('balance_due', '>', 0);
+
+            // A purely numeric search is treated as a balance-amount lookup.
+            if ($search && $this->isMoneySearch($search)) {
+                $query->havingRaw('(SUM(orders.total_amount) - SUM(orders.deposit_paid)) = ?',
+                    [(int) preg_replace('/[^0-9]/', '', $search)]);
+            }
+
+            $query->orderByDesc('balance_due');
 
             $outstanding = $query->paginate(50, ['*'], 'outstanding_page')
                 ->withQueryString();
@@ -154,7 +161,7 @@ class PaymentController extends Controller
                 ->where('orders.trip_id', $tidInt)
                 ->when(Auth::user()->isOwnDataOnly(), fn($q) => $q->where('orders.created_by', Auth::id()))
                 ->when($createdByFilter, fn($q) => $q->where('orders.created_by', $createdByFilter))
-                ->when($search, fn($q) => $q->where(fn($w) =>
+                ->when($search && !$this->isMoneySearch($search), fn($q) => $q->where(fn($w) =>
                     $w->where('customers.name', 'like', "%{$search}%")
                       ->orWhere('customers.phone', 'like', "%{$search}%")))
                 ->groupBy('orders.customer_id', 'customers.name', 'customers.phone')
@@ -170,6 +177,8 @@ class PaymentController extends Controller
                 ])
                 ->having('unpaid_count', '=', 0)
                 ->having('unverified_order_count', '=', 0)
+                ->when($search && $this->isMoneySearch($search), fn($q) =>
+                    $q->havingRaw('SUM(orders.total_amount) = ?', [(int) preg_replace('/[^0-9]/', '', $search)]))
                 ->orderBy('customers.name');
 
             $readyToPack = $custQuery->paginate(50, ['*'], 'pack_page')->withQueryString();
@@ -236,6 +245,19 @@ class PaymentController extends Controller
      * Store a lump-sum payment, allocated across the customer's orders.
      * Each order gets its own payment row sharing a batch_id.
      */
+    /**
+     * True if the search string looks like a money amount (digits only after
+     * stripping Rp / dots / commas / spaces) of at least 3 digits.
+     */
+    private function isMoneySearch(?string $search): bool
+    {
+        if (!$search) return false;
+        $digits = preg_replace('/[^0-9]/', '', $search);
+        // Must be all digits once formatting is removed, and long enough to be an amount
+        $stripped = str_ireplace(['rp', ' ', '.', ','], '', $search);
+        return ctype_digit($stripped) && strlen($digits) >= 3;
+    }
+
     public function store(Request $request)
     {
         if (!Auth::user()->hasPermission('payments.record')) {
