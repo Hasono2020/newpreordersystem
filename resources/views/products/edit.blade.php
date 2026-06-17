@@ -160,9 +160,15 @@
             </select>
         </div>
     </div>
-</div>
 
-{{-- ── Promo Settings ── --}}
+    <div class="alert alert-info d-flex align-items-center mt-3 mb-0 py-2" style="font-size:.85rem;">
+        <i class="bi bi-info-circle me-2"></i>
+        <div>
+            Colors &amp; sizes (variants) are managed on the product's view page.
+            <a href="{{ route('products.show', $product) }}" class="alert-link">Open {{ $product->product_code }} to add, edit stock, or remove variants</a>.
+        </div>
+    </div>
+</div>
 <div class="form-section">
     <div class="form-section-title"><i class="bi bi-percent"></i> Promo Settings</div>
     <label class="promo-exclude-box w-100 {{ old('excluded_from_promo', $product->excluded_from_promo) ? 'active' : '' }}"
