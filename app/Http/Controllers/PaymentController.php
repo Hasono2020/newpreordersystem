@@ -72,10 +72,14 @@ class PaymentController extends Controller
                 // Note: created_by_names uses GROUP_CONCAT so no groupBy needed
                 ->having('balance_due', '>', 0);
 
-            // A purely numeric search is treated as a balance-amount lookup.
+            // A purely numeric search matches ANY of the three amounts:
+            // total ordered, total paid, or balance due.
             if ($search && $this->isMoneySearch($search)) {
-                $query->havingRaw('(SUM(orders.total_amount) - SUM(orders.deposit_paid)) = ?',
-                    [(int) preg_replace('/[^0-9]/', '', $search)]);
+                $amt = (int) preg_replace('/[^0-9]/', '', $search);
+                $query->havingRaw(
+                    '(SUM(orders.total_amount) = ? OR SUM(orders.deposit_paid) = ? OR (SUM(orders.total_amount) - SUM(orders.deposit_paid)) = ?)',
+                    [$amt, $amt, $amt]
+                );
             }
 
             $query->orderByDesc('balance_due');
