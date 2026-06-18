@@ -229,6 +229,11 @@
                         @if(auth()->user()->hasPermission('orders.edit') && (auth()->user()->isAdmin() || auth()->user()->role !== 'staff' || $order->created_by === auth()->id()))
                         <a href="{{ route('orders.edit', $order) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
                         @endif
+                        <a href="{{ route('orders.combined-invoice', $order->customer_id) }}?trip_id={{ $order->trip_id }}"
+                           target="_blank" class="btn btn-sm btn-outline-dark"
+                           title="Print combined invoice — all this customer's orders in this trip">
+                            <i class="bi bi-printer"></i>
+                        </a>
                     </td>
                 </tr>
                 @empty
