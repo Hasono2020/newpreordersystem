@@ -232,7 +232,7 @@
                         <a href="{{ route('orders.combined-invoice', $order->customer_id) }}?trip_id={{ $order->trip_id }}"
                            target="_blank" class="btn btn-sm btn-outline-dark"
                            title="Print combined invoice — all this customer's orders in this trip">
-                            <i class="bi bi-printer"></i>
+                            <i class="bi bi-printer me-1"></i>Print
                         </a>
                     </td>
                 </tr>
