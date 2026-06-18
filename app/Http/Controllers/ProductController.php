@@ -88,7 +88,18 @@ class ProductController extends Controller
 
     public function show(Product $product)
     {
-        $product->load(['variants', 'orderItems.order.customer', 'trip', 'supplier']);
+        // Staff with own_data scope should only see order items from orders THEY created
+        $product->load([
+            'variants',
+            'orderItems' => function ($q) {
+                if (\Illuminate\Support\Facades\Auth::user()->isOwnDataOnly()) {
+                    $q->whereHas('order', fn($o) => $o->where('created_by', \Illuminate\Support\Facades\Auth::id()));
+                }
+            },
+            'orderItems.order.customer',
+            'trip',
+            'supplier',
+        ]);
         return view('products.show', compact('product'));
     }
 
