@@ -10,7 +10,12 @@ class TripController extends Controller
 {
     public function index()
     {
-        $trips = Trip::withCount('orders', 'products')->latest()->paginate(15);
+        $uid = \Illuminate\Support\Facades\Auth::user()->isOwnDataOnly()
+            ? \Illuminate\Support\Facades\Auth::id() : null;
+        $trips = Trip::withCount([
+                'orders' => fn($q) => $uid ? $q->where('created_by', $uid) : $q,
+                'products',
+            ])->latest()->paginate(15);
         return view('trips.index', compact('trips'));
     }
 
@@ -39,7 +44,16 @@ class TripController extends Controller
 
     public function show(Trip $trip)
     {
-        $trip->load(['products.variants', 'orders.customer']);
+        // Staff with own_data scope should only see orders THEY created
+        $trip->load([
+            'products.variants',
+            'orders' => function ($q) {
+                if (\Illuminate\Support\Facades\Auth::user()->isOwnDataOnly()) {
+                    $q->where('created_by', \Illuminate\Support\Facades\Auth::id());
+                }
+            },
+            'orders.customer',
+        ]);
         $orderSummary = [
             'total'   => $trip->orders->count(),
             'unpaid'  => $trip->orders->where('payment_status', 'unpaid')->count(),

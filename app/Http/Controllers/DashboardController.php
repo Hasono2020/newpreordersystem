@@ -30,7 +30,7 @@ class DashboardController extends Controller
             ->get();
 
         $activeTrips = Trip::whereIn('status', ['open', 'purchasing'])
-            ->withCount('orders')
+            ->withCount(['orders' => fn($q) => $ownOnly ? $q->where('created_by', $user->id) : $q])
             ->latest()
             ->limit(5)
             ->get();

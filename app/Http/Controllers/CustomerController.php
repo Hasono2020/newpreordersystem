@@ -14,7 +14,12 @@ class CustomerController extends Controller
     public function index(Request $request)
     {
         $perPage = in_array((int)$request->per_page, [20, 50, 100, 200]) ? (int)$request->per_page : 20;
-        $query   = Customer::withCount('orders');
+        // Customers are shared, but the order count should reflect the staff's own scope
+        $uid = \Illuminate\Support\Facades\Auth::user()->isOwnDataOnly()
+            ? \Illuminate\Support\Facades\Auth::id() : null;
+        $query   = Customer::withCount([
+            'orders' => fn($q) => $uid ? $q->where('created_by', $uid) : $q,
+        ]);
         // Customers are shared — all roles see all customers
         if ($request->search) {
             $query->where(function ($q) use ($request) {
