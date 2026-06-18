@@ -56,7 +56,18 @@ class CustomerController extends Controller
 
     public function show(Customer $customer)
     {
-        $customer->load(['orders.trip', 'orders.items', 'defaultShippingArea']);
+        // Staff with own_data scope should only see the orders THEY created
+        // (stats, recent orders, and combined-invoice trips all read from this relation).
+        $customer->load([
+            'orders' => function ($q) {
+                if (\Illuminate\Support\Facades\Auth::user()->isOwnDataOnly()) {
+                    $q->where('created_by', \Illuminate\Support\Facades\Auth::id());
+                }
+            },
+            'orders.trip',
+            'orders.items',
+            'defaultShippingArea',
+        ]);
         return view('customers.show', compact('customer'));
     }
 
