@@ -14,7 +14,14 @@ class ProductController extends Controller
     public function index(Request $request)
     {
         $perPage = in_array((int)$request->per_page, [20, 50, 100, 200]) ? (int)$request->per_page : 20;
-        $query   = Product::with('trip', 'supplier')->withCount('orderItems');
+        // Order count should reflect the staff's own scope (own_data staff)
+        $uid = \Illuminate\Support\Facades\Auth::user()->isOwnDataOnly()
+            ? \Illuminate\Support\Facades\Auth::id() : null;
+        $query   = Product::with('trip', 'supplier')->withCount([
+            'orderItems' => fn($q) => $uid
+                ? $q->whereHas('order', fn($o) => $o->where('created_by', $uid))
+                : $q,
+        ]);
 
         if ($request->trip_id) {
             $query->where('trip_id', $request->trip_id);
