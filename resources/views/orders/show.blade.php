@@ -176,7 +176,7 @@
             <div class="table-responsive">
                 <table class="table table-sm mb-0 small">
                     <thead class="table-light">
-                        <tr><th>Date</th><th>Type</th><th>Method</th><th>Reference</th><th>Amount</th><th>By</th><th></th></tr>
+                        <tr><th>Date</th><th>Type</th><th>Reference</th><th>Amount</th><th>By</th><th></th></tr>
                     </thead>
                     <tbody>
                         @forelse($order->payments as $payment)
@@ -187,7 +187,6 @@
                                     {{ $payment->isVoided() ? 'VOIDED' : ucfirst($payment->type) }}
                                 </span>
                             </td>
-                            <td>{{ $payment->method ?? '—' }}</td>
                             <td class="font-monospace">{{ $payment->reference ?? '—' }}</td>
                             <td class="{{ $payment->isVoided() ? '' : ($payment->type === 'refund' ? 'text-danger' : 'text-success') }} fw-semibold">
                                 {{ $payment->type === 'refund' ? '-' : '+' }}Rp {{ number_format($payment->amount, 0, ',', '.') }}
@@ -212,7 +211,7 @@
                             </td>
                         </tr>
                         @empty
-                        <tr><td colspan="7" class="text-center text-muted py-3">No payments recorded</td></tr>
+                        <tr><td colspan="6" class="text-center text-muted py-3">No payments recorded</td></tr>
                         @endforelse
                     </tbody>
                 </table>
