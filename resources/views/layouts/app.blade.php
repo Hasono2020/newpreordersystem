@@ -229,6 +229,9 @@
         .table td.cell-actions .btn {
             padding: .25rem .55rem;
         }
+        @media (min-width: 769px) {
+            .responsive-cards td { white-space: nowrap; }
+        }
         .card {
             border: 1px solid #e5e7eb;
             box-shadow: 0 1px 3px rgba(0,0,0,.06);
