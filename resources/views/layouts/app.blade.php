@@ -54,6 +54,36 @@
             padding: 0;
             cursor: pointer;
         }
+        .sidebar .brand .sidebar-collapse-btn {
+            display: none;
+            background: none;
+            border: none;
+            color: rgba(255,255,255,.6);
+            font-size: 1rem;
+            padding: 0 .15rem;
+            margin-right: .5rem;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .sidebar .brand .sidebar-collapse-btn:hover { color: #fff; }
+        .sidebar-show-btn {
+            display: none;
+            position: fixed;
+            top: .6rem;
+            left: .8rem;
+            z-index: 301;
+            background: #1e2a3a;
+            color: rgba(255,255,255,.8);
+            border: none;
+            border-radius: 6px;
+            width: 32px;
+            height: 32px;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 1px 4px rgba(0,0,0,.25);
+        }
+        .sidebar-show-btn:hover { color: #fff; background: #243348; }
         .sidebar nav { flex: 1; padding-bottom: 1rem; }
         .sidebar .nav-link {
             color: var(--sidebar-text);
@@ -136,6 +166,15 @@
             .topbar { left: 0; }
             .topbar .menu-toggle { display: block; }
             .main-content { margin-left: 0; }
+        }
+
+        /* ── Desktop sidebar collapse (≥992px) ──────────── */
+        @media (min-width: 992px) {
+            .sidebar .brand .sidebar-collapse-btn { display: block; }
+            .sidebar.desktop-collapsed { transform: translateX(-100%); }
+            .topbar.desktop-collapsed { left: 0; }
+            .main-content.desktop-collapsed { margin-left: 0; }
+            .sidebar-show-btn.show { display: flex; }
         }
 
         /* ── Responsive: mobile (≤575px) ────────────────── */
@@ -263,10 +302,20 @@
 {{-- Sidebar overlay (mobile tap-to-close) --}}
 <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
 
+{{-- Floating button to re-open sidebar when collapsed (desktop) --}}
+<button class="sidebar-show-btn" id="sidebarShowBtn" onclick="toggleDesktopSidebar()" title="Show sidebar">
+    <i class="bi bi-list"></i>
+</button>
+
 {{-- Sidebar --}}
 <div class="sidebar" id="sidebar">
     <div class="brand">
-        <span><i class="bi bi-bag-heart-fill me-2 text-primary"></i>PreOrder System</span>
+        <div class="d-flex align-items-center">
+            <button class="sidebar-collapse-btn" onclick="toggleDesktopSidebar()" title="Hide sidebar">
+                <i class="bi bi-chevron-left"></i>
+            </button>
+            <span><i class="bi bi-bag-heart-fill me-2 text-primary"></i>PreOrder System</span>
+        </div>
         <button class="close-sidebar" onclick="closeSidebar()"><i class="bi bi-x-lg"></i></button>
     </div>
     <nav class="mt-1">
@@ -331,7 +380,7 @@
 </div>
 
 {{-- Topbar --}}
-<div class="topbar">
+<div class="topbar" id="topbar">
     <div class="d-flex align-items-center">
         <button class="menu-toggle" onclick="toggleSidebar()">
             <i class="bi bi-list"></i>
@@ -353,7 +402,7 @@
 </div>
 
 {{-- Main content --}}
-<div class="main-content">
+<div class="main-content" id="mainContent">
 
     @if($errors->any())
     <div class="alert alert-danger alert-dismissible fade show" role="alert">
@@ -394,6 +443,25 @@ function closeSidebar() {
     document.getElementById('sidebar').classList.remove('open');
     document.getElementById('sidebarOverlay').classList.remove('show');
     document.body.style.overflow = '';
+}
+function toggleDesktopSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const topbar  = document.getElementById('topbar');
+    const main    = document.getElementById('mainContent');
+    const showBtn = document.getElementById('sidebarShowBtn');
+    const collapsed = !sidebar.classList.contains('desktop-collapsed');
+    sidebar.classList.toggle('desktop-collapsed', collapsed);
+    topbar.classList.toggle('desktop-collapsed', collapsed);
+    main.classList.toggle('desktop-collapsed', collapsed);
+    showBtn.classList.toggle('show', collapsed);
+    localStorage.setItem('sidebarCollapsed', collapsed ? '1' : '0');
+}
+// Restore collapsed state on desktop page load
+if (window.innerWidth > 991 && localStorage.getItem('sidebarCollapsed') === '1') {
+    document.getElementById('sidebar').classList.add('desktop-collapsed');
+    document.getElementById('topbar').classList.add('desktop-collapsed');
+    document.getElementById('mainContent').classList.add('desktop-collapsed');
+    document.getElementById('sidebarShowBtn').classList.add('show');
 }
 // Close sidebar on resize to desktop
 window.addEventListener('resize', () => {
