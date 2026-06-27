@@ -296,6 +296,11 @@
                         <td class="font-monospace small">{{ $payment->order->order_number ?? '—' }}</td>
                         <td class="text-end {{ $payment->type === 'refund' ? 'text-danger' : '' }}">
                             {{ $payment->type === 'refund' ? '-' : '' }}Rp {{ number_format($payment->amount, 0, ',', '.') }}
+                            <button type="button" class="btn btn-link btn-sm p-0 ms-1 copy-amount" style="font-size:.7rem;text-decoration:none;"
+                                    data-amount="{{ number_format($payment->amount, 0, ',', '.') }}"
+                                    title="Copy amount ({{ number_format($payment->amount, 0, ',', '.') }}) to match your bank statement in Excel">
+                                <i class="bi bi-clipboard"></i>
+                            </button>
                             @if($payment->isVoided())<span class="badge bg-secondary ms-1">Voided</span>@endif
                             @if($bid && $meta && $meta['count'] > 1)
                                 <span class="badge bg-info-subtle text-info-emphasis ms-1" style="font-size:.62rem;" title="Part of a Rp {{ number_format($meta['total'], 0, ',', '.') }} transfer across {{ $meta['count'] }} orders">batch</span>
@@ -526,6 +531,32 @@ function showVoidModal(routeSuffix, amount, isBatch, isVerified) {
     const warn = document.getElementById('voidVerifiedWarning');
     if (warn) warn.style.display = isVerified ? 'block' : 'none';
     new bootstrap.Modal(document.getElementById('voidPaymentModal')).show();
+}
+
+// Copy a payment amount (formatted like the bank statement: 200.011) to the clipboard
+document.addEventListener('click', function(e) {
+    const btn = e.target.closest('.copy-amount');
+    if (!btn) return;
+    const amount = btn.dataset.amount; // e.g. "200.011"
+    const done = () => {
+        const icon = btn.querySelector('i');
+        const old = icon ? icon.className : '';
+        if (icon) icon.className = 'bi bi-check-lg text-success';
+        btn.title = 'Copied!';
+        setTimeout(() => { if (icon) icon.className = old; btn.title = 'Copy amount'; }, 1200);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(amount).then(done).catch(() => fallbackCopy(amount, done));
+    } else {
+        fallbackCopy(amount, done);
+    }
+});
+function fallbackCopy(text, cb) {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); cb(); } catch (e) {}
+    document.body.removeChild(ta);
 }
 </script>
 @endpush
