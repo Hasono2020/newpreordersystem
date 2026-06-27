@@ -1069,6 +1069,28 @@ document.addEventListener('keydown', e => {
 // ── Init ─────────────────────────────────────────────────────────────
 document.querySelectorAll('.product-search-wrap').forEach(w => initProductSearch(w));
 const tripSel = document.getElementById('tripSelect');
+
+/* ── Trip auto-select (remembers last used per browser) ── */
+(function() {
+    if (!tripSel) return;
+    const KEY = 'lastTripId';
+    // On load: if nothing chosen yet (no old()/selected value), restore last used.
+    // querySelector guard means a remembered trip that's no longer listed
+    // (e.g. it was closed) is simply ignored, leaving the field blank.
+    if (!tripSel.value) {
+        const last = localStorage.getItem(KEY);
+        if (last && tripSel.querySelector(`option[value="${last}"]`)) {
+            tripSel.value = last;
+        }
+    }
+    // Remember whenever it changes
+    tripSel.addEventListener('change', function() {
+        if (this.value) localStorage.setItem(KEY, this.value);
+        else localStorage.removeItem(KEY);
+    });
+})();
+
+// Load products for the (possibly auto-restored) trip
 if (tripSel.value) tripSel.dispatchEvent(new Event('change'));
 
 /* ── CS Agent auto-select (remembers last used per browser) ── */
