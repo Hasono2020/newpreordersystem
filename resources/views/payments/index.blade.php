@@ -296,8 +296,8 @@
                         <td class="text-end {{ $payment->type === 'refund' ? 'text-danger' : '' }}">
                             {{ $payment->type === 'refund' ? '-' : '' }}Rp {{ number_format($payment->amount, 0, ',', '.') }}
                             <button type="button" class="btn btn-link btn-sm p-0 ms-1 copy-amount" style="font-size:.7rem;text-decoration:none;"
-                                    data-amount="{{ number_format($payment->amount, 0, ',', '.') }}"
-                                    title="Copy amount ({{ number_format($payment->amount, 0, ',', '.') }}) to match your bank statement in Excel">
+                                    data-amount="{{ (int) $payment->amount }}"
+                                    title="Copy raw amount ({{ (int) $payment->amount }}) — in Excel use Find with 'Look in: Values' to match">
                                 <i class="bi bi-clipboard"></i>
                             </button>
                             @if($payment->isVoided())<span class="badge bg-secondary ms-1">Voided</span>@endif
