@@ -83,7 +83,7 @@ class ReportController extends Controller
         $rows = [[
             'DIBUAT OLEH', 'NO', 'NAMA', 'IG/WA', 'NO HP', 'KOTA',
             'KODE', 'WARNA', 'SIZE', 'HARGA SATUAN',
-            'DP', 'TGL DP', 'AN', 'KET',
+            'DP', 'TGL DP', 'AN', 'KET', 'WAKTU ORDER',
         ]];
 
         $no = 1;
@@ -92,6 +92,7 @@ class ReportController extends Controller
             $dp    = $firstPayment?->amount ?? ($o->deposit_paid ?: '');
             $tglDp = $firstPayment ? \Carbon\Carbon::parse($firstPayment->paid_at)->format('d-M-y') : '';
             $an    = $o->notes ?? '';
+            $waktuOrder = $o->created_at?->format('d-m-Y H:i') ?? '';
 
             foreach ($o->items as $item) {
                 $rows[] = [
@@ -106,14 +107,16 @@ class ReportController extends Controller
                     $item->variant?->size ?? '',         // SIZE
                     $item->unit_price,                   // HARGA SATUAN
                     $dp,                                 // DP
-                    $tglDp,                              // TGL DP
+                    $tglDp,                               // TGL DP
                     $an,                                 // AN
                     '',                                  // KET
+                    $waktuOrder,                         // WAKTU ORDER (order created_at)
                 ];
                 $no++;
-                // Only show DP on first item row per order
+                // Only show DP / Waktu Order on first item row per order
                 $dp    = '';
                 $tglDp = '';
+                $waktuOrder = '';
             }
 
             // If order has no items
@@ -125,6 +128,7 @@ class ReportController extends Controller
                     $o->shippingArea?->name ?? '',
                     '', '', '', '',
                     $dp, $tglDp, $an, '',
+                    $waktuOrder,
                 ];
                 $no++;
             }
