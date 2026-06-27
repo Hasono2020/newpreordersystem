@@ -172,7 +172,7 @@
         @media (min-width: 992px) {
             .sidebar .brand .sidebar-collapse-btn { display: block; }
             .sidebar.desktop-collapsed { transform: translateX(-100%); }
-            .topbar.desktop-collapsed { left: 0; }
+            .topbar.desktop-collapsed { left: 0; padding-left: 3.25rem; }
             .main-content.desktop-collapsed { margin-left: 0; }
             .sidebar-show-btn.show { display: flex; }
         }
