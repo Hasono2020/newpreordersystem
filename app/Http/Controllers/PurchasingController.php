@@ -64,6 +64,13 @@ class PurchasingController extends Controller
             ])
             ->orderBy('supplier_name')
             ->orderBy('products.product_code')
+            ->orderBy('product_variants.color')
+            ->orderByRaw("CASE UPPER(product_variants.size)
+                WHEN 'XS' THEN 1 WHEN 'S' THEN 2 WHEN 'M' THEN 3
+                WHEN 'L' THEN 4 WHEN 'XL' THEN 5 WHEN 'XXL' THEN 6
+                WHEN '2XL' THEN 6 WHEN 'XXXL' THEN 7 WHEN '3XL' THEN 7
+                WHEN 'FZ' THEN 8 WHEN 'ALL' THEN 9 ELSE 99 END")
+            ->orderBy('product_variants.size')
             ->get();
 
         // Suppliers with a CONFIRMED (sent) PO — hide demand (already ordered, awaiting arrival).

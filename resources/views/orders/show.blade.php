@@ -137,7 +137,7 @@
                     <form method="POST" action="{{ route('orders.payments.add', $order) }}">
                         @csrf
                         <div class="row g-2 align-items-end">
-                            <div class="col-md-2">
+                            <div class="col-md-3">
                                 <label class="form-label small">Amount (Rp)</label>
                                 <input type="number" name="amount" class="form-control form-control-sm" required step="1" min="0">
                             </div>
@@ -151,14 +151,10 @@
                                 </select>
                             </div>
                             <div class="col-md-2">
-                                <label class="form-label small">Method</label>
-                                <input type="text" name="method" class="form-control form-control-sm" placeholder="Transfer / Cash">
-                            </div>
-                            <div class="col-md-2">
                                 <label class="form-label small">Reference</label>
                                 <input type="text" name="reference" class="form-control form-control-sm" placeholder="e.g. TF#123">
                             </div>
-                            <div class="col-md-2">
+                            <div class="col-md-3">
                                 <label class="form-label small">Date</label>
                                 <input type="date" name="paid_at" class="form-control form-control-sm" value="{{ date('Y-m-d') }}" required>
                             </div>

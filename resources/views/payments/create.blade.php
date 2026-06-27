@@ -45,8 +45,7 @@
                 <label class="form-label small fw-semibold">Date <span class="text-danger">*</span></label>
                 <input type="date" name="paid_at" class="form-control mb-3" value="{{ now()->format('Y-m-d') }}" required>
 
-                <label class="form-label small fw-semibold">Method</label>
-                <input type="text" name="method" class="form-control mb-3" value="transfer" placeholder="transfer, cash…">
+                <input type="hidden" name="method" value="transfer">
 
                 <label class="form-label small fw-semibold">Reference</label>
                 <input type="text" name="reference" class="form-control mb-3" placeholder="Transfer ref / proof note">

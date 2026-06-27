@@ -403,7 +403,7 @@ class OrderController extends Controller
         $order->payments()->create([
             'amount'      => $request->amount,
             'type'        => $request->type,
-            'method'      => $request->method,
+            'method'      => $request->method ?: 'Transfer',
             'reference'   => $request->reference,
             'paid_at'     => $request->paid_at,
             'notes'       => $request->notes,
