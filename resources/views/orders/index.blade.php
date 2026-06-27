@@ -194,7 +194,7 @@
                     <th style="width:36px;"><input type="checkbox" id="selectAll" class="form-check-input"></th>
                     @endif
                     @endif
-                    <th>Order #</th><th>Customer</th><th>Trip</th><th>Subtotal</th><th>Discount</th><th>Total</th><th>Paid</th><th>Balance</th><th>Status</th><th>Created By</th><th></th>
+                    <th>Order #</th><th>Customer</th><th>Trip</th><th>Subtotal</th><th>Discount</th><th>Total</th><th>Paid</th><th>Balance</th><th>Status</th><th>Created By</th><th>Created Time</th><th></th>
                 </tr>
             </thead>
             <tbody>
@@ -224,6 +224,7 @@
                     </td>
                     <td data-label="Status">{!! $order->payment_status_badge !!}</td>
                     <td data-label="Created By" class="small text-muted">{{ $order->createdBy->name ?? '—' }}</td>
+                    <td data-label="Created Time" class="small text-muted text-nowrap">{{ $order->created_at->format('d M Y, H:i') }}</td>
                     <td class="cell-actions no-label">
                         <a href="{{ route('orders.show', $order) }}" class="btn btn-sm btn-outline-primary">View</a>
                         @if(auth()->user()->hasPermission('orders.edit') && (auth()->user()->isAdmin() || auth()->user()->role !== 'staff' || $order->created_by === auth()->id()))
@@ -237,7 +238,7 @@
                     </td>
                 </tr>
                 @empty
-                <tr><td colspan="{{ auth()->user()->isAdmin() ? 11 : 10 }}" class="text-center text-muted py-4">No orders found</td></tr>
+                <tr><td colspan="{{ auth()->user()->isAdmin() ? 12 : 11 }}" class="text-center text-muted py-4">No orders found</td></tr>
                 @endforelse
             </tbody>
         </table>
