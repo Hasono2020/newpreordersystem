@@ -185,10 +185,6 @@
                                 </select>
                             </div>
                             <div class="col-md-2">
-                                <label class="form-label small">Method</label>
-                                <input type="text" name="method" class="form-control form-control-sm" placeholder="Transfer / Cash">
-                            </div>
-                            <div class="col-md-2">
                                 <label class="form-label small">Reference</label>
                                 <input type="text" name="reference" class="form-control form-control-sm" placeholder="e.g. TF#123">
                             </div>
@@ -210,14 +206,13 @@
             <div class="table-responsive">
                 <table class="table table-sm mb-0 small">
                     <thead class="table-light">
-                        <tr><th>Date</th><th>Type</th><th>Method</th><th>Reference</th><th>Amount</th><th>By</th></tr>
+                        <tr><th>Date</th><th>Type</th><th>Reference</th><th>Amount</th><th>By</th></tr>
                     </thead>
                     <tbody>
                         @forelse($order->payments as $payment)
                         <tr>
                             <td>{{ $payment->paid_at->format('d M Y') }}</td>
                             <td><span class="badge bg-secondary">{{ ucfirst($payment->type) }}</span></td>
-                            <td>{{ $payment->method ?? '—' }}</td>
                             <td class="font-monospace">{{ $payment->reference ?? '—' }}</td>
                             <td class="{{ $payment->type === 'refund' ? 'text-danger' : 'text-success' }} fw-semibold">
                                 {{ $payment->type === 'refund' ? '-' : '+' }}Rp {{ number_format($payment->amount, 0, ',', '.') }}
@@ -225,7 +220,7 @@
                             <td>{{ $payment->recordedBy->name }}</td>
                         </tr>
                         @empty
-                        <tr><td colspan="6" class="text-center text-muted py-3">No payments recorded</td></tr>
+                        <tr><td colspan="5" class="text-center text-muted py-3">No payments recorded</td></tr>
                         @endforelse
                     </tbody>
                 </table>
