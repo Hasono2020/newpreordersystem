@@ -262,7 +262,6 @@
                         <th>Customer</th>
                         <th>Order</th>
                         <th class="text-end">Amount</th>
-                        <th>Method</th>
                         <th>Reference</th>
                         <th>Order By</th>
                         <th>Recorded By</th>
@@ -282,7 +281,7 @@
                     @endphp
                     @if($showBanner)
                     <tr class="table-info">
-                        <td colspan="9" class="small py-2">
+                        <td colspan="8" class="small py-2">
                             <i class="bi bi-link-45deg me-1"></i>
                             <strong>One transfer — Rp {{ number_format($meta['total'], 0, ',', '.') }}</strong>
                             split across {{ $meta['count'] }} orders for {{ $payment->order->customer->name ?? 'this customer' }}.
@@ -306,7 +305,6 @@
                                 <span class="badge bg-info-subtle text-info-emphasis ms-1" style="font-size:.62rem;" title="Part of a Rp {{ number_format($meta['total'], 0, ',', '.') }} transfer across {{ $meta['count'] }} orders">batch</span>
                             @endif
                         </td>
-                        <td class="small">{{ ucfirst($payment->method ?? '—') }}</td>
                         <td class="small text-muted">{{ $payment->reference ?? '—' }}</td>
                         <td class="small text-muted">{{ $payment->order->createdBy->name ?? '—' }}</td>
                         <td class="small text-muted">{{ $payment->recordedBy->name ?? '—' }}</td>
@@ -358,7 +356,7 @@
                         </td>
                     </tr>
                     @empty
-                    <tr><td colspan="9" class="text-center text-muted py-4">No payments recorded yet.</td></tr>
+                    <tr><td colspan="8" class="text-center text-muted py-4">No payments recorded yet.</td></tr>
                     @endforelse
                 </tbody>
             </table>
