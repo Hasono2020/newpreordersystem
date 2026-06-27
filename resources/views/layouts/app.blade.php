@@ -221,6 +221,13 @@
             letter-spacing: .04em;
             color: #6b7280;
             font-weight: 600;
+            white-space: nowrap;
+        }
+        .table td.cell-actions {
+            white-space: nowrap;
+        }
+        .table td.cell-actions .btn {
+            padding: .25rem .55rem;
         }
         .card {
             border: 1px solid #e5e7eb;
