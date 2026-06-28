@@ -144,30 +144,35 @@ class PromoService
             $o->items->whereNotIn('status', ['cancelled', 'sold_out'])->isNotEmpty()
         ) ?? $orders->first();
 
-        foreach ($orders as $order) {
-            $activeItems = $order->items->whereNotIn('status', ['cancelled', 'sold_out']);
-            $subtotal    = $activeItems->sum('line_total');
+        // All-or-nothing: every order in this customer+trip group is recalculated together.
+        // Without this, a failure halfway through could leave the customer's orders with
+        // mismatched totals (e.g. one order charged shipping, another not).
+        \DB::transaction(function () use ($orders, $anchor, $combinedShippingFee, $combinedGrams, $combinedKg, $combinedDiscount, $combinedShipSubsidy) {
+            foreach ($orders as $order) {
+                $activeItems = $order->items->whereNotIn('status', ['cancelled', 'sold_out']);
+                $subtotal    = $activeItems->sum('line_total');
 
-            $isAnchor    = $order->id === $anchor->id;
-            $shippingFee = $isAnchor ? $combinedShippingFee : 0;
-            $weightGram  = $isAnchor ? $combinedGrams : 0;
-            $kgCharged   = $isAnchor ? $combinedKg : 0;
+                $isAnchor    = $order->id === $anchor->id;
+                $shippingFee = $isAnchor ? $combinedShippingFee : 0;
+                $weightGram  = $isAnchor ? $combinedGrams : 0;
+                $kgCharged   = $isAnchor ? $combinedKg : 0;
 
-            // Combined promo applies to the anchor only (discount + shipping subsidy charged once)
-            $discount         = $isAnchor ? $combinedDiscount : 0;
-            $shippingDiscount = $isAnchor ? min($shippingFee, $combinedShipSubsidy) : 0;
+                // Combined promo applies to the anchor only (discount + shipping subsidy charged once)
+                $discount         = $isAnchor ? $combinedDiscount : 0;
+                $shippingDiscount = $isAnchor ? min($shippingFee, $combinedShipSubsidy) : 0;
 
-            $total = max(0, $subtotal - $discount + $shippingFee - $shippingDiscount);
+                $total = max(0, $subtotal - $discount + $shippingFee - $shippingDiscount);
 
-            $order->update([
-                'subtotal'             => $subtotal,
-                'discount_amount'      => $discount,
-                'shipping_fee'         => $shippingFee,
-                'shipping_discount'    => $shippingDiscount,
-                'shipping_weight_gram' => $weightGram,
-                'shipping_kg_charged'  => $kgCharged,
-                'total_amount'         => $total,
-            ]);
-        }
+                $order->update([
+                    'subtotal'             => $subtotal,
+                    'discount_amount'      => $discount,
+                    'shipping_fee'         => $shippingFee,
+                    'shipping_discount'    => $shippingDiscount,
+                    'shipping_weight_gram' => $weightGram,
+                    'shipping_kg_charged'  => $kgCharged,
+                    'total_amount'         => $total,
+                ]);
+            }
+        });
     }
 }

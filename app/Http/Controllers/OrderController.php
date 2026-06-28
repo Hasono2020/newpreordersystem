@@ -108,11 +108,14 @@ class OrderController extends Controller
                     }
                 }
 
-                // If product has variants but none was selected — reject
+                // If product has variants but none was selected — reject.
+                // Throwing here (instead of returning a response) ensures the transaction
+                // rolls back cleanly and the caller gets a proper validation error,
+                // rather than a response object being mistaken for the Order model below.
                 if (!$variantId) {
                     $hasVariants = \App\Models\ProductVariant::where('product_id', $itemData['product_id'])->exists();
                     if ($hasVariants) {
-                        return back()->withInput()->withErrors([
+                        throw \Illuminate\Validation\ValidationException::withMessages([
                             'items' => 'One or more items are missing a variant selection. Please pick a variant for each product.',
                         ]);
                     }
@@ -400,17 +403,19 @@ class OrderController extends Controller
             'notes'     => 'nullable|string',
         ]);
 
-        $order->payments()->create([
-            'amount'      => $request->amount,
-            'type'        => $request->type,
-            'method'      => $request->method ?: 'Transfer',
-            'reference'   => $request->reference,
-            'paid_at'     => $request->paid_at,
-            'notes'       => $request->notes,
-            'recorded_by' => Auth::id(),
-        ]);
+        \DB::transaction(function () use ($request, $order) {
+            $order->payments()->create([
+                'amount'      => $request->amount,
+                'type'        => $request->type,
+                'method'      => $request->method ?: 'Transfer',
+                'reference'   => $request->reference,
+                'paid_at'     => $request->paid_at,
+                'notes'       => $request->notes,
+                'recorded_by' => Auth::id(),
+            ]);
 
-        $this->recalcOrderPayment($order);
+            $this->recalcOrderPayment($order);
+        });
         $order->refresh();
 
         $msg = 'Payment recorded.';
@@ -428,14 +433,16 @@ class OrderController extends Controller
             return back()->with('error', 'This payment has already been voided.');
         }
 
-        $payment->update([
-            'voided_at'   => now(),
-            'voided_by'   => Auth::id(),
-            'void_reason' => $request->void_reason,
-        ]);
-
         $order = $payment->order;
-        $this->recalcOrderPayment($order);
+        \DB::transaction(function () use ($request, $payment, $order) {
+            $payment->update([
+                'voided_at'   => now(),
+                'voided_by'   => Auth::id(),
+                'void_reason' => $request->void_reason,
+            ]);
+
+            $this->recalcOrderPayment($order);
+        });
         $order->refresh();
 
         return back()->with('success',

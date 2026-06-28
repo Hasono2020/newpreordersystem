@@ -585,12 +585,14 @@ class PaymentController extends Controller
 
         $allPrinted = $orders->isNotEmpty() && $orders->every(fn($o) => $o->invoice_printed_at !== null);
 
-        foreach ($orders as $order) {
-            $order->update([
-                'invoice_printed_at' => $allPrinted ? null : now(),
-                'invoice_printed_by' => $allPrinted ? null : Auth::id(),
-            ]);
-        }
+        \DB::transaction(function () use ($orders, $allPrinted) {
+            foreach ($orders as $order) {
+                $order->update([
+                    'invoice_printed_at' => $allPrinted ? null : now(),
+                    'invoice_printed_by' => $allPrinted ? null : Auth::id(),
+                ]);
+            }
+        });
 
         return back()->with('success', $allPrinted ? 'Marked as NOT printed.' : 'Marked as printed — ready to pack.');
     }
@@ -609,15 +611,17 @@ class PaymentController extends Controller
         }
 
         $total = 0;
-        foreach ($payments as $payment) {
-            $payment->update([
-                'verification_status' => 'verified',
-                'verified_by'         => Auth::id(),
-                'verified_at'         => now(),
-                'dispute_note'        => null,
-            ]);
-            $total += $payment->amount;
-        }
+        \DB::transaction(function () use ($payments, &$total) {
+            foreach ($payments as $payment) {
+                $payment->update([
+                    'verification_status' => 'verified',
+                    'verified_by'         => Auth::id(),
+                    'verified_at'         => now(),
+                    'dispute_note'        => null,
+                ]);
+                $total += $payment->amount;
+            }
+        });
 
         return back()->with('success', $payments->count() . ' payment(s) totaling Rp ' . number_format($total, 0, ',', '.') . ' verified.');
     }
