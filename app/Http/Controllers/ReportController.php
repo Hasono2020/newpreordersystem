@@ -233,6 +233,11 @@ class ReportController extends Controller
      * 11  TGL DP       – deposit date YYYY-MM-DD or DD/MM/YYYY
      * 12  AN           – atas nama / order notes
      * 13  KET          – additional notes
+     *
+     * This method is now lightweight: it just validates the upload itself,
+     * stores the file, and queues an ImportOrdersJob. The actual row
+     * validation + database writes happen later in the queued job — see
+     * App\Jobs\ImportOrdersJob and App\Services\OrderImportService.
      */
     public function importOrders(Request $request)
     {
@@ -241,409 +246,41 @@ class ReportController extends Controller
             'trip_id' => 'required|exists:trips,id',
         ]);
 
-        // Large imports (10k+ rows) need more time and memory
-        @set_time_limit(600);
-        @ini_set('memory_limit', '1024M');
-        // Disable query log to avoid memory bloat on big batch imports
-        DB::connection()->disableQueryLog();
-
         $trip = Trip::findOrFail($request->trip_id);
-        $rows = $this->readXlsx($request->file('file')->getRealPath());
-        if (empty($rows)) {
-            return back()->with('error', 'Could not read the file. Make sure it is a valid .xlsx file.');
-        }
 
-        array_shift($rows); // remove header
+        // Store the upload persistently (the temp upload file is removed once
+        // the request ends, but the queue worker runs later in a separate process).
+        $storedPath = $request->file('file')->store('imports');
 
-        // Remove completely blank rows
-        $rows = array_values(array_filter($rows, fn($r) =>
-            !empty(trim((string)($r[2] ?? ''))) || !empty(trim((string)($r[6] ?? '')))
-        ));
+        $importJob = \App\Models\ImportJob::create([
+            'trip_id'           => $trip->id,
+            'created_by'        => Auth::id(),
+            'original_filename' => $request->file('file')->getClientOriginalName(),
+            'stored_path'       => $storedPath,
+            'status'            => 'queued',
+        ]);
 
-        if (empty($rows)) {
-            return back()->with('error', 'The file has no data rows.');
-        }
-
-        // ── Pre-load ALL products for this trip into memory (for fast validation) ──
-        $products = Product::where('trip_id', $trip->id)
-            ->with('variants')
-            ->get()
-            ->keyBy(fn($p) => strtoupper($p->product_code ?? ''));
-
-        $shippingAreas = \App\Models\ShippingArea::all()
-            ->keyBy(fn($a) => strtolower(trim($a->name)));
-
-        $shippingAreasById = $shippingAreas->keyBy('id'); // for fast lookup by ID during import
-
-        // Pre-load CS agents (match by name, case-insensitive)
-        $csAgents = \App\Models\CsAgent::all()
-            ->keyBy(fn($a) => strtolower(trim($a->name)));
-
-        // ── Full validation pass — check EVERY row before importing anything ──
-        $errors = [];
-        foreach ($rows as $i => $row) {
-            $lineNum = $i + 2;
-            $name    = trim((string)($row[2] ?? ''));
-            $csName  = trim((string)($row[3] ?? ''));   // IG/WA = CS agent
-            $code    = strtoupper(trim((string)($row[6] ?? '')));
-            $color   = trim((string)($row[7] ?? ''));
-            $size    = trim((string)($row[8] ?? ''));
-
-            if (empty($name) && empty($code)) continue; // skip truly blank rows
-
-            if (empty($name)) {
-                $errors[] = "Row {$lineNum}: Name is required.";
-                continue;
-            }
-            if (empty($csName)) {
-                $errors[] = "Row {$lineNum} ({$name}): IG/WA (Customer Service) is required.";
-                continue;
-            }
-            if (!isset($csAgents[strtolower($csName)])) {
-                $errors[] = "Row {$lineNum} ({$name}): CS agent '{$csName}' not found. Add them in CS Agents first.";
-                continue;
-            }
-            if (empty($code)) {
-                $errors[] = "Row {$lineNum} ({$name}): Product Code is required.";
-                continue;
-            }
-
-            $product = $products->get($code);
-            if (!$product) {
-                $errors[] = "Row {$lineNum} ({$name}): Code '{$code}' not found in trip '{$trip->name}'.";
-                continue;
-            }
-
-            if ($color || $size) {
-                $variantFound = $product->variants->first(function ($v) use ($color, $size) {
-                    $colorMatch = !$color || strtolower($v->color ?? '') === strtolower($color);
-                    $sizeMatch  = !$size  || strtolower($v->size  ?? '') === strtolower($size);
-                    return $colorMatch && $sizeMatch;
-                });
-                if (!$variantFound) {
-                    $errors[] = "Row {$lineNum} ({$name}): Variant '{$color}/{$size}' not found for code '{$code}'.";
-                }
-            }
-        }
-
-        if (!empty($errors)) {
-            return back()->with('import_errors', $errors)
-                         ->with('error', count($errors) . ' error(s) found — fix all issues before importing:');
-        }
-
-        // ── Pre-load customer data into memory ──────────────────────────────
-        $existingPhones = DB::table('customers')->whereNotNull('phone')
-            ->pluck('id', 'phone')
-            ->mapWithKeys(fn($id, $p) => [strtolower(trim($p)) => $id])->toArray();
-
-        $existingNames = DB::table('customers')->pluck('id', 'name')
-            ->mapWithKeys(fn($id, $n) => [strtolower(trim($n)) => $id])->toArray();
-
-        // Pre-load customer types for promo calculation
-        $customerTypes = DB::table('customers')->pluck('type', 'id')->toArray();
-
-        // Pre-load promo rules for this trip (in memory — no DB calls per order)
-        $promoRules = \App\Models\PromoRule::where('is_active', true)
-            ->where(fn($q) => $q->where('trip_id', $trip->id)->orWhereNull('trip_id'))
-            ->orderByDesc('min_items')
-            ->get();
-
-        // ── Import pass — fast batch inserts ─────────────────────────────
-        $imported  = 0;
-        $skipped   = 0;
-        $baseTime  = now();
-        $now       = $baseTime->toDateTimeString();
-        $createdBy = Auth::id();
-
-        $ordersBatch    = [];
-        $itemsBatch     = [];
-        $paymentsBatch  = [];
-
-        foreach ($rows as $rowIdx => $row) {
-            $name    = trim((string)($row[2] ?? ''));
-            $csName  = trim((string)($row[3] ?? ''));   // IG/WA = CS agent
-            $contact = trim((string)($row[4] ?? ''));   // NO HP = customer phone
-            $area    = trim((string)($row[5] ?? ''));
-            $code    = strtoupper(trim((string)($row[6] ?? '')));
-            $color   = trim((string)($row[7] ?? ''));
-            $size    = trim((string)($row[8] ?? ''));
-            $price   = (float)($row[9] ?? 0);
-            $dp      = (float)($row[10] ?? 0);
-            $dpRaw   = $row[11] ?? '';
-            $an      = trim((string)($row[12] ?? ''));
-            $ketPost = trim((string)($row[13] ?? ''));
-
-            // Resolve CS agent by name (case-insensitive); blank/unknown = null
-            $csAgentId = $csName !== '' ? ($csAgents[strtolower($csName)]->id ?? null) : null;
-
-            if (empty($name) || empty($code)) continue;
-
-            // Find or create customer
-            $normalizedPhone = Customer::normalizePhone($contact);
-            $customerId = null;
-            if ($normalizedPhone && isset($existingPhones[strtolower($normalizedPhone)])) {
-                $customerId = $existingPhones[strtolower($normalizedPhone)];
-            } elseif (isset($existingNames[strtolower($name)])) {
-                $customerId = $existingNames[strtolower($name)];
-            } else {
-                // Resolve area for new customer
-                $areaKey = strtolower($area);
-                $areaId  = $shippingAreas[$areaKey]?->id ?? null;
-                if (!$areaId && $area) {
-                    foreach ($shippingAreas as $k => $a) {
-                        if (str_contains($k, $areaKey) || str_contains($areaKey, $k)) {
-                            $areaId = $a->id; break;
-                        }
-                    }
-                }
-                $customerId = DB::table('customers')->insertGetId([
-                    'name'                     => $name,
-                    'phone'                    => $normalizedPhone ?: null,
-                    'type'                     => 'customer',
-                    'default_shipping_area_id' => $areaId,
-                    'created_at'               => $now,
-                    'updated_at'               => $now,
-                ]);
-                if ($normalizedPhone) $existingPhones[strtolower($normalizedPhone)] = $customerId;
-                $existingNames[strtolower($name)] = $customerId;
-            }
-
-            // Resolve shipping area
-            $areaKey = strtolower($area);
-            $areaId  = $shippingAreas[$areaKey]?->id ?? null;
-            if (!$areaId && $area) {
-                foreach ($shippingAreas as $k => $a) {
-                    if (str_contains($k, $areaKey) || str_contains($areaKey, $k)) {
-                        $areaId = $a->id; break;
-                    }
-                }
-            }
-
-            // Find product and variant
-            $product = $products[$code] ?? null;
-            if (!$product) { $skipped++; continue; }
-
-            $variant   = null;
-            $unitPrice = $price > 0 ? $price : $product->price;
-            if ($color || $size) {
-                foreach ($product->variants as $v) {
-                    $colorMatch = !$color || strtolower($v->color ?? '') === strtolower($color);
-                    $sizeMatch  = !$size  || strtolower($v->size ?? '')  === strtolower($size);
-                    if ($colorMatch && $sizeMatch) { $variant = $v; break; }
-                }
-                if ($variant && !$price) {
-                    $unitPrice = $variant->final_price ?? $product->price;
-                }
-            }
-
-            // ── Inline promo + shipping calculation (no DB queries) ────────
-            $customerType = $customerTypes[$customerId] ?? 'customer';
-            $weightGram   = $product->weight_gram ?? 0;
-
-            // Shipping fee
-            $shippingArea   = $areaId ? $shippingAreasById->get($areaId) : null;
-            $shippingFee    = $shippingArea ? $shippingArea->calcShippingFee($weightGram) : 0;
-            $chargeableKg   = \App\Models\ShippingArea::calcChargeableKg($weightGram);
-
-            // Promo — check all pre-loaded rules (pure PHP, no DB)
-            $isExcluded   = $product->excluded_from_promo ?? false;
-            $eligibleQty  = $isExcluded ? 0 : 1;
-            $bestDiscount = 0;
-            $bestSubsidy  = 0;
-
-            foreach ($promoRules as $rule) {
-                if (!$rule->appliesTo($customerType, $eligibleQty)) continue;
-                $calc    = $rule->calculateDiscount($eligibleQty);
-                $benefit = $calc['discount'] + $calc['max_shipping_subsidy'];
-                if ($benefit > $bestDiscount + $bestSubsidy) {
-                    $bestDiscount = $calc['discount'];
-                    $bestSubsidy  = $calc['max_shipping_subsidy'];
-                }
-            }
-            $shippingDiscount = min($shippingFee, $bestSubsidy);
-            $totalAmount      = max(0, $unitPrice - $bestDiscount + $shippingFee - $shippingDiscount);
-            // ──────────────────────────────────────────────────────────────
-
-            // FIFO timestamp based on row position
-            $orderedAt = $baseTime->copy()->addSeconds($rowIdx)->toDateTimeString();
-            $notes     = implode(' | ', array_filter([$an, $ketPost])) ?: null;
-
-            $ordersBatch[] = [
-                'trip_id'              => $trip->id,
-                'customer_id'          => $customerId,
-                'shipping_area_id'     => $areaId,
-                'cs_agent_id'          => $csAgentId,
-                'notes'                => $notes,
-                'ordered_at'           => $orderedAt,
-                'created_by'           => $createdBy,
-                'subtotal'             => $unitPrice,
-                'discount_amount'      => $bestDiscount,
-                'shipping_fee'         => $shippingFee,
-                'shipping_discount'    => $shippingDiscount,
-                'shipping_weight_gram' => $weightGram,
-                'shipping_kg_charged'  => $chargeableKg,
-                'total_amount'         => $totalAmount,
-                'deposit_paid'         => $dp > 0 ? $dp : 0,
-                'payment_status'       => $dp > 0 ? 'partial' : 'unpaid',
-                'created_at'           => $now,
-                'updated_at'           => $now,
-            ];
-
-            $itemsBatch[]  = ['_rowIdx' => count($ordersBatch) - 1,
-                'product_id'         => $product->id,
-                'product_variant_id' => $variant?->id,
-                'quantity'           => 1,
-                'unit_price'         => $unitPrice,
-                'line_total'         => $unitPrice,
-                'status'             => 'pending',
-                'created_at'         => $now,
-                'updated_at'         => $now,
-            ];
-
-            // Parse DP date — handles Excel serials, DD/MM/YYYY, DD-MM-YY, text dates
-            if ($dp > 0) {
-                $dpDate = substr($now, 0, 10); // default today
-                if ($dpRaw !== '' && $dpRaw !== null) {
-                    $dpDate = $this->parseDateValue($dpRaw, $dpDate);
-                }
-                $paymentsBatch[] = ['_rowIdx' => count($ordersBatch) - 1,
-                    'amount' => $dp, 'type' => 'deposit', 'method' => 'transfer',
-                    'paid_at' => $dpDate, 'recorded_by' => $createdBy,
-                    'created_at' => $now, 'updated_at' => $now,
-                ];
-            }
-
-            $imported++;
-
-            // Flush every 500 orders
-            if (count($ordersBatch) >= 500) {
-                $this->flushOrderBatch($ordersBatch, $itemsBatch, $paymentsBatch);
-                $ordersBatch = []; $itemsBatch = []; $paymentsBatch = [];
-            }
-        }
-
-        if (!empty($ordersBatch)) {
-            $this->flushOrderBatch($ordersBatch, $itemsBatch, $paymentsBatch);
-        }
+        \App\Jobs\ImportOrdersJob::dispatch($importJob->id);
 
         return redirect()
             ->route('orders.index', ['trip_id' => $trip->id])
-            ->with('success', "✓ Imported {$imported} order(s) for '{$trip->name}'. Promo and shipping applied per order." . ($skipped ? " {$skipped} skipped (product not found)." : ''));
+            ->with('success', "Import queued for '{$trip->name}' — processing in the background. Check the Recent Imports panel for progress.");
     }
 
     /**
-     * Parse any date value from Excel — handles:
-     *   - Excel serial numbers (e.g. 46145 → 2026-05-03)
-     *   - DD/MM/YYYY or DD/MM/YY  (slash-separated)
-     *   - DD-MM-YYYY or DD-MM-YY  (dash-separated, day first)
-     *   - YYYY-MM-DD              (ISO format)
-     *   - Text like "11-May-26"   (Carbon parse fallback)
-     * Returns YYYY-MM-DD string or $fallback on failure.
+     * AJAX: poll status of the current user's recent import jobs (for the
+     * "Recent Imports" panel on the orders index page).
      */
-    private function parseDateValue(mixed $raw, string $fallback): string
+    public function importStatus(Request $request)
     {
-        $s = trim((string)$raw);
-        if ($s === '') return $fallback;
+        $jobs = \App\Models\ImportJob::where('created_by', Auth::id())
+            ->orderByDesc('id')
+            ->limit(5)
+            ->get(['id', 'trip_id', 'original_filename', 'status', 'total_rows', 'imported_count', 'skipped_count', 'error_message', 'row_errors', 'created_at', 'finished_at']);
 
-        // Excel serial number (days since 1900-01-00, modern dates > 40000)
-        if (is_numeric($s) && (int)$s > 40000) {
-            try {
-                $r = \Carbon\Carbon::createFromTimestamp(((int)$s - 25569) * 86400)->utc()->format('Y-m-d');
-                if ($this->isValidYmd($r)) return $r;
-            } catch (\Exception $e) {}
-        }
-
-        // Small numeric (e.g. serial < 40000) — not a usable date
-        if (is_numeric($s)) return $fallback;
-
-        // Slash-separated: DD/MM/YYYY or DD/MM/YY  (day first)
-        if (str_contains($s, '/')) {
-            $p = explode('/', $s);
-            if (count($p) === 3) {
-                [$d, $m, $y] = [(int)$p[0], (int)$p[1], (int)$p[2]];
-                if ($y < 100) $y += 2000;
-                if (checkdate($m, $d, $y)) return sprintf('%04d-%02d-%02d', $y, $m, $d);
-            }
-        }
-
-        // Dash-separated: try multiple interpretations, accept first valid one
-        if (str_contains($s, '-')) {
-            $p = explode('-', $s);
-            if (count($p) === 3) {
-                $a = (int)$p[0]; $b = (int)$p[1]; $c = (int)$p[2];
-
-                // ISO: YYYY-MM-DD
-                if ($a > 1900 && checkdate($b, $c, $a))
-                    return sprintf('%04d-%02d-%02d', $a, $b, $c);
-
-                // DD-MM-YY / DD-MM-YYYY
-                $y = $c < 100 ? $c + 2000 : $c;
-                if ($y >= 1900 && checkdate($b, $a, $y))
-                    return sprintf('%04d-%02d-%02d', $y, $b, $a);
-
-                // MM-DD-YY / MM-DD-YYYY
-                if ($y >= 1900 && checkdate($a, $b, $y))
-                    return sprintf('%04d-%02d-%02d', $y, $a, $b);
-            }
-        }
-
-        // Text fallback (e.g. "11-May-26") — validate after parsing
-        try {
-            $r = \Carbon\Carbon::parse($s)->format('Y-m-d');
-            if ($this->isValidYmd($r)) return $r;
-        } catch (\Exception $e) {}
-
-        return $fallback;
+        return response()->json($jobs);
     }
 
-    private function isValidYmd(string $d): bool
-    {
-        if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $d, $m)) return false;
-        return (int)$m[1] >= 1900 && (int)$m[1] <= 2100 && checkdate((int)$m[2], (int)$m[3], (int)$m[1]);
-    }
-
-    private function flushOrderBatch(array &$orders, array &$items, array &$payments): void
-    {
-        if (empty($orders)) return;
-        $count = count($orders);
-
-        // Generate unique order numbers using random hex
-        foreach ($orders as $i => &$order) {
-            $order['order_number'] = 'ORD-' . strtoupper(bin2hex(random_bytes(5)));
-        }
-        unset($order);
-
-        DB::table('orders')->insert($orders);
-
-        // MySQL guarantees contiguous auto-increment IDs for a single INSERT
-        // lastInsertId() returns the FIRST inserted ID
-        $firstId = (int) DB::getPdo()->lastInsertId();
-        $insertedIds = range($firstId, $firstId + $count - 1);
-
-        // Insert items
-        $itemsToInsert = [];
-        foreach ($items as $item) {
-            $idx = $item['_rowIdx'];
-            if (isset($insertedIds[$idx])) {
-                unset($item['_rowIdx']);
-                $item['order_id'] = $insertedIds[$idx];
-                $itemsToInsert[]  = $item;
-            }
-        }
-        if ($itemsToInsert) DB::table('order_items')->insert($itemsToInsert);
-
-        // Insert payments
-        $paymentsToInsert = [];
-        foreach ($payments as $pay) {
-            $idx = $pay['_rowIdx'];
-            if (isset($insertedIds[$idx])) {
-                unset($pay['_rowIdx']);
-                $pay['order_id']    = $insertedIds[$idx];
-                $paymentsToInsert[] = $pay;
-            }
-        }
-        if ($paymentsToInsert) DB::table('payments')->insert($paymentsToInsert);
-    }
     public function importCustomers(Request $request)
     {
         set_time_limit(300); // allow up to 5 minutes for large files

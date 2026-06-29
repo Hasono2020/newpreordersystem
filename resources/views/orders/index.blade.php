@@ -149,7 +149,7 @@
                         <i class="bi bi-download me-1"></i>Download template (.xlsx)
                     </a>
                 </div>
-                <form method="POST" action="{{ route('orders.import') }}" enctype="multipart/form-data" onsubmit="const ov=document.getElementById('processingOverlay'); document.getElementById('processingMsg').textContent='Importing orders from Excel. Large files may take up to a minute. Please do not close this page.'; ov.style.display='flex';">
+                <form method="POST" action="{{ route('orders.import') }}" enctype="multipart/form-data" onsubmit="const ov=document.getElementById('processingOverlay'); document.getElementById('processingMsg').textContent='Uploading file…'; ov.style.display='flex'; setTimeout(()=>{ov.style.display='none';}, 4000);">
                     @csrf
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Trip <span class="text-danger">*</span></label>
@@ -173,6 +173,17 @@
                 </form>
             </div>
         </div>
+    </div>
+</div>
+
+{{-- Recent Imports status panel (auto-refreshes while any import is queued/processing) --}}
+<div class="card mb-3" id="recentImportsCard" style="display:none;">
+    <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+        <span class="small fw-semibold"><i class="bi bi-clock-history me-1"></i>Recent Imports</span>
+        <button class="btn btn-sm btn-link p-0" onclick="hideImportsPanel()">Hide</button>
+    </div>
+    <div class="card-body py-2" id="recentImportsBody">
+        <div class="text-muted small">Loading…</div>
     </div>
 </div>
 
@@ -308,4 +319,86 @@ function confirmBulkDelete(action) {
     });
 </script>
 @endif
+
+<script>
+// ── Recent Imports panel: poll while any import is queued/processing ──
+let importErrorsCache = {}; // job.id -> row_errors[], avoids embedding raw text in HTML attributes
+
+function showImportErrors(jobId) {
+    const errors = importErrorsCache[jobId] || [];
+    alert(errors.length ? errors.join('\n') : 'No error details available.');
+}
+
+function renderImportRow(job) {
+    importErrorsCache[job.id] = job.row_errors || [];
+
+    const badge = {
+        queued:     '<span class="badge bg-secondary">Queued</span>',
+        processing: '<span class="badge bg-info text-dark">Processing…</span>',
+        done:       '<span class="badge bg-success">Done</span>',
+        failed:     '<span class="badge bg-danger">Failed</span>',
+    }[job.status] || job.status;
+
+    let detail = '';
+    if (job.status === 'done') {
+        detail = `Imported ${job.imported_count ?? 0} order(s)` + (job.skipped_count ? `, ${job.skipped_count} skipped` : '') + '.';
+    } else if (job.status === 'failed') {
+        if (job.row_errors && job.row_errors.length) {
+            detail = `${job.row_errors.length} row error(s) — fix the file and re-import. ` +
+                      `<button class="btn btn-sm btn-link p-0 align-baseline" onclick="showImportErrors(${job.id})">View errors</button>`;
+        } else if (job.error_message) {
+            detail = job.error_message;
+        }
+    } else if (job.status === 'processing' && job.total_rows) {
+        detail = `Processing ${job.total_rows} row(s)…`;
+    }
+
+    return `<div class="d-flex justify-content-between align-items-start py-1 small border-bottom">
+        <div>
+            <span class="font-monospace">${job.original_filename}</span><br>
+            <span class="text-muted">${detail}</span>
+        </div>
+        <div class="text-end ms-2">${badge}</div>
+    </div>`;
+}
+
+let importPollTimer = null;
+let latestSeenJobId = 0; // tracks the newest job.id currently shown, for the Hide-persistence logic
+
+function hideImportsPanel() {
+    // Remember "hidden up to this point" — stays hidden across refresh until a NEWER import appears.
+    localStorage.setItem('importsPanelHiddenUntilId', String(latestSeenJobId));
+    document.getElementById('recentImportsCard').style.display = 'none';
+}
+
+function pollImportStatus() {
+    fetch('{{ route("orders.import.status") }}')
+        .then(r => r.json())
+        .then(jobs => {
+            const card = document.getElementById('recentImportsCard');
+            const body = document.getElementById('recentImportsBody');
+            if (!jobs.length) { card.style.display = 'none'; return; }
+
+            latestSeenJobId = Math.max(...jobs.map(j => j.id));
+
+            const stillActive = jobs.some(j => j.status === 'queued' || j.status === 'processing');
+            const hiddenUntilId = parseInt(localStorage.getItem('importsPanelHiddenUntilId') || '0', 10);
+            // Active imports always show (so you don't miss a failure). Otherwise, respect a prior
+            // Hide click unless a newer import has happened since then.
+            const shouldShow = stillActive || latestSeenJobId > hiddenUntilId;
+
+            body.innerHTML = jobs.map(renderImportRow).join('');
+            card.style.display = shouldShow ? 'block' : 'none';
+
+            if (stillActive && !importPollTimer) {
+                importPollTimer = setInterval(pollImportStatus, 4000);
+            } else if (!stillActive && importPollTimer) {
+                clearInterval(importPollTimer);
+                importPollTimer = null;
+            }
+        })
+        .catch(() => {});
+}
+document.addEventListener('DOMContentLoaded', pollImportStatus);
+</script>
 @endpush

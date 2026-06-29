@@ -15,6 +15,32 @@ namespace App\Models{
 /**
  * @property int $id
  * @property string $name
+ * @property string|null $handle
+ * @property bool $is_active
+ * @property string|null $notes
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Order> $orders
+ * @property-read int|null $orders_count
+ * @method static \Database\Factories\CsAgentFactory factory($count = null, $state = [])
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|CsAgent newModelQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|CsAgent newQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|CsAgent query()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|CsAgent whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|CsAgent whereHandle($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|CsAgent whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|CsAgent whereIsActive($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|CsAgent whereName($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|CsAgent whereNotes($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|CsAgent whereUpdatedAt($value)
+ */
+	class CsAgent extends \Eloquent {}
+}
+
+namespace App\Models{
+/**
+ * @property int $id
+ * @property string $name
  * @property string|null $phone
  * @property string|null $address
  * @property int|null $default_shipping_area_id
@@ -22,15 +48,19 @@ namespace App\Models{
  * @property string|null $notes
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property int|null $created_by
+ * @property-read \App\Models\User|null $createdBy
  * @property-read \App\Models\ShippingArea|null $defaultShippingArea
  * @property-read string $type_label
  * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Order> $orders
  * @property-read int|null $orders_count
+ * @method static \Database\Factories\CustomerFactory factory($count = null, $state = [])
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Customer newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Customer newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Customer query()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Customer whereAddress($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Customer whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Customer whereCreatedBy($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Customer whereDefaultShippingAreaId($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Customer whereId($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Customer whereName($value)
@@ -44,11 +74,23 @@ namespace App\Models{
 
 namespace App\Models{
 /**
+ * @property-read \App\Models\User|null $createdBy
+ * @property-read \App\Models\Trip|null $trip
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|ImportJob newModelQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|ImportJob newQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|ImportJob query()
+ */
+	class ImportJob extends \Eloquent {}
+}
+
+namespace App\Models{
+/**
  * @property int $id
  * @property string $order_number
  * @property int $trip_id
  * @property int $customer_id
  * @property int $created_by
+ * @property int|null $cs_agent_id
  * @property \Illuminate\Support\Carbon|null $ordered_at
  * @property numeric $subtotal
  * @property numeric $discount_amount
@@ -59,30 +101,38 @@ namespace App\Models{
  * @property numeric $total_amount
  * @property numeric $deposit_paid
  * @property string $payment_status
+ * @property \Illuminate\Support\Carbon|null $invoice_printed_at
+ * @property int|null $invoice_printed_by
  * @property string|null $notes
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
  * @property int|null $shipping_area_id
  * @property-read \App\Models\User $createdBy
+ * @property-read \App\Models\CsAgent|null $csAgent
  * @property-read \App\Models\Customer $customer
  * @property-read int $active_items_count
  * @property-read string $payment_status_badge
  * @property-read float $remaining_balance
+ * @property-read \App\Models\User|null $invoicePrintedBy
  * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\OrderItem> $items
  * @property-read int|null $items_count
  * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Payment> $payments
  * @property-read int|null $payments_count
  * @property-read \App\Models\ShippingArea|null $shippingArea
  * @property-read \App\Models\Trip $trip
+ * @method static \Database\Factories\OrderFactory factory($count = null, $state = [])
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Order newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Order newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Order query()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Order whereCreatedAt($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Order whereCreatedBy($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Order whereCsAgentId($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Order whereCustomerId($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Order whereDepositPaid($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Order whereDiscountAmount($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Order whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Order whereInvoicePrintedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Order whereInvoicePrintedBy($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Order whereNotes($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Order whereOrderNumber($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Order whereOrderedAt($value)
@@ -139,6 +189,7 @@ namespace App\Models{
 /**
  * @property int $id
  * @property int $order_id
+ * @property string|null $batch_id
  * @property numeric $amount
  * @property string $type
  * @property string|null $method
@@ -151,15 +202,23 @@ namespace App\Models{
  * @property \Illuminate\Support\Carbon|null $updated_at
  * @property int|null $voided_by
  * @property string|null $void_reason
+ * @property string $verification_status
+ * @property int|null $verified_by
+ * @property \Illuminate\Support\Carbon|null $verified_at
+ * @property string|null $dispute_note
  * @property-read float $effective_amount
  * @property-read \App\Models\Order $order
  * @property-read \App\Models\User $recordedBy
+ * @property-read \App\Models\User|null $verifiedBy
  * @property-read \App\Models\User|null $voidedBy
+ * @method static \Database\Factories\PaymentFactory factory($count = null, $state = [])
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Payment newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Payment newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Payment query()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Payment whereAmount($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Payment whereBatchId($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Payment whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Payment whereDisputeNote($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Payment whereId($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Payment whereMethod($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Payment whereNotes($value)
@@ -169,6 +228,9 @@ namespace App\Models{
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Payment whereReference($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Payment whereType($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Payment whereUpdatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Payment whereVerificationStatus($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Payment whereVerifiedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Payment whereVerifiedBy($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Payment whereVoidReason($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Payment whereVoidedAt($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Payment whereVoidedBy($value)
@@ -180,7 +242,6 @@ namespace App\Models{
 /**
  * @property int $id
  * @property int $trip_id
- * @property string $name
  * @property string|null $sku
  * @property string|null $product_code
  * @property string|null $brand
@@ -210,7 +271,6 @@ namespace App\Models{
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Product whereExcludedFromPromo($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Product whereId($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Product whereImage($value)
- * @method static \Illuminate\Database\Eloquent\Builder<static>|Product whereName($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Product whereNotes($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Product wherePrice($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Product whereProductCode($value)
@@ -391,6 +451,7 @@ namespace App\Models{
  * @property \Illuminate\Support\Carbon|null $updated_at
  * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Order> $orders
  * @property-read int|null $orders_count
+ * @method static \Database\Factories\ShippingAreaFactory factory($count = null, $state = [])
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ShippingArea newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ShippingArea newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ShippingArea query()
@@ -459,6 +520,7 @@ namespace App\Models{
  * @property-read int|null $promo_rules_count
  * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\PurchaseOrder> $purchaseOrders
  * @property-read int|null $purchase_orders_count
+ * @method static \Database\Factories\TripFactory factory($count = null, $state = [])
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Trip newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Trip newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Trip query()
@@ -481,6 +543,10 @@ namespace App\Models{
  * @property int $id
  * @property string $name
  * @property string $role
+ * @property array<array-key, mixed>|null $permissions
+ * @property string|null $phone
+ * @property bool $is_active
+ * @property string|null $notes
  * @property string $email
  * @property \Illuminate\Support\Carbon|null $email_verified_at
  * @property string $password
@@ -499,8 +565,12 @@ namespace App\Models{
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereEmail($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereEmailVerifiedAt($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereIsActive($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereName($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereNotes($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User wherePassword($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User wherePermissions($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User wherePhone($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereRememberToken($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereRole($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereUpdatedAt($value)

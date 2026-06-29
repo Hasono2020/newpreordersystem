@@ -63,6 +63,7 @@ Route::middleware('auth')->group(function () {
     Route::get('orders-items-export', [ReportController::class, 'exportOrderItems'])->name('orders.items.export');
     Route::get('orders-import-template', [ReportController::class, 'orderImportTemplate'])->name('orders.import.template');
     Route::post('orders-import', [ReportController::class, 'importOrders'])->name('orders.import');
+    Route::get('orders-import-status', [ReportController::class, 'importStatus'])->name('orders.import.status');
     Route::post('orders/bulk-destroy', [OrderController::class, 'bulkDestroy'])->middleware('perm:orders.delete')->name('orders.bulk-destroy');
     Route::resource('orders', OrderController::class);
     Route::post('orders/{order}/items', [OrderController::class, 'addItem'])->name('orders.items.add');
