@@ -13,6 +13,7 @@ use App\Http\Controllers\PurchasingController;
 use App\Http\Controllers\ShippingAreaController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ActivityLogController;
+use App\Http\Controllers\BackupController;
 use App\Http\Controllers\StaffController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\CsAgentController;
@@ -158,6 +159,12 @@ Route::middleware('auth')->group(function () {
 
     // Activity log / audit trail (admin only — enforced in the controller)
     Route::get('activity-logs', [ActivityLogController::class, 'index'])->name('activity-logs.index');
+
+    // Database backups (admin only — enforced in the controller)
+    Route::get('backups', [BackupController::class, 'index'])->name('backups.index');
+    Route::post('backups/run', [BackupController::class, 'run'])->name('backups.run');
+    Route::get('backups/download/{filename}', [BackupController::class, 'download'])->name('backups.download');
+    Route::delete('backups/{filename}', [BackupController::class, 'destroy'])->name('backups.destroy');
 
     Route::get('api/suppliers/search', [\App\Http\Controllers\SupplierController::class, 'search'])->name('api.suppliers.search');
     Route::post('api/suppliers/quick', [\App\Http\Controllers\SupplierController::class, 'quickStore'])->name('api.suppliers.quick');

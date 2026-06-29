@@ -375,6 +375,9 @@
         <a href="{{ route('activity-logs.index') }}" class="nav-link {{ request()->routeIs('activity-logs.*') ? 'active' : '' }}" onclick="closeSidebar()">
             <i class="bi bi-clipboard-check"></i> Activity Log
         </a>
+        <a href="{{ route('backups.index') }}" class="nav-link {{ request()->routeIs('backups.*') ? 'active' : '' }}" onclick="closeSidebar()">
+            <i class="bi bi-database-down"></i> Backups
+        </a>
         <a href="{{ route('settings.index') }}" class="nav-link {{ request()->routeIs('settings.*') ? 'active' : '' }}" onclick="closeSidebar()">
             <i class="bi bi-shop"></i> Store Settings
         </a>
