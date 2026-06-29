@@ -29,8 +29,12 @@ class OrderController extends Controller
         if ($request->payment_status) $query->where('payment_status', $request->payment_status);
         if ($request->created_by)     $query->where('created_by', $request->created_by);
         if ($request->search) {
-            $query->whereHas('customer', fn($q) => $q->where('name', 'like', '%'.$request->search.'%')
-                                                       ->orWhere('phone', 'like', '%'.$request->search.'%'));
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('order_number', 'like', '%'.$search.'%')
+                  ->orWhereHas('customer', fn($c) => $c->where('name', 'like', '%'.$search.'%')
+                                                       ->orWhere('phone', 'like', '%'.$search.'%'));
+            });
         }
         $orders       = $query->paginate($perPage)->withQueryString();
         $trips        = Trip::orderByDesc('id')->get();
