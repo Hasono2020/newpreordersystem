@@ -74,11 +74,41 @@ namespace App\Models{
 
 namespace App\Models{
 /**
- * @property-read \App\Models\User|null $createdBy
- * @property-read \App\Models\Trip|null $trip
+ * @property int $id
+ * @property int $trip_id
+ * @property int $created_by
+ * @property string $original_filename
+ * @property string $stored_path
+ * @property string $status
+ * @property int|null $total_rows
+ * @property int|null $imported_count
+ * @property int|null $skipped_count
+ * @property string|null $error_message
+ * @property array<array-key, mixed>|null $row_errors
+ * @property \Illuminate\Support\Carbon|null $started_at
+ * @property \Illuminate\Support\Carbon|null $finished_at
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property-read \App\Models\User $createdBy
+ * @property-read \App\Models\Trip $trip
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ImportJob newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ImportJob newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ImportJob query()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|ImportJob whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|ImportJob whereCreatedBy($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|ImportJob whereErrorMessage($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|ImportJob whereFinishedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|ImportJob whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|ImportJob whereImportedCount($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|ImportJob whereOriginalFilename($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|ImportJob whereRowErrors($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|ImportJob whereSkippedCount($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|ImportJob whereStartedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|ImportJob whereStatus($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|ImportJob whereStoredPath($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|ImportJob whereTotalRows($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|ImportJob whereTripId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|ImportJob whereUpdatedAt($value)
  */
 	class ImportJob extends \Eloquent {}
 }

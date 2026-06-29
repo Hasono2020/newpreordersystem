@@ -320,9 +320,19 @@ class PaymentController extends Controller
         });
 
         $total = $allocations->sum(fn($a) => (float) $a['amount']);
+        $orderCount = count(array_unique($affectedOrderIds));
+        $customer = Customer::find($data['customer_id']);
+
+        \App\Models\ActivityLog::record(
+            'payment.recorded',
+            'Recorded Rp ' . number_format($total, 0, ',', '.') . " across {$orderCount} order(s) for " . ($customer->name ?? 'customer'),
+            'customer',
+            $data['customer_id']
+        );
+
         return redirect()->route('payments.index', ['trip_id' => $data['trip_id']])
             ->with('success', 'Payment of Rp ' . number_format($total, 0, ',', '.') .
-                ' recorded across ' . count(array_unique($affectedOrderIds)) . ' order(s).');
+                ' recorded across ' . $orderCount . ' order(s).');
     }
 
     /**
@@ -340,6 +350,10 @@ class PaymentController extends Controller
             return back()->with('error', 'No active payments found for this batch.');
         }
 
+        $voidedTotal = $payments->sum('amount');
+        $voidedCount = $payments->count();
+        $reason = $request->input('void_reason', 'Batch voided');
+
         $affectedOrderIds = [];
         DB::transaction(function () use ($payments, $request, &$affectedOrderIds) {
             foreach ($payments as $payment) {
@@ -354,6 +368,13 @@ class PaymentController extends Controller
                 $this->recalcOrderPayment(Order::find($oid));
             }
         });
+
+        \App\Models\ActivityLog::record(
+            'payment.batch_voided',
+            "Voided payment batch ({$voidedCount} payment(s), Rp " . number_format($voidedTotal, 0, ',', '.') . ") — reason: {$reason}",
+            'customer',
+            null
+        );
 
         return back()->with('success', 'Payment batch voided. Affected order balances restored.');
     }

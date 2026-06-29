@@ -12,6 +12,7 @@ use App\Http\Controllers\PromoController;
 use App\Http\Controllers\PurchasingController;
 use App\Http\Controllers\ShippingAreaController;
 use App\Http\Controllers\ReportController;
+use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\StaffController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\CsAgentController;
@@ -154,6 +155,9 @@ Route::middleware('auth')->group(function () {
     Route::post('staff', [StaffController::class, 'store'])->name('staff.store');
     Route::put('staff/{staff}', [StaffController::class, 'update'])->name('staff.update');
     Route::delete('staff/{staff}', [StaffController::class, 'destroy'])->name('staff.destroy');
+
+    // Activity log / audit trail (admin only — enforced in the controller)
+    Route::get('activity-logs', [ActivityLogController::class, 'index'])->name('activity-logs.index');
 
     Route::get('api/suppliers/search', [\App\Http\Controllers\SupplierController::class, 'search'])->name('api.suppliers.search');
     Route::post('api/suppliers/quick', [\App\Http\Controllers\SupplierController::class, 'quickStore'])->name('api.suppliers.quick');

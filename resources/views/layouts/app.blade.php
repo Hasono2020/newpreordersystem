@@ -372,6 +372,9 @@
         <a href="{{ route('staff.index') }}" class="nav-link {{ request()->routeIs('staff.*') ? 'active' : '' }}" onclick="closeSidebar()">
             <i class="bi bi-person-badge"></i> Staff Accounts
         </a>
+        <a href="{{ route('activity-logs.index') }}" class="nav-link {{ request()->routeIs('activity-logs.*') ? 'active' : '' }}" onclick="closeSidebar()">
+            <i class="bi bi-clipboard-check"></i> Activity Log
+        </a>
         <a href="{{ route('settings.index') }}" class="nav-link {{ request()->routeIs('settings.*') ? 'active' : '' }}" onclick="closeSidebar()">
             <i class="bi bi-shop"></i> Store Settings
         </a>

@@ -243,6 +243,15 @@ class OrderController extends Controller
             $shippingAreaId = $order->customer->default_shipping_area_id;
         }
 
+        // Capture before-state for audit log
+        $before = [
+            'shipping_area_id' => $order->shipping_area_id,
+            'cs_agent_id'      => $order->cs_agent_id,
+            'notes'            => $order->notes,
+            'ordered_at'       => optional($order->ordered_at)->toDateTimeString(),
+            'total_amount'     => $order->total_amount,
+        ];
+
         $order->update([
             'shipping_area_id' => $shippingAreaId,
             'cs_agent_id'      => $request->cs_agent_id ?: null,
@@ -252,6 +261,31 @@ class OrderController extends Controller
 
         // Recalculate combined shipping across all the customer's orders in this trip
         $this->promoService->recalcCustomerShipping($order->customer_id, $order->trip_id);
+
+        // Audit log — record only the fields that actually changed (before/after)
+        $order->refresh();
+        $after = [
+            'shipping_area_id' => $order->shipping_area_id,
+            'cs_agent_id'      => $order->cs_agent_id,
+            'notes'            => $order->notes,
+            'ordered_at'       => optional($order->ordered_at)->toDateTimeString(),
+            'total_amount'     => $order->total_amount,
+        ];
+        $changes = [];
+        foreach ($after as $field => $newVal) {
+            if (($before[$field] ?? null) != $newVal) {
+                $changes[$field] = ['old' => $before[$field] ?? null, 'new' => $newVal];
+            }
+        }
+        if ($changes) {
+            \App\Models\ActivityLog::record(
+                'order.updated',
+                "Edited order {$order->order_number} ({$order->customer->name})",
+                'order',
+                $order->id,
+                $changes
+            );
+        }
 
         return redirect()->route('orders.show', $order)->with('success', 'Order updated.');
     }
@@ -275,9 +309,12 @@ class OrderController extends Controller
         }
 
         $deleted = 0;
-        \DB::transaction(function () use ($query, &$deleted) {
-            $orderIds = $query->pluck('id');
-            if ($orderIds->isEmpty()) return;
+        $deletedNumbers = [];
+        \DB::transaction(function () use ($query, &$deleted, &$deletedNumbers) {
+            $orders = $query->get(['id', 'order_number']);
+            if ($orders->isEmpty()) return;
+            $orderIds = $orders->pluck('id');
+            $deletedNumbers = $orders->pluck('order_number')->all();
 
             // Delete in correct FK order: payments → order_items → orders
             // (purchase_order_items has no FK to order_items)
@@ -287,6 +324,17 @@ class OrderController extends Controller
             $deleted = $orderIds->count();
         });
 
+        if ($deleted > 0) {
+            $sample = implode(', ', array_slice($deletedNumbers, 0, 10));
+            if (count($deletedNumbers) > 10) $sample .= ', …';
+            \App\Models\ActivityLog::record(
+                'order.bulk_deleted',
+                "Bulk-deleted {$deleted} order(s) [{$request->action}]: {$sample}",
+                'order',
+                null
+            );
+        }
+
         return redirect()->route('orders.index', request()->only('trip_id', 'payment_status', 'search'))
             ->with('success', "Deleted {$deleted} order(s).");
     }
@@ -294,11 +342,21 @@ class OrderController extends Controller
     public function destroy(Order $order)
     {
         $this->adminOnly('delete orders');
-        $customerId = $order->customer_id;
-        $tripId     = $order->trip_id;
+        $customerId   = $order->customer_id;
+        $tripId       = $order->trip_id;
+        $orderNumber  = $order->order_number;
+        $customerName = $order->customer->name ?? '';
         $order->delete();
         // Re-combine shipping for the customer's remaining orders (anchor may have changed)
         $this->promoService->recalcCustomerShipping($customerId, $tripId);
+
+        \App\Models\ActivityLog::record(
+            'order.deleted',
+            "Deleted order {$orderNumber} ({$customerName})",
+            'order',
+            $order->id
+        );
+
         return redirect()->route('orders.index')->with('success', 'Order deleted.');
     }
 
@@ -418,6 +476,13 @@ class OrderController extends Controller
         });
         $order->refresh();
 
+        \App\Models\ActivityLog::record(
+            'payment.recorded',
+            'Recorded Rp ' . number_format($request->amount, 0, ',', '.') . " ({$request->type}) on {$order->order_number} ({$order->customer->name})",
+            'order',
+            $order->id
+        );
+
         $msg = 'Payment recorded.';
         if ($order->payment_status === 'paid')    $msg .= ' ✓ Order is now fully paid.';
         if ($order->payment_status === 'partial') $msg .= ' Balance remaining: Rp ' . number_format($order->total_amount - $order->deposit_paid, 0, ',', '.');
@@ -444,6 +509,13 @@ class OrderController extends Controller
             $this->recalcOrderPayment($order);
         });
         $order->refresh();
+
+        \App\Models\ActivityLog::record(
+            'payment.voided',
+            'Voided Rp ' . number_format($payment->amount, 0, ',', '.') . " payment on {$order->order_number} ({$order->customer->name}) — reason: {$request->void_reason}",
+            'order',
+            $order->id
+        );
 
         return back()->with('success',
             'Payment of Rp ' . number_format($payment->amount, 0, ',', '.') . ' voided. ' .
