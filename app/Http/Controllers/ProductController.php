@@ -523,6 +523,80 @@ class ProductController extends Controller
     }
 
     /**
+     * Merge a duplicate variant into another variant of the SAME product.
+     * All order items and purchase-order items pointing at the duplicate are
+     * reassigned to the survivor, allocated stock is summed onto the survivor,
+     * the duplicate is deleted, and affected orders are recalculated.
+     */
+    public function mergeVariant(Request $request, Product $product, ProductVariant $variant)
+    {
+        if (!\Illuminate\Support\Facades\Auth::user()->hasPermission('products.edit')) {
+            abort(403, 'You do not have permission to merge variants.');
+        }
+
+        $data = $request->validate([
+            'survivor_id' => 'required|integer',
+        ]);
+
+        // The survivor must belong to the same product (can't merge across products)
+        $survivor = ProductVariant::where('id', $data['survivor_id'])
+            ->where('product_id', $product->id)
+            ->first();
+
+        if (!$survivor) {
+            return back()->with('error', 'The variant to keep was not found on this product.');
+        }
+        if ($survivor->id === $variant->id) {
+            return back()->with('error', 'Cannot merge a variant into itself.');
+        }
+
+        $promoService = app(\App\Services\PromoService::class);
+
+        // Collect affected orders BEFORE the move, so we can recalc them after
+        $affectedOrders = \App\Models\OrderItem::where('product_variant_id', $variant->id)
+            ->with('order:id,customer_id,trip_id')
+            ->get()
+            ->pluck('order')
+            ->filter()
+            ->unique('id');
+
+        \DB::transaction(function () use ($variant, $survivor) {
+            // Move order items
+            \App\Models\OrderItem::where('product_variant_id', $variant->id)
+                ->update(['product_variant_id' => $survivor->id]);
+
+            // Move purchase-order items
+            \App\Models\PurchaseOrderItem::where('product_variant_id', $variant->id)
+                ->update(['product_variant_id' => $survivor->id]);
+
+            // Sum allocated stock onto the survivor (supplier_stock kept as survivor's own)
+            $survivor->allocated_qty = ($survivor->allocated_qty ?? 0) + ($variant->allocated_qty ?? 0);
+            $survivor->save();
+
+            // Delete the now-empty duplicate
+            $variant->delete();
+        });
+
+        // Recalc each affected customer's combined shipping/promo for the trip
+        $seen = [];
+        foreach ($affectedOrders as $order) {
+            $key = $order->customer_id . '-' . $order->trip_id;
+            if (isset($seen[$key])) continue;
+            $seen[$key] = true;
+            $promoService->recalcCustomerShipping($order->customer_id, $order->trip_id);
+        }
+
+        \App\Models\ActivityLog::record(
+            'variant.merged',
+            "Merged variant '{$variant->label}' into '{$survivor->label}' on product {$product->product_code}",
+            'product',
+            $product->id
+        );
+
+        return back()->with('success', "Variant '{$variant->label}' merged into '{$survivor->label}'. Orders reassigned.");
+    }
+
+    /**
      * Resize image to max 800×800px and store as JPEG ≤200KB.
      * Uses GD (available on most shared hosting).
      */
