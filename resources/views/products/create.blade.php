@@ -528,5 +528,20 @@ document.addEventListener('click', function (e) {
         e.target.closest('.variant-row').remove();
     }
 });
+
+// Require at least one variant with a color or size before submitting
+document.getElementById('productForm').addEventListener('submit', function (e) {
+    const rows = document.querySelectorAll('.variant-row');
+    let hasVariant = false;
+    rows.forEach(row => {
+        const color = row.querySelector('input[name*="[color]"]')?.value.trim() || '';
+        const size  = row.querySelector('input[name*="[size]"]')?.value.trim() || '';
+        if (color !== '' || size !== '') hasVariant = true;
+    });
+    if (!hasVariant) {
+        e.preventDefault();
+        alert('Please add at least one variant (color and/or size) before creating the product.');
+    }
+});
 </script>
 @endpush

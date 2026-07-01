@@ -72,6 +72,15 @@ class ProductController extends Controller
 
         $data['excluded_from_promo'] = $request->boolean('excluded_from_promo');
 
+        // Require at least one real variant (a row with a color and/or size).
+        $hasVariant = collect($request->input('variants', []))
+            ->contains(fn($v) => !empty(trim($v['color'] ?? '')) || !empty(trim($v['size'] ?? '')));
+        if (!$hasVariant) {
+            return back()
+                ->withInput()
+                ->with('error', 'Please add at least one variant (color and/or size) before creating the product.');
+        }
+
         if ($request->hasFile('image')) {
             $data['image'] = $this->resizeAndStoreImage($request->file('image'));
         }
@@ -271,6 +280,8 @@ class ProductController extends Controller
         // ── Full validation pass — ALL rows checked before any insert ─────
         $errors    = [];
         $seenCodes = []; // code → first row's trip (to detect cross-trip duplicates in file)
+        $codeHasVariant = []; // code → bool (any row for this code has color/size)
+        $codeFirstLine  = []; // code → first line number, for the error message
 
         foreach ($rows as $i => $row) {
             $lineNum  = $i + 2;
@@ -279,6 +290,17 @@ class ProductController extends Controller
 
             if (empty($tripName)) { $errors[] = "Row {$lineNum}: Trip is required."; continue; }
             if (empty($code))     { $errors[] = "Row {$lineNum}: Product Code is required."; continue; }
+
+            // Track whether this code has at least one variant (color/size) anywhere in the file
+            $rowColor = trim((string)($row[9] ?? ''));
+            $rowSize  = trim((string)($row[10] ?? ''));
+            if (!isset($codeHasVariant[$code])) {
+                $codeHasVariant[$code] = false;
+                $codeFirstLine[$code]  = $lineNum;
+            }
+            if ($rowColor !== '' || $rowSize !== '') {
+                $codeHasVariant[$code] = true;
+            }
 
             // Trip must exist
             $tripKey = strtolower($tripName);
@@ -297,6 +319,21 @@ class ProductController extends Controller
             }
             $seenCodes[$code] = $trip->id;
             // Note: if code already exists in DB, import will add variants to it (not block)
+        }
+
+        // Every product must have at least one variant. A code with no variant row in the
+        // file is only allowed if that product already exists in the DB WITH variants.
+        foreach ($codeHasVariant as $code => $hasVariant) {
+            if ($hasVariant) continue;
+            $tripId = $seenCodes[$code] ?? null;
+            $existingHasVariant = $tripId
+                ? \App\Models\Product::where('product_code', $code)->where('trip_id', $tripId)
+                    ->whereHas('variants')->exists()
+                : false;
+            if (!$existingHasVariant) {
+                $line = $codeFirstLine[$code] ?? '?';
+                $errors[] = "Row {$line} ({$code}): Product must have at least one variant — fill in WARNA (color) and/or SIZE.";
+            }
         }
 
         if (!empty($errors)) {
