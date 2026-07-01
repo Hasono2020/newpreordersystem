@@ -17,6 +17,17 @@
     </div>
 </div>
 @endif
+
+@if($noAreaCount > 0 && request('shipping_area') !== 'none')
+<div class="alert alert-warning d-flex justify-content-between align-items-center py-2 mb-3">
+    <div class="small">
+        <i class="bi bi-exclamation-triangle-fill me-1"></i>
+        <strong>{{ $noAreaCount }}</strong> order(s){{ request('trip_id') ? ' in this trip' : '' }} have no shipping area set — shipping can't be calculated until an area is assigned.
+    </div>
+    <a href="{{ route('orders.index', array_merge(request()->only('search','trip_id','payment_status','created_by'), ['shipping_area' => 'none'])) }}"
+       class="btn btn-sm btn-outline-dark py-0">Show them</a>
+</div>
+@endif
 <div class="row g-2 mb-3 align-items-end">
     <div class="col">
         <form class="d-flex gap-2 flex-wrap">
@@ -33,6 +44,11 @@
                 <option value="partial" {{ request('payment_status')=='partial'?'selected':'' }}>Partial</option>
                 <option value="paid" {{ request('payment_status')=='paid'?'selected':'' }}>Paid</option>
             </select>
+            <select name="shipping_area" class="form-select form-select-sm" style="width:auto;">
+                <option value="">Any area</option>
+                <option value="none" {{ request('shipping_area')=='none'?'selected':'' }}>⚠ No area set</option>
+                <option value="set"  {{ request('shipping_area')=='set'?'selected':'' }}>Area set</option>
+            </select>
             @if(!auth()->user()->isOwnDataOnly())
             <select name="created_by" class="form-select form-select-sm" style="width:auto;">
                 <option value="">All Staff</option>
@@ -44,7 +60,7 @@
             </select>
             @endif
             <button class="btn btn-sm btn-outline-secondary">Filter</button>
-            @if(request()->anyFilled(['search','trip_id','payment_status','created_by']))
+            @if(request()->anyFilled(['search','trip_id','payment_status','created_by','shipping_area']))
                 <a href="{{ route('orders.index') }}" class="btn btn-sm btn-link">Clear</a>
             @endif
         </form>
@@ -223,7 +239,14 @@
                             <div class="text-muted" style="font-size:.72rem;">{{ $order->customer->type_label }}</div>
                         </div>
                     </td>
-                    <td class="small text-muted" data-label="Trip">{{ $order->trip->name }}</td>
+                    <td class="small text-muted" data-label="Trip">
+                        {{ $order->trip->name }}
+                        @if(!$order->shipping_area_id)
+                            <span class="badge bg-warning text-dark ms-1" style="font-size:.6rem;" title="No shipping area set — shipping not calculated">
+                                <i class="bi bi-exclamation-triangle-fill"></i> No area
+                            </span>
+                        @endif
+                    </td>
                     <td class="small" data-label="Subtotal">Rp {{ number_format($order->subtotal, 0, ',', '.') }}</td>
                     <td class="small text-success" data-label="Discount">
                         @if($order->discount_amount > 0) -Rp {{ number_format($order->discount_amount, 0, ',', '.') }} @else — @endif

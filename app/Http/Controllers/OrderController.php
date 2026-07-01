@@ -28,6 +28,12 @@ class OrderController extends Controller
         if ($request->trip_id)        $query->where('trip_id', $request->trip_id);
         if ($request->payment_status) $query->where('payment_status', $request->payment_status);
         if ($request->created_by)     $query->where('created_by', $request->created_by);
+        // Filter by shipping-area presence on the order itself
+        if ($request->shipping_area === 'none') {
+            $query->whereNull('shipping_area_id');
+        } elseif ($request->shipping_area === 'set') {
+            $query->whereNotNull('shipping_area_id');
+        }
         if ($request->search) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
@@ -40,7 +46,14 @@ class OrderController extends Controller
         $trips        = Trip::orderByDesc('id')->get();
         $selectedTrip = $request->trip_id ? Trip::find($request->trip_id) : null;
         $staffList = \App\Models\User::where('is_active', true)->orderBy('name')->get(['id','name','role']);
-        return view('orders.index', compact('orders', 'trips', 'selectedTrip', 'perPage', 'staffList'));
+
+        // Count of orders with no shipping area (respecting own-data scope + current trip filter)
+        $noAreaQuery = Order::whereNull('shipping_area_id');
+        if (Auth::user()->isOwnDataOnly()) $noAreaQuery->where('created_by', Auth::id());
+        if ($request->trip_id) $noAreaQuery->where('trip_id', $request->trip_id);
+        $noAreaCount = $noAreaQuery->count();
+
+        return view('orders.index', compact('orders', 'trips', 'selectedTrip', 'perPage', 'staffList', 'noAreaCount'));
     }
 
     public function create(Request $request)
