@@ -143,7 +143,7 @@ class CustomerController extends Controller
             }
             $customer->delete();
         });
-        return redirect()->route('customers.index')->with('success', 'Customer deleted.');
+        return redirect(session('list_url.customers', route('customers.index')))->with('success', 'Customer deleted.');
     }
 
     public function export()

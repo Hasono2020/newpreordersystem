@@ -15,6 +15,10 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'perm' => \App\Http\Middleware\CheckPermission::class,
         ]);
+        // Remember the last list page (page + filters) per section for smart "Back"
+        $middleware->web(append: [
+            \App\Http\Middleware\RememberListUrl::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

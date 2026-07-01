@@ -361,7 +361,7 @@ class OrderController extends Controller
             $order->id
         );
 
-        return redirect()->route('orders.index')->with('success', 'Order deleted.');
+        return redirect(session('list_url.orders', route('orders.index')))->with('success', 'Order deleted.');
     }
 
     // ── Item Management ─────────────────────────────────────────────
@@ -395,7 +395,7 @@ class OrderController extends Controller
             'unit_price'         => 'required|numeric|min:0',
         ]);
 
-        // Bug 1 fix: verify variant belongs to the selected product
+        // Verify variant belongs to the selected product
         if ($request->product_variant_id) {
             $variant = ProductVariant::findOrFail($request->product_variant_id);
             abort_if(
@@ -403,6 +403,14 @@ class OrderController extends Controller
                 422,
                 'Selected variant does not belong to this product.'
             );
+        }
+
+        // If the product HAS variants, one must be chosen — a null variant would make
+        // stock allocation / purchasing / fulfillment ambiguous. Products with no
+        // variants at all may legitimately have a null variant.
+        $productHasVariants = ProductVariant::where('product_id', $request->product_id)->exists();
+        if ($productHasVariants && !$request->product_variant_id) {
+            return back()->with('error', 'This product has color/size variants — please select one before adding.');
         }
 
         // Check if same product+variant already exists in this order

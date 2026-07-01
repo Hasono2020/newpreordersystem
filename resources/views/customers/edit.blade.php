@@ -64,7 +64,7 @@
 
             <div class="d-flex gap-2">
                 <button type="submit" class="btn btn-primary">{{ isset($customer) ? 'Update Customer' : 'Add Customer' }}</button>
-                <a href="{{ route('customers.index') }}" class="btn btn-outline-secondary">Cancel</a>
+                <a href="{{ \App\Http\Middleware\RememberListUrl::returnUrl('customers') }}" class="btn btn-outline-secondary">Cancel</a>
             </div>
         </form>
     </div>

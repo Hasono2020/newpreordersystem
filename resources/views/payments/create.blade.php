@@ -5,7 +5,7 @@
 @section('content')
 
 <div class="d-flex gap-2 align-items-center mb-3">
-    <a href="{{ route('payments.index', ['trip_id' => $trip->id]) }}" class="btn btn-sm btn-outline-secondary">
+    <a href="{{ session('list_url.payments', route('payments.index', ['trip_id' => $trip->id])) }}" class="btn btn-sm btn-outline-secondary">
         <i class="bi bi-arrow-left me-1"></i>Back
     </a>
     <h5 class="mb-0 fw-semibold">Record Payment — {{ $customer->name }}</h5>

@@ -225,7 +225,7 @@ class ProductController extends Controller
             $product->delete();
         });
 
-        return redirect()->route('products.index')->with('success', 'Product deleted.');
+        return redirect(session('list_url.products', route('products.index')))->with('success', 'Product deleted.');
     }
 
     // Manage variants separately

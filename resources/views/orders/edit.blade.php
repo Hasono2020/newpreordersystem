@@ -4,7 +4,7 @@
 
 @section('content')
 <div class="d-flex gap-2 mb-3 flex-wrap">
-    <a href="{{ route('orders.index') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Back</a>
+    <a href="{{ \App\Http\Middleware\RememberListUrl::returnUrl('orders') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Back</a>
     @if(auth()->user()->hasPermission('orders.delete') && auth()->user()->isAdmin())
     <form method="POST" action="{{ route('orders.destroy', $order) }}" onsubmit="return confirm('Delete this order?')">
         @csrf @method('DELETE')
@@ -304,12 +304,18 @@ function fillVariantsAndPrice() {
 
     priceIn.value = price;
 
-    varSel.innerHTML = '<option value="">No variant</option>';
-    variants.forEach(v => {
-        const finalPrice = parseFloat(v.price) || price;
-        varSel.innerHTML += `<option value="${v.id}" data-price="${finalPrice}">
-            ${v.label} — Rp ${Math.round(finalPrice).toLocaleString('id-ID')}</option>`;
-    });
+    if (variants.length > 0) {
+        // Product HAS variants — force the user to pick one (no "No variant" option)
+        varSel.innerHTML = '<option value="">Select variant…</option>';
+        variants.forEach(v => {
+            const finalPrice = parseFloat(v.price) || price;
+            varSel.innerHTML += `<option value="${v.id}" data-price="${finalPrice}">
+                ${v.label} — Rp ${Math.round(finalPrice).toLocaleString('id-ID')}</option>`;
+        });
+    } else {
+        // Product has no variants at all — null variant is legitimate
+        varSel.innerHTML = '<option value="">No variant</option>';
+    }
 
     updateLineTotal();
 }
@@ -327,6 +333,21 @@ function updateLineTotal() {
     const price = parseFloat(document.getElementById('aiPrice').value) || 0;
     document.getElementById('aiLineTotal').textContent = 'Rp ' + Math.round(qty * price).toLocaleString('id-ID');
 }
+
+// Block submit if the chosen product has variants but none was selected
+document.getElementById('addItemForm')?.addEventListener('submit', function (e) {
+    const prodSel = document.getElementById('aiProduct');
+    const opt     = prodSel.options[prodSel.selectedIndex];
+    const varSel  = document.getElementById('aiVariant');
+    if (!opt || !opt.value) return; // product-required handles the empty case
+
+    const variants = JSON.parse(opt.dataset.variants || '[]');
+    if (variants.length > 0 && !varSel.value) {
+        e.preventDefault();
+        alert('This product has color/size variants — please select one before adding.');
+        varSel.focus();
+    }
+});
 </script>
 @endpush
 @endsection

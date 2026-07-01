@@ -4,7 +4,7 @@
 
 @section('content')
 <div class="d-flex gap-2 mb-3">
-    <a href="{{ route('customers.index') }}" class="btn btn-sm btn-outline-secondary">
+    <a href="{{ \App\Http\Middleware\RememberListUrl::returnUrl('customers') }}" class="btn btn-sm btn-outline-secondary">
         <i class="bi bi-arrow-left me-1"></i>Back
     </a>
 @if(auth()->user()->hasPermission('customers.edit'))
