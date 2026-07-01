@@ -106,11 +106,21 @@
             <div class="table-responsive">
                 <table class="table table-hover mb-0">
                     <thead class="table-light">
-                        <tr><th>Product</th><th>Variant</th><th>Qty</th><th>Unit Price</th><th>Line Total</th><th>Status</th><th></th></tr>
+                        <tr><th style="width:52px;"></th><th>Product</th><th>Variant</th><th>Qty</th><th>Unit Price</th><th>Line Total</th><th>Status</th><th></th></tr>
                     </thead>
                     <tbody>
                         @foreach($order->items as $item)
                         <tr>
+                            <td>
+                                @if($item->product?->image)
+                                    <img src="{{ asset('storage/'.$item->product->image) }}" width="40" height="40"
+                                        style="object-fit:cover;border-radius:6px;border:1px solid #e2e8f0;" alt="">
+                                @else
+                                    <div style="width:40px;height:40px;border-radius:6px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;">
+                                        <i class="bi bi-image text-muted" style="font-size:.85rem;"></i>
+                                    </div>
+                                @endif
+                            </td>
                             <td class="fw-semibold small">
                                 {{ $item->product->product_code ?? '—' }}
                             </td>
