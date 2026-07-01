@@ -237,7 +237,7 @@ class OrderController extends Controller
     {
         $request->validate([
             'shipping_area_id' => 'nullable|exists:shipping_areas,id',
-            'cs_agent_id'      => 'required|exists:cs_agents,id',
+            'cs_agent_id'      => 'nullable|exists:cs_agents,id',
             'notes'            => 'nullable|string',
             'ordered_at'       => 'nullable|date',
         ]);
@@ -246,6 +246,10 @@ class OrderController extends Controller
         if (!$shippingAreaId) {
             $shippingAreaId = $order->customer->default_shipping_area_id;
         }
+
+        // Preserve the existing CS agent if the form didn't submit one
+        // (e.g. the Shipping & Recalculate panel, which doesn't include it)
+        $csAgentId = $request->filled('cs_agent_id') ? $request->cs_agent_id : $order->cs_agent_id;
 
         // Capture before-state for audit log
         $before = [
@@ -258,7 +262,7 @@ class OrderController extends Controller
 
         $order->update([
             'shipping_area_id' => $shippingAreaId,
-            'cs_agent_id'      => $request->cs_agent_id ?: null,
+            'cs_agent_id'      => $csAgentId,
             'notes'            => $request->notes,
             'ordered_at'       => $request->ordered_at ?: $order->ordered_at,
         ]);
