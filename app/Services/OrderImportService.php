@@ -126,6 +126,8 @@ class OrderImportService
         $baseTime = now();
         $now      = $baseTime->toDateTimeString();
 
+        $customerAreas = []; // customerId => resolved shipping_area_id, so blank-KOTA rows inherit it
+
         $ordersBatch   = [];
         $itemsBatch    = [];
         $paymentsBatch = [];
@@ -176,14 +178,26 @@ class OrderImportService
                 $existingNames[strtolower($name)] = $customerId;
             }
 
+            // Resolve the shipping area for THIS order from the row's KOTA.
             $areaKey = strtolower($area);
-            $areaId  = $shippingAreas[$areaKey]?->id ?? null;
+            $areaId  = $area ? ($shippingAreas[$areaKey]?->id ?? null) : null;
             if (!$areaId && $area) {
                 foreach ($shippingAreas as $k => $a) {
                     if (str_contains($k, $areaKey) || str_contains($areaKey, $k)) {
                         $areaId = $a->id; break;
                     }
                 }
+            }
+            // If this row's KOTA is blank (common when the same customer spans several
+            // rows and the city is only written on the first row), fall back to the
+            // customer's default shipping area so every order for that customer gets one.
+            if (!$areaId) {
+                $areaId = $customerAreas[$customerId]
+                    ?? DB::table('customers')->where('id', $customerId)->value('default_shipping_area_id');
+                $customerAreas[$customerId] = $areaId; // cache for subsequent rows
+            } else {
+                // Remember this resolved area as the customer's area for later blank rows
+                $customerAreas[$customerId] = $areaId;
             }
 
             $product = $products[$code] ?? null;
