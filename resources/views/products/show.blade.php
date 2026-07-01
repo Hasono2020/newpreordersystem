@@ -107,8 +107,14 @@
                                 @php
                                     $orderCount = $variant->orderItems()->count();
                                     $canDelete  = $orderCount === 0 && $variant->allocated_qty == 0 && auth()->user()->hasPermission('products.edit');
-                                    // Other variants on this product this one could be merged into
-                                    $mergeTargets = $product->variants->where('id', '!=', $variant->id);
+                                    // A "duplicate" = another variant on THIS product with the same color+size.
+                                    // Merge is only offered when a real duplicate exists (rare cleanup case).
+                                    $duplicates = $product->variants->filter(function ($other) use ($variant) {
+                                        return $other->id !== $variant->id
+                                            && strtolower(trim($other->color ?? '')) === strtolower(trim($variant->color ?? ''))
+                                            && strtolower(trim($other->size ?? ''))  === strtolower(trim($variant->size ?? ''));
+                                    });
+                                    $hasDuplicate = $duplicates->isNotEmpty();
                                 @endphp
                                 @if($canDelete)
                                     <form method="POST" action="{{ route('products.variants.destroy', [$product, $variant]) }}"
@@ -118,25 +124,25 @@
                                             <i class="bi bi-trash3" style="font-size:.75rem;"></i>
                                         </button>
                                     </form>
-                                @elseif($orderCount > 0 && auth()->user()->hasPermission('products.edit') && $mergeTargets->count() > 0)
-                                    {{-- Has orders: can't delete, but CAN merge into another variant --}}
+                                @elseif($hasDuplicate && $orderCount > 0 && auth()->user()->hasPermission('products.edit'))
+                                    {{-- Only shown when a genuine duplicate (same color/size) exists AND this one has orders --}}
                                     <div class="dropdown">
-                                        <button class="btn btn-sm btn-outline-secondary py-0 px-2 dropdown-toggle" type="button" data-bs-toggle="dropdown"
-                                                title="Has {{ $orderCount }} order(s) — merge into another variant to clean up a duplicate">
-                                            <i class="bi bi-sign-merge-left" style="font-size:.75rem;"></i> Merge
+                                        <button class="btn btn-sm btn-outline-warning py-0 px-2 dropdown-toggle" type="button" data-bs-toggle="dropdown"
+                                                title="Duplicate variant with {{ $orderCount }} order(s) — merge into the matching variant to clean up">
+                                            <i class="bi bi-sign-merge-left" style="font-size:.75rem;"></i> Merge duplicate
                                         </button>
                                         <ul class="dropdown-menu dropdown-menu-end p-2" style="min-width:240px;">
                                             <li class="small text-muted mb-1 px-1">
                                                 Move this variant's {{ $orderCount }} order(s) into:
                                             </li>
-                                            @foreach($mergeTargets as $target)
+                                            @foreach($duplicates as $target)
                                             <li>
                                                 <form method="POST" action="{{ route('products.variants.merge', [$product, $variant]) }}"
-                                                      onsubmit="return confirm('Merge \'{{ $variant->label }}\' into \'{{ $target->label }}\'? All {{ $orderCount }} order(s) will move to \'{{ $target->label }}\', and this variant will be deleted. This cannot be undone.')">
+                                                      onsubmit="return confirm('Merge \'{{ $variant->label }}\' into the other \'{{ $target->label }}\'? All {{ $orderCount }} order(s) will move over, and this duplicate will be deleted. This cannot be undone.')">
                                                     @csrf
                                                     <input type="hidden" name="survivor_id" value="{{ $target->id }}">
                                                     <button type="submit" class="dropdown-item small">
-                                                        <i class="bi bi-arrow-right-short"></i> {{ $target->label }}
+                                                        <i class="bi bi-arrow-right-short"></i> {{ $target->label }} (keep this one)
                                                     </button>
                                                 </form>
                                             </li>

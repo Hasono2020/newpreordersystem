@@ -79,8 +79,14 @@ class ProductController extends Controller
         $product = Product::create($data);
 
         if (!empty($data['variants'])) {
+            $seen = [];       // track color|size combos already added in this submission
+            $skipped = 0;
             foreach ($data['variants'] as $v) {
                 if (!empty($v['color']) || !empty($v['size'])) {
+                    $key = strtolower(trim($v['color'] ?? '')) . '|' . strtolower(trim($v['size'] ?? ''));
+                    if (isset($seen[$key])) { $skipped++; continue; } // duplicate within the form — skip
+                    $seen[$key] = true;
+
                     $product->variants()->create([
                         'color' => $v['color'] ?? null,
                         'size' => $v['size'] ?? null,
@@ -90,7 +96,11 @@ class ProductController extends Controller
             }
         }
 
-        return redirect()->route('products.show', $product)->with('success', 'Product created.');
+        $msg = 'Product created.';
+        if (!empty($skipped)) {
+            $msg .= " {$skipped} duplicate variant(s) were skipped.";
+        }
+        return redirect()->route('products.show', $product)->with('success', $msg);
     }
 
     public function show(Product $product)
