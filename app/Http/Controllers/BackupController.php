@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\File;
@@ -37,10 +38,23 @@ class BackupController extends Controller
         if (File::isDirectory($this->backupDir())) {
             foreach (File::files($this->backupDir()) as $file) {
                 if (str_starts_with($file->getFilename(), 'backup-') && $file->getExtension() === 'sql') {
+                    // Derive the date from the filename (backup-YYYY-MM-DD-HHmmss.sql) so the
+                    // displayed time matches the filename and the app timezone. Fall back to
+                    // the file mtime (converted to app timezone) if the name doesn't parse.
+                    $created = null;
+                    if (preg_match('/^backup-(\d{4})-(\d{2})-(\d{2})-(\d{2})(\d{2})(\d{2})\.sql$/', $file->getFilename(), $m)) {
+                        $created = \Carbon\Carbon::create(
+                            $m[1], $m[2], $m[3], $m[4], $m[5], $m[6],
+                            config('app.timezone')   // ← must be explicit; PHP default may be UTC
+                        );
+                    } else {
+                        $created = \Carbon\Carbon::createFromTimestamp($file->getMTime())
+                            ->setTimezone(config('app.timezone'));
+                    }
                     $backups[] = [
                         'filename' => $file->getFilename(),
                         'size_mb'  => round($file->getSize() / 1048576, 2),
-                        'created'  => \Carbon\Carbon::createFromTimestamp($file->getMTime()),
+                        'created'  => $created,
                     ];
                 }
             }
