@@ -104,8 +104,11 @@
                                 </span>
                             </td>
                             <td>
-                                @php $hasOrders = $variant->orderItems()->exists(); @endphp
-                                @if(!$hasOrders && $variant->allocated_qty == 0 && auth()->user()->hasPermission('products.edit'))
+                                @php
+                                    $orderCount = $variant->orderItems()->count();
+                                    $canDelete  = $orderCount === 0 && $variant->allocated_qty == 0 && auth()->user()->hasPermission('products.edit');
+                                @endphp
+                                @if($canDelete)
                                     <form method="POST" action="{{ route('products.variants.destroy', [$product, $variant]) }}"
                                         onsubmit="return confirm('Delete this variant? This cannot be undone.')">
                                         @csrf @method('DELETE')
@@ -113,8 +116,16 @@
                                             <i class="bi bi-trash3" style="font-size:.75rem;"></i>
                                         </button>
                                     </form>
+                                @elseif($orderCount > 0)
+                                    <span class="text-muted small" title="Has {{ $orderCount }} order item(s) — remove those orders first">
+                                        <i class="bi bi-lock"></i> {{ $orderCount }} order(s)
+                                    </span>
+                                @elseif($variant->allocated_qty > 0)
+                                    <span class="text-muted small" title="Has allocated stock — cannot delete">
+                                        <i class="bi bi-lock"></i> allocated
+                                    </span>
                                 @else
-                                    <span class="text-muted small" title="Cannot delete — variant has orders">—</span>
+                                    <span class="text-muted small">—</span>
                                 @endif
                             </td>
                         </tr>

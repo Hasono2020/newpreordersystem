@@ -297,6 +297,7 @@ class ProductController extends Controller
         // ── Import pass ────────────────────────────────────────────────────
         $imported     = 0;
         $variantCount = 0;
+        $variantSkipped = 0;
         $newSuppliers = 0;
         $productMap   = []; // code => Product model (created in this import)
 
@@ -387,11 +388,14 @@ class ProductController extends Controller
                         'allocated_qty'    => 0,
                     ]);
                     $variantCount++;
+                } else {
+                    $variantSkipped++;
                 }
             }
         }
 
         $msg = "✓ Imported/updated {$imported} product(s) with {$variantCount} new variant(s).";
+        if ($variantSkipped) $msg .= " {$variantSkipped} variant(s) already existed and were skipped.";
         if ($newSuppliers) $msg .= " {$newSuppliers} new supplier(s) auto-created.";
         return redirect()->route('products.index')->with('success', $msg);
     }
@@ -473,6 +477,18 @@ class ProductController extends Controller
             'size' => 'nullable|string|max:20',
             'price_adjustment' => 'nullable|numeric',
         ]);
+
+        // Block duplicate color+size combos (case-insensitive), matching import behaviour
+        $color = trim($data['color'] ?? '');
+        $size  = trim($data['size'] ?? '');
+        $exists = $product->variants()
+            ->whereRaw('LOWER(COALESCE(color,"")) = ?', [strtolower($color)])
+            ->whereRaw('LOWER(COALESCE(size,"")) = ?', [strtolower($size)])
+            ->exists();
+        if ($exists) {
+            return back()->with('error', 'That color/size variant already exists for this product.');
+        }
+
         $product->variants()->create($data);
         return back()->with('success', 'Variant added.');
     }
