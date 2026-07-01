@@ -17,7 +17,7 @@ class CustomerController extends Controller
         // Customers are shared, but the order count should reflect the staff's own scope
         $uid = \Illuminate\Support\Facades\Auth::user()->isOwnDataOnly()
             ? \Illuminate\Support\Facades\Auth::id() : null;
-        $query   = Customer::withCount([
+        $query   = Customer::with('defaultShippingArea')->withCount([
             'orders' => fn($q) => $uid ? $q->where('created_by', $uid) : $q,
         ]);
         // Customers are shared — all roles see all customers
@@ -30,8 +30,18 @@ class CustomerController extends Controller
         if ($request->type) {
             $query->where('type', $request->type);
         }
+        // Filter by shipping-area presence
+        if ($request->shipping_area === 'none') {
+            $query->whereNull('default_shipping_area_id');
+        } elseif ($request->shipping_area === 'set') {
+            $query->whereNotNull('default_shipping_area_id');
+        }
+
+        // Count of customers still missing a shipping area (for the heads-up banner)
+        $noAreaCount = Customer::whereNull('default_shipping_area_id')->count();
+
         $customers = $query->latest()->paginate($perPage)->withQueryString();
-        return view('customers.index', compact('customers', 'perPage'));
+        return view('customers.index', compact('customers', 'perPage', 'noAreaCount'));
     }
 
     public function create()

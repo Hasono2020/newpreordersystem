@@ -22,6 +22,17 @@
     </div>
 </div>
 @endif
+
+@if($noAreaCount > 0 && !request('shipping_area'))
+<div class="alert alert-warning d-flex justify-content-between align-items-center py-2 mb-3">
+    <div class="small">
+        <i class="bi bi-exclamation-triangle-fill me-1"></i>
+        <strong>{{ $noAreaCount }}</strong> customer(s) have no shipping area set yet.
+    </div>
+    <a href="{{ route('customers.index', array_merge(request()->only('search','type'), ['shipping_area' => 'none'])) }}"
+       class="btn btn-sm btn-outline-dark py-0">Show them</a>
+</div>
+@endif
 <div class="row g-2 mb-3 align-items-end">
     <div class="col">
         <form class="d-flex gap-2" id="filterForm">
@@ -33,8 +44,13 @@
                 <option value="reseller"          {{ request('type')=='reseller'?'selected':'' }}>Reseller</option>
                 <option value="selected_customer" {{ request('type')=='selected_customer'?'selected':'' }}>Selected Customer</option>
             </select>
+            <select name="shipping_area" class="form-select form-select-sm" style="width:auto;">
+                <option value="">Any shipping area</option>
+                <option value="none" {{ request('shipping_area')=='none'?'selected':'' }}>⚠ No area set</option>
+                <option value="set"  {{ request('shipping_area')=='set'?'selected':'' }}>Area set</option>
+            </select>
             <button class="btn btn-sm btn-outline-secondary">Filter</button>
-            @if(request('search') || request('type'))
+            @if(request('search') || request('type') || request('shipping_area'))
                 <a href="{{ route('customers.index') }}" class="btn btn-sm btn-link">Clear</a>
             @endif
         </form>
@@ -162,7 +178,14 @@
                         <input type="checkbox" class="form-check-input customer-cb" value="{{ $customer->id }}">
                     </td>
                     @endif
-                    <td class="fw-semibold" data-label="Name">{{ $customer->name }}</td>
+                    <td class="fw-semibold" data-label="Name">
+                        {{ $customer->name }}
+                        @if(!$customer->default_shipping_area_id)
+                            <span class="badge bg-warning text-dark ms-1" style="font-size:.65rem;" title="No shipping area set">
+                                <i class="bi bi-exclamation-triangle-fill"></i> No area
+                            </span>
+                        @endif
+                    </td>
                     <td class="text-muted small" data-label="Phone">{{ $customer->phone ?? '—' }}</td>
                     <td data-label="Type">
                         @if($customer->type === 'reseller')
