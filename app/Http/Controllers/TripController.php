@@ -94,7 +94,16 @@ class TripController extends Controller
             return back()->with('error', "Cannot delete trip \"{$trip->name}\" — it has {$orderCount} order(s). Close the trip instead.");
         }
 
+        // The products.trip_id FK is ON DELETE CASCADE, so deleting the trip
+        // wipes its products at the DB level — collect image files first so
+        // they don't become orphans in storage.
+        $imagePaths = $trip->products()->whereNotNull('image')->pluck('image');
+
         $trip->delete();
+
+        if ($imagePaths->isNotEmpty()) {
+            \Illuminate\Support\Facades\Storage::disk('public')->delete($imagePaths->all());
+        }
         return redirect()->route('trips.index')->with('success', 'Trip deleted.');
     }
 }

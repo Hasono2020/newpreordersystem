@@ -189,6 +189,7 @@ class ProductController extends Controller
         $products   = $query->with('variants')->get();
         $productIds = $products->pluck('id');
         $variantIds = $products->flatMap(fn($p) => $p->variants->pluck('id'));
+        $imagePaths = $products->pluck('image')->filter()->values(); // collect BEFORE rows are gone
         $deleted    = $products->count();
 
         \DB::transaction(function () use ($productIds, $variantIds, $deleted) {
@@ -200,6 +201,12 @@ class ProductController extends Controller
             \DB::table('product_variants')->whereIn('product_id', $productIds)->delete();
             \DB::table('products')->whereIn('id', $productIds)->delete();
         });
+
+        // Delete image files only AFTER the transaction committed successfully,
+        // so a rolled-back delete never leaves products without their images.
+        if ($imagePaths->isNotEmpty()) {
+            \Storage::disk('public')->delete($imagePaths->all());
+        }
 
         return redirect()->route('products.index', request()->only('trip_id', 'search'))
             ->with('success', "Deleted {$deleted} product(s).");

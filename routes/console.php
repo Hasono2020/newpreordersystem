@@ -14,3 +14,8 @@ Artisan::command('inspire', function () {
 Schedule::command('backup:database --keep=7')
     ->dailyAt('03:00')
     ->withoutOverlapping();
+
+// Weekly safety net: remove product image files no longer referenced in the DB.
+Schedule::command('images:cleanup')
+    ->weeklyOn(1, '03:30') // Mondays 03:30, after the backup
+    ->withoutOverlapping();
