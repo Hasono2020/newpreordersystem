@@ -95,28 +95,35 @@ class ReportController extends Controller
             $waktuOrder = $o->created_at?->format('d-m-Y H:i') ?? '';
 
             foreach ($o->items as $item) {
-                $rows[] = [
-                    $o->createdBy?->name ?? '',          // DIBUAT OLEH (created by)
-                    $no,
-                    $o->customer->name,                  // NAMA
-                    $o->csAgent?->name ?? '',            // IG/WA (CS who handled livechat)
-                    $o->customer->phone ?? '',           // NO HP (customer phone)
-                    $o->shippingArea?->name ?? '',       // KOTA
-                    $item->product->product_code ?? '',  // KODE
-                    $item->variant?->color ?? '',        // WARNA
-                    $item->variant?->size ?? '',         // SIZE
-                    $item->unit_price,                   // HARGA SATUAN
-                    $dp,                                 // DP
-                    $tglDp,                               // TGL DP
-                    $an,                                 // AN
-                    '',                                  // KET
-                    $waktuOrder,                         // WAKTU ORDER (order created_at)
-                ];
-                $no++;
-                // Only show DP / Waktu Order on first item row per order
-                $dp    = '';
-                $tglDp = '';
-                $waktuOrder = '';
+                // Repeat the row once per unit ordered, matching the import
+                // template's convention (each row = 1 unit; multiple units of
+                // the same product/variant = repeated identical rows).
+                $qty = max(1, (int) ($item->quantity ?? 1));
+
+                for ($u = 0; $u < $qty; $u++) {
+                    $rows[] = [
+                        $o->createdBy?->name ?? '',          // DIBUAT OLEH (created by)
+                        $no,
+                        $o->customer->name,                  // NAMA
+                        $o->csAgent?->name ?? '',            // IG/WA (CS who handled livechat)
+                        $o->customer->phone ?? '',           // NO HP (customer phone)
+                        $o->shippingArea?->name ?? '',       // KOTA
+                        $item->product->product_code ?? '',  // KODE
+                        $item->variant?->color ?? '',        // WARNA
+                        $item->variant?->size ?? '',         // SIZE
+                        $item->unit_price,                   // HARGA SATUAN
+                        $dp,                                 // DP
+                        $tglDp,                               // TGL DP
+                        $an,                                 // AN
+                        '',                                  // KET
+                        $waktuOrder,                         // WAKTU ORDER (order created_at)
+                    ];
+                    $no++;
+                    // Only show DP / Waktu Order on the very first row of the order
+                    $dp    = '';
+                    $tglDp = '';
+                    $waktuOrder = '';
+                }
             }
 
             // If order has no items

@@ -13,6 +13,12 @@ use Illuminate\Support\Facades\Storage;
 
 // ── Local builders ───────────────────────────────────────────────────
 
+/**
+ * @param mixed $test Pest binds $this to a TestCase subclass at runtime;
+ *        typed as mixed here because static analyzers see Pest's
+ *        closure-bound $this as Pest\PendingCalls\TestCall, which isn't
+ *        assignable to a concrete TestCase type hint.
+ */
 function imgProduct($test, ?Trip $trip = null, ?string $imagePath = null): Product
 {
     $trip = $trip ?? $test->openTrip();
