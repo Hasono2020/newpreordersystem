@@ -181,7 +181,7 @@ td.right { text-align:right; }
         </thead>
         <tbody>
             @foreach($order->items as $item)
-            @php $soldOut = $item->status === 'sold_out'; @endphp
+            @php $soldOut = in_array($item->status, ['sold_out', 'cancelled']); @endphp
             <tr {{ $soldOut ? 'style=opacity:.55' : '' }}>
                 <td>
                     <div class="item-name">{{ $item->product->product_code ?? '—' }}</div>
@@ -238,11 +238,15 @@ td.right { text-align:right; }
         </table>
     </div>
 
-    {{-- Payment history --}}
-    @if($order->payments->count())
+    {{-- Payment history — voided payments are excluded, same reasoning as
+         the combined invoice: they're already excluded from deposit_paid,
+         so showing them here would make the invoice look like the customer
+         paid more than they actually did. --}}
+    @php $invoicePayments = $order->payments->reject(fn($p) => $p->isVoided()); @endphp
+    @if($invoicePayments->count())
     <div class="payment-section">
         <div class="section-title">Payment History</div>
-        @foreach($order->payments as $payment)
+        @foreach($invoicePayments as $payment)
         <div class="payment-row">
             <span>
                 {{ $payment->paid_at->format('d M Y') }} —

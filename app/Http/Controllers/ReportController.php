@@ -94,7 +94,12 @@ class ReportController extends Controller
             $an    = $o->notes ?? '';
             $waktuOrder = $o->created_at?->format('d-m-Y H:i') ?? '';
 
-            foreach ($o->items as $item) {
+            // Cancelled/sold-out items didn't ship and shouldn't appear in
+            // the export at all — matches the same treatment they already
+            // get on the printed invoices (Rp 0 there; skipped entirely here).
+            $activeItems = $o->items->whereNotIn('status', ['cancelled', 'sold_out']);
+
+            foreach ($activeItems as $item) {
                 // Repeat the row once per unit ordered, matching the import
                 // template's convention (each row = 1 unit; multiple units of
                 // the same product/variant = repeated identical rows).
@@ -126,8 +131,10 @@ class ReportController extends Controller
                 }
             }
 
-            // If order has no items
-            if ($o->items->isEmpty()) {
+            // If order has no exportable items (none at all, or every item
+            // was cancelled/sold out), still emit one row for the order
+            // itself so the customer/order isn't silently dropped.
+            if ($activeItems->isEmpty()) {
                 $rows[] = [
                     $o->createdBy?->name ?? '', $no, $o->customer->name,
                     $o->csAgent?->name ?? '',

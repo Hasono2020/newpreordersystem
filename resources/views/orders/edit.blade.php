@@ -221,14 +221,26 @@
                     </thead>
                     <tbody>
                         @forelse($order->payments as $payment)
-                        <tr>
+                        <tr class="{{ $payment->isVoided() ? 'text-decoration-line-through text-muted opacity-50' : '' }}">
                             <td>{{ $payment->paid_at->format('d M Y') }}</td>
-                            <td><span class="badge bg-secondary">{{ ucfirst($payment->type) }}</span></td>
+                            <td>
+                                <span class="badge {{ $payment->isVoided() ? 'bg-danger' : 'bg-secondary' }}">
+                                    {{ $payment->isVoided() ? 'VOIDED' : ucfirst($payment->type) }}
+                                </span>
+                            </td>
                             <td class="font-monospace">{{ $payment->reference ?? '—' }}</td>
-                            <td class="{{ $payment->type === 'refund' ? 'text-danger' : 'text-success' }} fw-semibold">
+                            <td class="{{ $payment->isVoided() ? '' : ($payment->type === 'refund' ? 'text-danger' : 'text-success') }} fw-semibold">
                                 {{ $payment->type === 'refund' ? '-' : '+' }}Rp {{ number_format($payment->amount, 0, ',', '.') }}
                             </td>
-                            <td>{{ $payment->recordedBy->name }}</td>
+                            <td>
+                                {{ $payment->recordedBy->name }}
+                                @if($payment->isVoided())
+                                <div class="text-danger small mt-1">
+                                    Voided by {{ $payment->voidedBy->name }} on {{ $payment->voided_at->format('d M Y H:i') }}<br>
+                                    Reason: {{ $payment->void_reason }}
+                                </div>
+                                @endif
+                            </td>
                         </tr>
                         @empty
                         <tr><td colspan="5" class="text-center text-muted py-3">No payments recorded</td></tr>

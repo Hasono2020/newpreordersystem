@@ -15,7 +15,10 @@
     $sumPerOrderShipping = $orders->sum('shipping_fee');
     $shippingSaving      = max(0, $sumPerOrderShipping - $grandShipping);
     $allItems          = $orders->flatMap(fn($o) => $o->items->map(fn($i) => ['item' => $i, 'order' => $o]));
-    $allPayments       = $orders->flatMap(fn($o) => $o->payments)->sortBy('paid_at');
+    // Voided payments are already excluded from deposit_paid (recalculated
+    // when a payment is voided), so exclude them here too — otherwise a
+    // voided payment would still show up as a real line item on the invoice.
+    $allPayments       = $orders->flatMap(fn($o) => $o->payments)->reject(fn($p) => $p->isVoided())->sortBy('paid_at');
 @endphp
 <!DOCTYPE html>
 <html lang="id">
@@ -190,25 +193,23 @@ td.r { text-align:right; }
     @php
         $firstRow    = $rows->first();
         $productCode = $firstRow['item']->product->product_code;
-        $groupTotal  = $rows->sum(fn($r) => $r['item']->line_total);
         $groupQty    = $rows->sum(fn($r) => $r['item']->quantity);
     @endphp
-    {{-- Product group header --}}
+    {{-- Product group header — no price shown here; it's redundant with
+         (and can be confusing next to) the per-variant rows below it. --}}
     <tr class="grp-hdr">
-        <td colspan="3">
+        <td colspan="5">
             {{ $productCode ?? '—' }}
         </td>
-        <td class="r">Rp {{ number_format($groupTotal,0,',','.') }}</td>
-        <td></td>
     </tr>
     {{-- Variant rows --}}
     @foreach($rows as $row)
-    @php $item = $row['item']; $so = $item->status === 'sold_out'; @endphp
+    @php $item = $row['item']; $so = in_array($item->status, ['sold_out', 'cancelled']); @endphp
     <tr style="{{ $so ? 'opacity:.45;' : '' }}">
         <td style="padding-left:12px;color:#475569;">{{ $item->variant?->label ?? '—' }}</td>
         <td class="r">{{ $item->quantity }}</td>
-        <td class="r">{{ $so ? '—' : 'Rp '.number_format($item->unit_price,0,',','.') }}</td>
-        <td class="r" style="font-weight:600;">{{ $so ? '—' : 'Rp '.number_format($item->line_total,0,',','.') }}</td>
+        <td class="r">{{ $so ? 'Rp 0' : 'Rp '.number_format($item->unit_price,0,',','.') }}</td>
+        <td class="r" style="font-weight:600;">{{ $so ? 'Rp 0' : 'Rp '.number_format($item->line_total,0,',','.') }}</td>
         <td><span class="s-pill s-{{ $item->status }}" style="font-size:8px;">{{ ucfirst(str_replace('_',' ',$item->status)) }}</span></td>
     </tr>
     @endforeach
@@ -222,6 +223,9 @@ td.r { text-align:right; }
 <div class="bottom">
 
     {{-- Grand Total --}}
+    <div class="total-qty-label" style="font-size:11px;color:#475569;margin-bottom:6px;">
+        Total Qty: <strong>{{ $allActiveItems->sum('quantity') }} items</strong>
+    </div>
     <div class="grand-box">
         <h4>Grand Total &mdash; {{ $orders->count() }} Orders</h4>
         @if($combinedPromo)
