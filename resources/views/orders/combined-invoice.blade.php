@@ -223,11 +223,11 @@ td.r { text-align:right; }
 <div class="bottom">
 
     {{-- Grand Total --}}
-    <div class="total-qty-label" style="font-size:11px;color:#475569;margin-bottom:6px;">
-        Total Qty: <strong>{{ $allActiveItems->sum('quantity') }} items</strong>
-    </div>
     <div class="grand-box">
-        <h4>Grand Total &mdash; {{ $orders->count() }} Orders</h4>
+        <h4 style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Grand Total &mdash; {{ $orders->count() }} Orders</span>
+            <span style="font-weight:700; color:#1e2a3a;">Total Qty: {{ $allActiveItems->sum('quantity') }} items</span>
+        </h4>
         @if($combinedPromo)
             <div class="promo-note">
                 &#10022; <strong>{{ $combinedPromo['rule']->name }}</strong> applied
