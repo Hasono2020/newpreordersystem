@@ -88,8 +88,14 @@ class ReportController extends Controller
 
         $no = 1;
         foreach ($orders as $o) {
-            $firstPayment = $o->payments->sortBy('paid_at')->first();
-            $dp    = $firstPayment?->amount ?? ($o->deposit_paid ?: '');
+            // DP amount = total paid so far across ALL active (non-voided)
+            // payments, not just the first one — an order can have a
+            // deposit plus later top-ups, and all of it counts as "paid".
+            // deposit_paid is already the correct running total (it's
+            // recalculated whenever a payment is added/voided), so use it
+            // directly rather than re-deriving it from the payments list.
+            $firstPayment = $o->payments->reject(fn($p) => $p->isVoided())->sortBy('paid_at')->first();
+            $dp    = $o->deposit_paid ?: '';
             $tglDp = $firstPayment ? \Carbon\Carbon::parse($firstPayment->paid_at)->format('d-M-y') : '';
             $an    = $o->notes ?? '';
             $waktuOrder = $o->created_at?->format('d-m-Y H:i') ?? '';
@@ -131,21 +137,9 @@ class ReportController extends Controller
                 }
             }
 
-            // If order has no exportable items (none at all, or every item
-            // was cancelled/sold out), still emit one row for the order
-            // itself so the customer/order isn't silently dropped.
-            if ($activeItems->isEmpty()) {
-                $rows[] = [
-                    $o->createdBy?->name ?? '', $no, $o->customer->name,
-                    $o->csAgent?->name ?? '',
-                    $o->customer->phone ?? '',
-                    $o->shippingArea?->name ?? '',
-                    '', '', '', '',
-                    $dp, $tglDp, $an, '',
-                    $waktuOrder,
-                ];
-                $no++;
-            }
+            // Orders where every item is cancelled/sold-out (or which have
+            // no items at all) are skipped entirely — nothing shipped, so
+            // there's nothing to export for them.
         }
 
         return $this->streamXlsx('orders_export.xlsx', $rows);

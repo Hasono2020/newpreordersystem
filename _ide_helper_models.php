@@ -14,6 +14,38 @@
 namespace App\Models{
 /**
  * @property int $id
+ * @property int|null $user_id
+ * @property string $user_name
+ * @property string $action
+ * @property string $description
+ * @property string|null $subject_type
+ * @property int|null $subject_id
+ * @property array<array-key, mixed>|null $changes
+ * @property string|null $ip_address
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property-read \App\Models\User|null $user
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|ActivityLog newModelQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|ActivityLog newQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|ActivityLog query()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|ActivityLog whereAction($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|ActivityLog whereChanges($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|ActivityLog whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|ActivityLog whereDescription($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|ActivityLog whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|ActivityLog whereIpAddress($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|ActivityLog whereSubjectId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|ActivityLog whereSubjectType($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|ActivityLog whereUpdatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|ActivityLog whereUserId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|ActivityLog whereUserName($value)
+ */
+	class ActivityLog extends \Eloquent {}
+}
+
+namespace App\Models{
+/**
+ * @property int $id
  * @property string $name
  * @property string|null $handle
  * @property bool $is_active
@@ -133,6 +165,7 @@ namespace App\Models{
  * @property string $payment_status
  * @property \Illuminate\Support\Carbon|null $invoice_printed_at
  * @property int|null $invoice_printed_by
+ * @property string|null $invoice_token
  * @property string|null $notes
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
@@ -163,6 +196,7 @@ namespace App\Models{
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Order whereId($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Order whereInvoicePrintedAt($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Order whereInvoicePrintedBy($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Order whereInvoiceToken($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Order whereNotes($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Order whereOrderNumber($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Order whereOrderedAt($value)

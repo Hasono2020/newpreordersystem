@@ -227,7 +227,7 @@ body { padding-bottom: 0; }
 
 {{-- Pass items as JSON for fast JS rendering --}}
 @php
-$itemsJson = $purchasing->items->map(function($item, $i) {
+$itemsJson = $purchasing->items->map(function($item, $i) use ($purchasing) {
     return [
         'i'        => $i,
         'id'       => $item->id,
@@ -235,7 +235,18 @@ $itemsJson = $purchasing->items->map(function($item, $i) {
         'code'     => $item->product->product_code ?? '',
         'variant'  => $item->variant?->label ?? '—',
         'ordered'  => $item->quantity_ordered,
-        'received' => $item->quantity_received ?: $item->quantity_ordered,
+        // Before arrival is confirmed, pre-fill the input with the ordered
+        // qty as a sensible starting point (quantity_received is still its
+        // unconfirmed default of 0 at that stage). But once the PO IS
+        // arrived, quantity_received is a real, confirmed value — including
+        // a genuine 0 (nothing arrived for that line) — so it must be shown
+        // exactly as stored. Using `?:` here treated a confirmed 0 as falsy
+        // and silently substituted the ordered qty instead, which is the
+        // display bug: a line explicitly received as 0 looked identical to
+        // one that received everything ordered.
+        'received' => $purchasing->status === 'arrived'
+            ? $item->quantity_received
+            : ($item->quantity_received ?: $item->quantity_ordered),
     ];
 })->values()->all();
 @endphp
