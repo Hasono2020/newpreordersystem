@@ -63,8 +63,65 @@ class ShippingAreaController extends Controller
             'notes'        => 'nullable|string',
         ]);
         $data['is_active'] = $request->boolean('is_active');
+        $oldPricePerKg = $shipping->price_per_kg;
         $shipping->update($data);
+
+        // If price_per_kg changed, recalc shipping for all affected orders in open trips
+        if ((float)$oldPricePerKg !== (float)$shipping->fresh()->price_per_kg) {
+            $this->syncShippingPriceToOpenOrders($shipping);
+        }
+
         return redirect()->route('shipping.index')->with('success', 'Shipping area updated.');
+    }
+
+    /**
+     * When a shipping area's price_per_kg changes, recalculate shipping fees
+     * for all orders using this area that belong to open trips.
+     */
+    private function syncShippingPriceToOpenOrders(\App\Models\ShippingArea $shipping): void
+    {
+        $affectedOrders = \App\Models\Order::where('shipping_area_id', $shipping->id)
+            ->whereHas('trip', fn($q) => $q->where('status', 'open'))
+            ->select('id', 'customer_id', 'trip_id', 'order_number')
+            ->get();
+
+        if ($affectedOrders->isEmpty()) return;
+
+        $promoService = app(\App\Services\PromoService::class);
+        $seen = [];
+
+        foreach ($affectedOrders as $order) {
+            $key = $order->customer_id . '-' . $order->trip_id;
+            if (isset($seen[$key])) continue;
+            $seen[$key] = true;
+            $promoService->recalcCustomerShipping($order->customer_id, $order->trip_id);
+        }
+
+        // Re-derive payment status from actual payments vs updated totals
+        $affectedOrderIds = $affectedOrders->pluck('id');
+        \App\Models\Order::whereIn('id', $affectedOrderIds)->with('payments')->get()
+            ->each(function ($order) {
+                $payments = $order->payments->filter(fn($p) => $p->voided_at === null);
+                $paid     = $payments->where('type', '!=', 'refund')->sum('amount')
+                          - $payments->where('type', 'refund')->sum('amount');
+                $status   = $paid <= 0 ? 'unpaid'
+                    : ($paid >= $order->total_amount ? 'paid' : 'partial');
+                $order->update(['deposit_paid' => max(0, $paid), 'payment_status' => $status]);
+            });
+
+        // Log the bulk shipping fee sync
+        $orderCount = $affectedOrders->count();
+        $sample     = $affectedOrders->pluck('order_number')->take(3)->implode(', ');
+        if ($orderCount > 3) $sample .= ' …';
+
+        \App\Models\ActivityLog::record(
+            'shipping.price_synced',
+            "Shipping rate updated for \"{$shipping->name}\" → Rp " . number_format($shipping->price_per_kg, 0, ',', '.') .
+                "/kg. Auto-recalculated shipping fee on {$orderCount} order(s) in open trips: {$sample}",
+            'shipping_area',
+            $shipping->id,
+            ['price_per_kg' => ['old' => $shipping->getOriginal('price_per_kg'), 'new' => $shipping->price_per_kg]]
+        );
     }
 
     public function destroy(ShippingArea $shipping)

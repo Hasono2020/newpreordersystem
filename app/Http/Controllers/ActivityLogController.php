@@ -38,12 +38,14 @@ class ActivityLogController extends Controller
 
         $staffList = User::orderBy('name')->get(['id', 'name']);
         $actionTypes = [
-            'payment.recorded'     => 'Payment recorded',
-            'payment.voided'       => 'Payment voided',
-            'payment.batch_voided' => 'Payment batch voided',
-            'order.updated'        => 'Order edited',
-            'order.deleted'        => 'Order deleted',
-            'order.bulk_deleted'   => 'Orders bulk-deleted',
+            'payment.recorded'       => 'Payment recorded',
+            'payment.voided'         => 'Payment voided',
+            'payment.batch_voided'   => 'Payment batch voided',
+            'order.updated'          => 'Order edited',
+            'order.deleted'          => 'Order deleted',
+            'order.bulk_deleted'     => 'Orders bulk-deleted',
+            'product.price_synced'   => 'Product price synced to orders',
+            'shipping.price_synced'  => 'Shipping rate synced to orders',
         ];
 
         return view('activity-logs.index', compact('logs', 'staffList', 'actionTypes'));

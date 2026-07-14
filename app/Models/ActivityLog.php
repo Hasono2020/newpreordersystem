@@ -61,12 +61,14 @@ class ActivityLog extends Model
     public function actionBadge(): string
     {
         $map = [
-            'payment.recorded' => 'bg-success',
-            'payment.voided'   => 'bg-danger',
-            'payment.batch_voided' => 'bg-danger',
-            'order.deleted'    => 'bg-danger',
-            'order.bulk_deleted' => 'bg-danger',
-            'order.updated'    => 'bg-warning text-dark',
+            'payment.recorded'      => 'bg-success',
+            'payment.voided'        => 'bg-danger',
+            'payment.batch_voided'  => 'bg-danger',
+            'order.deleted'         => 'bg-danger',
+            'order.bulk_deleted'    => 'bg-danger',
+            'order.updated'         => 'bg-warning text-dark',
+            'product.price_synced'  => 'bg-info',
+            'shipping.price_synced' => 'bg-info',
         ];
         $cls = $map[$this->action] ?? 'bg-secondary';
         $label = ucwords(str_replace(['.', '_'], ' ', $this->action));

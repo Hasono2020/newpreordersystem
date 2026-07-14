@@ -165,7 +165,15 @@ class ProductController extends Controller
             $data['image'] = $this->resizeAndStoreImage($request->file('image'));
         }
 
+        $oldPrice = $product->price;
         $product->update($data);
+        $newPrice = $product->fresh()->price;
+
+        // If price changed, update all order items in open trips and recalc affected orders
+        if ((float)$oldPrice !== (float)$newPrice) {
+            $this->syncProductPriceToOpenOrders($product, $newPrice);
+        }
+
         return redirect()->route('products.show', $product)->with('success', 'Product updated.');
     }
 
@@ -648,6 +656,74 @@ class ProductController extends Controller
         );
 
         return back()->with('success', "Variant '{$variant->label}' merged into '{$survivor->label}'. Orders reassigned.");
+    }
+
+    /**
+     * When a product's price changes, update unit_price and line_total on all
+     * order items for this product that belong to orders in open trips,
+     * then recalculate shipping/promo for each affected customer.
+     */
+    private function syncProductPriceToOpenOrders(Product $product, float $newPrice): void
+    {
+        // Get all order items for this product whose order is in an open trip
+        $affectedItems = \App\Models\OrderItem::where('product_id', $product->id)
+            ->whereHas('order.trip', fn($q) => $q->where('status', 'open'))
+            ->with('order:id,customer_id,trip_id,order_number')
+            ->get();
+
+        if ($affectedItems->isEmpty()) return;
+
+        $promoService = app(\App\Services\PromoService::class);
+        $seen = []; // track customer+trip pairs already recalculated
+        $affectedOrderNumbers = $affectedItems->pluck('order.order_number')->unique()->filter()->values();
+
+        \DB::transaction(function () use ($affectedItems, $newPrice) {
+            foreach ($affectedItems as $item) {
+                // Recalculate line_total using new price + existing variant price adjustment
+                $variantAdjustment = $item->variant?->price_adjustment ?? 0;
+                $effectivePrice    = $newPrice + $variantAdjustment;
+
+                $item->update([
+                    'unit_price' => $effectivePrice,
+                    'line_total' => $effectivePrice * $item->quantity,
+                ]);
+            }
+        });
+
+        // Recalc shipping/promo per customer+trip, then recalc payment status per order
+        $affectedOrderIds = $affectedItems->pluck('order_id')->unique();
+
+        foreach ($affectedItems as $item) {
+            $key = $item->order->customer_id . '-' . $item->order->trip_id;
+            if (isset($seen[$key])) continue;
+            $seen[$key] = true;
+            $promoService->recalcCustomerShipping($item->order->customer_id, $item->order->trip_id);
+        }
+
+        // Re-derive payment status from actual payments vs updated totals
+        \App\Models\Order::whereIn('id', $affectedOrderIds)->with('payments')->get()
+            ->each(function ($order) {
+                $payments = $order->payments->filter(fn($p) => $p->voided_at === null);
+                $paid     = $payments->where('type', '!=', 'refund')->sum('amount')
+                          - $payments->where('type', 'refund')->sum('amount');
+                $status   = $paid <= 0 ? 'unpaid'
+                    : ($paid >= $order->total_amount ? 'paid' : 'partial');
+                $order->update(['deposit_paid' => max(0, $paid), 'payment_status' => $status]);
+            });
+
+        // Log the bulk price sync
+        $orderCount = $affectedOrderNumbers->count();
+        $sample     = $affectedOrderNumbers->take(3)->implode(', ');
+        if ($orderCount > 3) $sample .= ' …';
+
+        \App\Models\ActivityLog::record(
+            'product.price_synced',
+            "Price updated for {$product->product_code} → Rp " . number_format($newPrice, 0, ',', '.') .
+                ". Auto-updated {$orderCount} order item(s) in open trips: {$sample}",
+            'product',
+            $product->id,
+            ['price' => ['old' => $product->getOriginal('price'), 'new' => $newPrice]]
+        );
     }
 
     /**
