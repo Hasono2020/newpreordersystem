@@ -269,7 +269,7 @@ test('product price sync writes an activity log entry', function () {
         ->first();
 
     expect($log)->not->toBeNull()
-        ->and($log->changes['price']['new'])->toBe(650000.0);
+        ->and($log->changes['price']['new'])->toEqual(650000.0);
 });
 
 test('no activity log is written when product price does not change', function () {
@@ -518,7 +518,7 @@ test('shipping price sync writes an activity log entry', function () {
         ->first();
 
     expect($log)->not->toBeNull()
-        ->and($log->changes['price_per_kg']['new'])->toBe(40000.0);
+        ->and($log->changes['price_per_kg']['new'])->toEqual(40000.0);
 });
 
 test('no activity log written when shipping price_per_kg does not change', function () {

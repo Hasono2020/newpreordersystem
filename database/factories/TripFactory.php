@@ -19,6 +19,6 @@ class TripFactory extends Factory
     }
 
     public function open(): static       { return $this->state(['status' => 'open']); }
-    public function closed(): static     { return $this->state(['status' => 'order_closed']); }
+    public function closed(): static     { return $this->state(['status' => 'closed']); }
     public function purchasing(): static { return $this->state(['status' => 'purchasing']); }
 }
