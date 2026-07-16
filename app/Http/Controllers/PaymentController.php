@@ -56,7 +56,16 @@ class PaymentController extends Controller
                 ])
                 ->join('users as creators', 'creators.id', '=', 'orders.created_by')
                 ->where('orders.trip_id', $tripId)
-                ->where('orders.payment_status', '!=', 'paid')
+                // Deliberately NOT filtering out payment_status = 'paid' orders here:
+                // payments are recorded per-order, but a price sync (product price or
+                // shipping rate change) can leave one order overpaid and another
+                // underpaid for the same customer at the same time. Summing across
+                // ALL of the customer's orders in this trip — not just the ones that
+                // individually look "unpaid" — gives their TRUE net position, so a
+                // customer who's actually in credit overall (even if one specific
+                // order still shows a gap) correctly nets to a non-positive balance
+                // and gets excluded below by having('balance_due', '>', 0), instead
+                // of confusingly showing both a balance due AND a credit at once.
                 ->when(Auth::user()->isOwnDataOnly(), fn($q) => $q->where('orders.created_by', Auth::id()))
                 ->when($createdByFilter, fn($q) => $q->where('orders.created_by', $createdByFilter))
                 ->when($search && !$this->isMoneySearch($search), fn($q) => $q->where(fn($w) =>
@@ -402,16 +411,24 @@ class PaymentController extends Controller
         ];
         $orders = Order::with('customer')
             ->where('trip_id', $tripId)
-            ->where('payment_status', '!=', 'paid')
             ->get()
             ->groupBy('customer_id');
         foreach ($orders as $customerOrders) {
             $c = $customerOrders->first()->customer;
             $ordered = $customerOrders->sum('total_amount');
             $paid    = $customerOrders->sum('deposit_paid');
+            $balance = $ordered - $paid;
+            // Same reasoning as the Outstanding Balances tab: sum across ALL
+            // of the customer's orders in the trip (not just ones that look
+            // individually unpaid), so an overpayment on one order nets
+            // against a shortfall on another. Only list them here if they
+            // have a genuine net-positive balance left.
+            if ($balance <= 0) {
+                continue;
+            }
             $sheet1[] = [
                 $c->name ?? '—', $c->phone ?? '—', $c->type ?? '—',
-                $customerOrders->count(), $ordered, $paid, $ordered - $paid,
+                $customerOrders->count(), $ordered, $paid, $balance,
             ];
         }
 

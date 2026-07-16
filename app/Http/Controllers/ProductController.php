@@ -711,6 +711,16 @@ class ProductController extends Controller
                 $order->update(['deposit_paid' => max(0, $paid), 'payment_status' => $status]);
             });
 
+        // A price drop can leave one order overpaid while another order for
+        // the SAME customer in this trip is still short — reallocate any
+        // such credit automatically rather than leaving it stranded until
+        // someone notices and manually voids/re-records a payment.
+        $reallocator = app(\App\Services\CreditReallocationService::class);
+        foreach ($seen as $key => $true) {
+            [$custId, $tripId] = explode('-', $key, 2);
+            $reallocator->reallocate((int) $custId, (int) $tripId);
+        }
+
         // Log the bulk price sync
         $orderCount = $affectedOrderNumbers->count();
         $sample     = $affectedOrderNumbers->take(3)->implode(', ');

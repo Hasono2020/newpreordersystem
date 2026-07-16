@@ -29,6 +29,11 @@ function syncProduct(Trip $trip, float $price = 500000): Product
 
 /**
  * Create an order with one order item and an optional payment.
+ *
+ * @param mixed $test Pest binds $this to a TestCase subclass at runtime;
+ *        typed as mixed here because static analyzers see Pest's
+ *        closure-bound $this as Pest\PendingCalls\TestCall, which isn't
+ *        assignable to a concrete TestCase type hint.
  */
 function syncOrder(
     $test,

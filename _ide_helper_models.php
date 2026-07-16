@@ -546,6 +546,7 @@ namespace App\Models{
  * @property-read int|null $products_count
  * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\PurchaseOrder> $purchaseOrders
  * @property-read int|null $purchase_orders_count
+ * @method static \Database\Factories\SupplierFactory factory($count = null, $state = [])
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Supplier newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Supplier newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Supplier query()
