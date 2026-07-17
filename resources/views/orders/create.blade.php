@@ -147,7 +147,7 @@
                                         data-price="{{ $area->price_per_kg }}"
                                         data-name="{{ $area->name }}">
                                         {{ $area->name }}{{ $area->province ? ' ('.$area->province.')' : '' }}
-                                        — Rp {{ number_format($area->price_per_kg, 0, ',', '.') }}/kg
+                                        — {{ $area->isFlatFee() ? 'Flat Rp '.number_format($area->flat_fee,0,',','.') : 'Rp '.number_format($area->price_per_kg,0,',','.').' /kg' }}
                                     </option>
                                 @endforeach
                             </select>

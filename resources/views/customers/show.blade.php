@@ -64,7 +64,11 @@
                             @if($customer->defaultShippingArea)
                                 <span class="text-success fw-semibold">{{ $customer->defaultShippingArea->name }}</span>
                                 <div class="text-muted" style="font-size:.72rem;">
-                                    Rp {{ number_format($customer->defaultShippingArea->price_per_kg, 0, ',', '.') }}/kg
+                                    @if($customer->defaultShippingArea->isFlatFee())
+                                        Flat Rp {{ number_format($customer->defaultShippingArea->flat_fee, 0, ',', '.') }}
+                                    @else
+                                        Rp {{ number_format($customer->defaultShippingArea->price_per_kg, 0, ',', '.') }}/kg
+                                    @endif
                                 </div>
                             @else
                                 <span class="text-danger small">

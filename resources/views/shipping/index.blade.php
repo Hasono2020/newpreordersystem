@@ -87,7 +87,13 @@
                     @endif
                     <td class="fw-semibold" data-label="Area / City">{{ $area->name }}</td>
                     <td class="text-muted small" data-label="Province">{{ $area->province ?? '—' }}</td>
-                    <td data-label="Price / kg">Rp {{ number_format($area->price_per_kg, 0, ',', '.') }}</td>
+                    <td data-label="Price / kg">
+                        @if($area->isFlatFee())
+                            <span class="text-success fw-semibold">Flat Rp {{ number_format($area->flat_fee, 0, ',', '.') }}</span>
+                        @else
+                            Rp {{ number_format($area->price_per_kg, 0, ',', '.') }}/kg
+                        @endif
+                    </td>
                     <td data-label="Status">
                         <span class="badge {{ $area->is_active ? 'bg-success' : 'bg-secondary' }}">
                             {{ $area->is_active ? 'Active' : 'Inactive' }}

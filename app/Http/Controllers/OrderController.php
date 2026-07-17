@@ -331,11 +331,20 @@ class OrderController extends Controller
 
         $deleted = 0;
         $deletedNumbers = [];
-        \DB::transaction(function () use ($query, &$deleted, &$deletedNumbers) {
-            $orders = $query->get(['id', 'order_number']);
+        $affectedPairs = collect();
+
+        \DB::transaction(function () use ($query, &$deleted, &$deletedNumbers, &$affectedPairs) {
+            $orders = $query->get(['id', 'order_number', 'customer_id', 'trip_id']);
             if ($orders->isEmpty()) return;
             $orderIds = $orders->pluck('id');
             $deletedNumbers = $orders->pluck('order_number')->all();
+
+            // Collect unique customer+trip pairs BEFORE deleting so we can
+            // recalculate shipping for their remaining orders afterward.
+            $affectedPairs = $orders
+                ->map(fn($o) => ['customer_id' => $o->customer_id, 'trip_id' => $o->trip_id])
+                ->unique(fn($p) => $p['customer_id'] . '_' . $p['trip_id'])
+                ->values();
 
             // Delete in correct FK order: payments → order_items → orders
             // (purchase_order_items has no FK to order_items)
@@ -344,6 +353,14 @@ class OrderController extends Controller
             \DB::table('orders')->whereIn('id', $orderIds)->delete();
             $deleted = $orderIds->count();
         });
+
+        // Recalculate combined shipping for every affected customer+trip.
+        // If a customer had the anchor order deleted, their remaining orders
+        // need a new anchor assigned with the correct shipping fee.
+        // recalcCustomerShipping() returns early safely if no orders remain.
+        foreach ($affectedPairs as $pair) {
+            $this->promoService->recalcCustomerShipping($pair['customer_id'], $pair['trip_id']);
+        }
 
         if ($deleted > 0) {
             $sample = implode(', ', array_slice($deletedNumbers, 0, 10));

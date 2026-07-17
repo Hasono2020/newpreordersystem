@@ -153,7 +153,7 @@ td.right { text-align:right; }
                     Weight: <strong>{{ $order->shipping_kg_charged }} kg</strong>
                 </p>
                 <p style="font-size:12px;">
-                    Rate: Rp {{ number_format($order->shippingArea->price_per_kg, 0, ',', '.') }}/kg
+                    Rate: @if($order->shippingArea->isFlatFee())Flat Rp {{ number_format($order->shippingArea->flat_fee, 0, ',', '.') }}@else Rp {{ number_format($order->shippingArea->price_per_kg, 0, ',', '.') }}/kg@endif
                 </p>
             @else
                 <p style="color:#94a3b8;">No shipping area set</p>

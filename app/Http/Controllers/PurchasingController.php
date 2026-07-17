@@ -323,11 +323,6 @@ class PurchasingController extends Controller
                 'notes'        => $request->notes,
             ]);
 
-            // Recalculate total from existing items (unchanged)
-            $total = (float) DB::table('purchase_order_items')
-                ->where('purchase_order_id', $purchasing->id)
-                ->sum('line_total');
-
             // Merge into existing line if same variant, insert new line otherwise
             if ($request->filled('new_items')) {
                 $existing = DB::table('purchase_order_items')
@@ -369,6 +364,11 @@ class PurchasingController extends Controller
                 }
                 if ($inserts) DB::table('purchase_order_items')->insert($inserts);
             }
+
+            // Recalculate total AFTER all inserts/updates are complete so new lines are included
+            $total = (float) DB::table('purchase_order_items')
+                ->where('purchase_order_id', $purchasing->id)
+                ->sum('line_total');
 
             $purchasing->update(['total_amount' => $total]);
         });

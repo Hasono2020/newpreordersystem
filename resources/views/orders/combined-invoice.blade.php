@@ -143,7 +143,7 @@ td.r { text-align:right; }
                 {{ $shippingArea->name }}
                 @if($shippingArea->province), {{ $shippingArea->province }}@endif
             </div>
-            <div class="sm">Weight: <strong>{{ number_format($totalWeightGram) }}g</strong> ({{ $chargeableKg }} kg) &middot; Rate: Rp {{ number_format($shippingArea->price_per_kg, 0, ',', '.') }}/kg</div>
+            <div class="sm">Weight: <strong>{{ number_format($totalWeightGram) }}g</strong> ({{ $chargeableKg }} kg) &middot; Rate: @if($shippingArea->isFlatFee())Flat Rp {{ number_format($shippingArea->flat_fee, 0, ',', '.') }}@else Rp {{ number_format($shippingArea->price_per_kg, 0, ',', '.') }}/kg@endif</div>
         @else
             <div class="sm" style="color:#94a3b8;">No shipping area set</div>
         @endif

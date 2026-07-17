@@ -37,13 +37,27 @@ class ShippingAreaController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
-            'name'         => 'required|string|max:255',
-            'province'     => 'nullable|string|max:255',
-            'price_per_kg' => 'required|numeric|min:0',
-            'is_active'    => 'boolean',
-            'notes'        => 'nullable|string',
+            'name'                 => 'required|string|max:255',
+            'province'             => 'nullable|string|max:255',
+            'pricing_mode'         => 'nullable|in:per_kg,flat',
+            'price_per_kg'         => 'nullable|numeric|min:0',
+            'flat_fee'             => 'nullable|numeric|min:0',
+            'flat_fee_subsidy_cap' => 'nullable|numeric|min:0',
+            'is_active'            => 'boolean',
+            'notes'                => 'nullable|string',
         ]);
         $data['is_active'] = $request->boolean('is_active', true);
+
+        // If flat fee mode, store flat_fee and zero out price_per_kg (and vice versa)
+        if ($request->input('pricing_mode') === 'flat') {
+            $data['flat_fee']             = $request->filled('flat_fee') ? (float)$request->flat_fee : null;
+            $data['flat_fee_subsidy_cap'] = $request->filled('flat_fee_subsidy_cap') ? (float)$request->flat_fee_subsidy_cap : null;
+            $data['price_per_kg']         = 0;
+        } else {
+            $data['flat_fee']             = null;
+            $data['flat_fee_subsidy_cap'] = null;
+        }
+
         ShippingArea::create($data);
         return redirect()->route('shipping.index')->with('success', 'Shipping area added.');
     }
@@ -56,13 +70,26 @@ class ShippingAreaController extends Controller
     public function update(Request $request, ShippingArea $shipping)
     {
         $data = $request->validate([
-            'name'         => 'required|string|max:255',
-            'province'     => 'nullable|string|max:255',
-            'price_per_kg' => 'required|numeric|min:0',
-            'is_active'    => 'boolean',
-            'notes'        => 'nullable|string',
+            'name'                 => 'required|string|max:255',
+            'province'             => 'nullable|string|max:255',
+            'pricing_mode'         => 'nullable|in:per_kg,flat',
+            'price_per_kg'         => 'nullable|numeric|min:0',
+            'flat_fee'             => 'nullable|numeric|min:0',
+            'flat_fee_subsidy_cap' => 'nullable|numeric|min:0',
+            'is_active'            => 'boolean',
+            'notes'                => 'nullable|string',
         ]);
         $data['is_active'] = $request->boolean('is_active');
+
+        // If flat fee mode, store flat_fee and zero out price_per_kg (and vice versa)
+        if ($request->input('pricing_mode') === 'flat') {
+            $data['flat_fee']             = $request->filled('flat_fee') ? (float)$request->flat_fee : null;
+            $data['flat_fee_subsidy_cap'] = $request->filled('flat_fee_subsidy_cap') ? (float)$request->flat_fee_subsidy_cap : null;
+            $data['price_per_kg']         = 0;
+        } else {
+            $data['flat_fee']             = null;
+            $data['flat_fee_subsidy_cap'] = null;
+        }
         $oldPricePerKg = $shipping->price_per_kg;
         $shipping->update($data);
 
@@ -208,7 +235,19 @@ class ShippingAreaController extends Controller
      */
     public function apiList()
     {
-        return response()->json(ShippingArea::where('is_active', true)->orderBy('name')->get());
+        $areas = ShippingArea::where('is_active', true)->orderBy('name')->get()
+            ->map(fn($a) => [
+                'id'       => $a->id,
+                'name'     => $a->name,
+                'label'    => $a->name . ' — ' . ($a->isFlatFee()
+                                ? 'Flat Rp ' . number_format($a->flat_fee, 0, ',', '.')
+                                : 'Rp ' . number_format($a->price_per_kg, 0, ',', '.') . '/kg'),
+                'flat_fee'             => $a->flat_fee,
+                'flat_fee_subsidy_cap' => $a->flat_fee_subsidy_cap,
+                'price_per_kg'         => $a->price_per_kg,
+                'is_flat_fee'          => $a->isFlatFee(),
+            ]);
+        return response()->json($areas);
     }
 
     public function bulkDestroy(Request $request)

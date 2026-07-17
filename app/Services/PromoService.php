@@ -86,6 +86,12 @@ class PromoService
         $promo              = $this->getBestPromo($order->customer->type, $order->trip_id, $activeItems);
         $discount           = $promo ? $promo['discount'] : 0;
         $maxShippingSubsidy = $promo ? $promo['max_shipping_subsidy'] : 0;
+
+        // Area-level subsidy cap: flat-fee areas cap how much of the fee can be subsidised
+        $areaCap          = $order->shippingArea?->getSubsidyCap();
+        if ($areaCap !== null) {
+            $maxShippingSubsidy = min($maxShippingSubsidy, $areaCap);
+        }
         $shippingDiscount   = min($shippingFee, $maxShippingSubsidy);
 
         $total = $subtotal - $discount + $shippingFee - $shippingDiscount;
@@ -136,8 +142,14 @@ class PromoService
         // item-count thresholds like '5+ items'). Discount + shipping subsidy land on the anchor.
         $customerType       = $orders->first()->customer->type;
         $combinedPromo      = $this->getBestPromo($customerType, $tripId, $allActiveItems);
-        $combinedDiscount   = $combinedPromo ? $combinedPromo['discount'] : 0;
-        $combinedShipSubsidy= $combinedPromo ? $combinedPromo['max_shipping_subsidy'] : 0;
+        $combinedDiscount    = $combinedPromo ? $combinedPromo['discount'] : 0;
+        $combinedShipSubsidy = $combinedPromo ? $combinedPromo['max_shipping_subsidy'] : 0;
+
+        // Area-level subsidy cap for flat-fee areas
+        $areaCap = $shippingArea?->getSubsidyCap();
+        if ($areaCap !== null) {
+            $combinedShipSubsidy = min($combinedShipSubsidy, $areaCap);
+        }
 
         // The anchor = first order that still has active items (oldest). It carries shipping + promo.
         $anchor = $orders->first(fn($o) =>
