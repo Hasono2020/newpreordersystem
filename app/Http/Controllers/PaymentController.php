@@ -678,17 +678,10 @@ class PaymentController extends Controller
         return back()->with('success', 'Payment marked as disputed.');
     }
 
+    // Fix #2: delegate to Order::recalcPaymentStatus() — single source of truth.
     private function recalcOrderPayment(?Order $order): void
     {
         if (!$order) return;
-        $payments = $order->payments()->whereNull('voided_at')->get();
-        $paid = $payments->where('type', '!=', 'refund')->sum('amount')
-              - $payments->where('type', 'refund')->sum('amount');
-        $status = $paid <= 0 ? 'unpaid'
-            : ($paid >= $order->total_amount ? 'paid' : 'partial');
-        if ($status === 'paid') {
-            $order->items()->where('status', 'pending')->update(['status' => 'confirmed']);
-        }
-        $order->update(['deposit_paid' => max(0, $paid), 'payment_status' => $status]);
+        $order->recalcPaymentStatus();
     }
 }

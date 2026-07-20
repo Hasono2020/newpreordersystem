@@ -113,9 +113,17 @@ class CustomerController extends Controller
 
         $promoSvc = app(\App\Services\PromoService::class);
 
-        // If shipping area changed, apply it to this customer's orders that have none
         if ($newAreaId && $newAreaId != $oldAreaId) {
+            // Always fill in orders that have no area set
             $customer->orders()->whereNull('shipping_area_id')
+                ->update(['shipping_area_id' => $newAreaId]);
+
+            // Update unpaid orders in any non-closed trip.
+            // Skip paid/partial — total has already been invoiced to the customer.
+            // Skip closed trips — goods have arrived, shipping is settled.
+            $customer->orders()
+                ->where('payment_status', 'unpaid')
+                ->whereHas('trip', fn($q) => $q->where('status', '!=', 'closed'))
                 ->update(['shipping_area_id' => $newAreaId]);
         }
 
@@ -134,7 +142,7 @@ class CustomerController extends Controller
             if ($typeChanged) {
                 $msg .= " Customer type changed — promo and totals recalculated across {$tripIds->count()} trip(s).";
             } elseif ($areaChanged) {
-                $msg .= ' Shipping area applied and totals recalculated.';
+                $msg .= ' Shipping area updated — all unpaid orders recalculated. Paid orders and closed trips were not changed.';
             }
             return redirect()->route('customers.show', $customer)->with('success', $msg);
         }

@@ -165,7 +165,6 @@ namespace App\Models{
  * @property string $payment_status
  * @property \Illuminate\Support\Carbon|null $invoice_printed_at
  * @property int|null $invoice_printed_by
- * @property string|null $invoice_token
  * @property string|null $notes
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
@@ -196,7 +195,6 @@ namespace App\Models{
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Order whereId($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Order whereInvoicePrintedAt($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Order whereInvoicePrintedBy($value)
- * @method static \Illuminate\Database\Eloquent\Builder<static>|Order whereInvoiceToken($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Order whereNotes($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Order whereOrderNumber($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Order whereOrderedAt($value)
@@ -509,6 +507,8 @@ namespace App\Models{
  * @property string $name
  * @property string|null $province
  * @property numeric $price_per_kg
+ * @property float|null $flat_fee
+ * @property float|null $flat_fee_subsidy_cap
  * @property bool $is_active
  * @property string|null $notes
  * @property \Illuminate\Support\Carbon|null $created_at
@@ -520,6 +520,8 @@ namespace App\Models{
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ShippingArea newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ShippingArea query()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ShippingArea whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|ShippingArea whereFlatFee($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|ShippingArea whereFlatFeeSubsidyCap($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ShippingArea whereId($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ShippingArea whereIsActive($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ShippingArea whereName($value)

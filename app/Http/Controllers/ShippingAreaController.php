@@ -36,22 +36,26 @@ class ShippingAreaController extends Controller
 
     public function store(Request $request)
     {
+        $pricingMode = $request->input('pricing_mode');
+        if (!$pricingMode) {
+            $pricingMode = $request->filled('flat_fee') ? 'flat' : 'per_kg';
+        }
+
         $data = $request->validate([
             'name'                 => 'required|string|max:255',
             'province'             => 'nullable|string|max:255',
             'pricing_mode'         => 'nullable|in:per_kg,flat',
-            'price_per_kg'         => 'nullable|numeric|min:0',
-            'flat_fee'             => 'nullable|numeric|min:0',
+            'price_per_kg'         => $pricingMode === 'per_kg' ? 'required|numeric|min:0' : 'nullable|numeric|min:0',
+            'flat_fee'             => $pricingMode === 'flat'   ? 'required|numeric|min:1' : 'nullable|numeric|min:0',
             'flat_fee_subsidy_cap' => 'nullable|numeric|min:0',
             'is_active'            => 'boolean',
             'notes'                => 'nullable|string',
         ]);
         $data['is_active'] = $request->boolean('is_active', true);
 
-        // If flat fee mode, store flat_fee and zero out price_per_kg (and vice versa)
-        if ($request->input('pricing_mode') === 'flat') {
-            $data['flat_fee']             = $request->filled('flat_fee') ? (float)$request->flat_fee : null;
-            $data['flat_fee_subsidy_cap'] = $request->filled('flat_fee_subsidy_cap') ? (float)$request->flat_fee_subsidy_cap : null;
+        if ($pricingMode === 'flat') {
+            $data['flat_fee']             = (float) $request->flat_fee;
+            $data['flat_fee_subsidy_cap'] = $request->filled('flat_fee_subsidy_cap') ? (float) $request->flat_fee_subsidy_cap : null;
             $data['price_per_kg']         = 0;
         } else {
             $data['flat_fee']             = null;
@@ -69,32 +73,45 @@ class ShippingAreaController extends Controller
 
     public function update(Request $request, ShippingArea $shipping)
     {
+        // Infer pricing_mode from submitted fields as a fallback in case the
+        // radio button value is missing (e.g. JS toggling hid it from the POST).
+        $pricingMode = $request->input('pricing_mode');
+        if (!$pricingMode) {
+            $pricingMode = $request->filled('flat_fee') ? 'flat' : 'per_kg';
+        }
+
         $data = $request->validate([
             'name'                 => 'required|string|max:255',
             'province'             => 'nullable|string|max:255',
             'pricing_mode'         => 'nullable|in:per_kg,flat',
-            'price_per_kg'         => 'nullable|numeric|min:0',
-            'flat_fee'             => 'nullable|numeric|min:0',
+            'price_per_kg'         => $pricingMode === 'per_kg' ? 'required|numeric|min:0' : 'nullable|numeric|min:0',
+            'flat_fee'             => $pricingMode === 'flat'   ? 'required|numeric|min:1' : 'nullable|numeric|min:0',
             'flat_fee_subsidy_cap' => 'nullable|numeric|min:0',
             'is_active'            => 'boolean',
             'notes'                => 'nullable|string',
         ]);
         $data['is_active'] = $request->boolean('is_active');
 
-        // If flat fee mode, store flat_fee and zero out price_per_kg (and vice versa)
-        if ($request->input('pricing_mode') === 'flat') {
-            $data['flat_fee']             = $request->filled('flat_fee') ? (float)$request->flat_fee : null;
-            $data['flat_fee_subsidy_cap'] = $request->filled('flat_fee_subsidy_cap') ? (float)$request->flat_fee_subsidy_cap : null;
+        $oldPricePerKg = (float) $shipping->price_per_kg;
+        $oldFlatFee    = (float) ($shipping->flat_fee ?? 0);
+
+        if ($pricingMode === 'flat') {
+            $data['flat_fee']             = (float) $request->flat_fee;
+            $data['flat_fee_subsidy_cap'] = $request->filled('flat_fee_subsidy_cap') ? (float) $request->flat_fee_subsidy_cap : null;
             $data['price_per_kg']         = 0;
         } else {
             $data['flat_fee']             = null;
             $data['flat_fee_subsidy_cap'] = null;
         }
-        $oldPricePerKg = $shipping->price_per_kg;
+
         $shipping->update($data);
 
-        // If price_per_kg changed, recalc shipping for all affected orders in open trips
-        if ((float)$oldPricePerKg !== (float)$shipping->fresh()->price_per_kg) {
+        // Recalc open orders whenever the effective rate changes —
+        // covers both per-kg edits AND switching to/from flat fee.
+        $newPricePerKg = (float) $shipping->fresh()->price_per_kg;
+        $newFlatFee    = (float) ($shipping->fresh()->flat_fee ?? 0);
+
+        if ($oldPricePerKg !== $newPricePerKg || $oldFlatFee !== $newFlatFee) {
             $this->syncShippingPriceToOpenOrders($shipping);
         }
 

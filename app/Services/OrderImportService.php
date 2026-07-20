@@ -128,6 +128,55 @@ class OrderImportService
 
         $customerAreas = []; // customerId => resolved shipping_area_id, so blank-KOTA rows inherit it
 
+        // ── Fix #9: Pass 1 — resolve customer IDs and count total eligible items
+        // per customer so promo is evaluated on their FULL order (not just 1 item/row).
+        $customerItemCounts = []; // [customerId => total eligible item count]
+        $resolvedCustomers  = []; // [rowIdx => customerId] reused in pass 2
+        foreach ($rows as $rowIdx => $row) {
+            $name    = trim((string) ($row[2] ?? ''));
+            $contact = trim((string) ($row[4] ?? ''));
+            $area    = trim((string) ($row[5] ?? ''));
+            $code    = strtoupper(trim((string) ($row[6] ?? '')));
+            if (empty($name) || empty($code)) continue;
+
+            $normalizedPhone = Customer::normalizePhone($contact);
+            $customerId = null;
+            if ($normalizedPhone && isset($existingPhones[strtolower($normalizedPhone)])) {
+                $customerId = $existingPhones[strtolower($normalizedPhone)];
+            } elseif (isset($existingNames[strtolower($name)])) {
+                $customerId = $existingNames[strtolower($name)];
+            } else {
+                $areaKey = strtolower($area);
+                $areaId  = $shippingAreas[$areaKey]?->id ?? null;
+                if (!$areaId && $area) {
+                    foreach ($shippingAreas as $k => $a) {
+                        if (str_contains($k, $areaKey) || str_contains($areaKey, $k)) { $areaId = $a->id; break; }
+                    }
+                }
+                $customerId = DB::table('customers')->insertGetId([
+                    'name'                     => $name,
+                    'phone'                    => $normalizedPhone ?: null,
+                    'type'                     => 'customer',
+                    'default_shipping_area_id' => $areaId,
+                    'created_at'               => $now,
+                    'updated_at'               => $now,
+                ]);
+                if ($normalizedPhone) $existingPhones[strtolower($normalizedPhone)] = $customerId;
+                $existingNames[strtolower($name)] = $customerId;
+                $customerTypes[$customerId] = 'customer';
+            }
+            $resolvedCustomers[$rowIdx] = $customerId;
+
+            $product = $products[$code] ?? null;
+            $isExcluded = $product?->excluded_from_promo ?? false;
+            if (!$isExcluded) {
+                $customerItemCounts[$customerId] = ($customerItemCounts[$customerId] ?? 0) + 1;
+            }
+        }
+        // Track which customer has already received their promo discount on their first order
+        $customerPromoApplied = [];
+
+        // ── Pass 2: build orders using correct per-customer item counts ──────
         $ordersBatch   = [];
         $itemsBatch    = [];
         $paymentsBatch = [];
@@ -150,33 +199,9 @@ class OrderImportService
 
             if (empty($name) || empty($code)) continue;
 
-            $normalizedPhone = Customer::normalizePhone($contact);
-            $customerId = null;
-            if ($normalizedPhone && isset($existingPhones[strtolower($normalizedPhone)])) {
-                $customerId = $existingPhones[strtolower($normalizedPhone)];
-            } elseif (isset($existingNames[strtolower($name)])) {
-                $customerId = $existingNames[strtolower($name)];
-            } else {
-                $areaKey = strtolower($area);
-                $areaId  = $shippingAreas[$areaKey]?->id ?? null;
-                if (!$areaId && $area) {
-                    foreach ($shippingAreas as $k => $a) {
-                        if (str_contains($k, $areaKey) || str_contains($areaKey, $k)) {
-                            $areaId = $a->id; break;
-                        }
-                    }
-                }
-                $customerId = DB::table('customers')->insertGetId([
-                    'name'                     => $name,
-                    'phone'                    => $normalizedPhone ?: null,
-                    'type'                     => 'customer',
-                    'default_shipping_area_id' => $areaId,
-                    'created_at'               => $now,
-                    'updated_at'               => $now,
-                ]);
-                if ($normalizedPhone) $existingPhones[strtolower($normalizedPhone)] = $customerId;
-                $existingNames[strtolower($name)] = $customerId;
-            }
+            // Customer already resolved in pass 1 — just look it up
+            if (!isset($resolvedCustomers[$rowIdx])) continue;
+            $customerId = $resolvedCustomers[$rowIdx];
 
             // Resolve the shipping area for THIS order from the row's KOTA.
             $areaKey = strtolower($area);
@@ -223,22 +248,32 @@ class OrderImportService
             $shippingFee  = $shippingArea ? $shippingArea->calcShippingFee($weightGram) : 0;
             $chargeableKg = ShippingArea::calcChargeableKg($weightGram);
 
-            $isExcluded   = $product->excluded_from_promo ?? false;
-            $eligibleQty  = $isExcluded ? 0 : 1;
+            // Fix #9: use the customer's TOTAL eligible item count (across all their
+            // rows) so a 5-item customer gets the 5-item promo, not the 1-item promo.
+            // Promo discount is applied only on their FIRST order row to avoid
+            // multiplying it; recalcCustomerShipping() called post-import normalises everything.
+            $totalEligibleQty = $customerItemCounts[$customerId] ?? 0;
             $bestDiscount = 0;
             $bestSubsidy  = 0;
 
             foreach ($promoRules as $rule) {
-                if (!$rule->appliesTo($customerType, $eligibleQty)) continue;
-                $calc    = $rule->calculateDiscount($eligibleQty);
+                if (!$rule->appliesTo($customerType, $totalEligibleQty)) continue;
+                $calc    = $rule->calculateDiscount($totalEligibleQty);
                 $benefit = $calc['discount'] + $calc['max_shipping_subsidy'];
                 if ($benefit > $bestDiscount + $bestSubsidy) {
                     $bestDiscount = $calc['discount'];
                     $bestSubsidy  = $calc['max_shipping_subsidy'];
                 }
             }
-            $shippingDiscount = min($shippingFee, $bestSubsidy);
-            $totalAmount      = max(0, $unitPrice - $bestDiscount + $shippingFee - $shippingDiscount);
+
+            // Only apply discount on first order for this customer; zero it on subsequent rows
+            $isFirstOrder = !isset($customerPromoApplied[$customerId]);
+            if ($isFirstOrder) $customerPromoApplied[$customerId] = true;
+            $appliedDiscount = $isFirstOrder ? $bestDiscount : 0;
+            $appliedSubsidy  = $isFirstOrder ? $bestSubsidy  : 0;
+
+            $shippingDiscount = min($shippingFee, $appliedSubsidy);
+            $totalAmount      = max(0, $unitPrice - $appliedDiscount + $shippingFee - $shippingDiscount);
 
             $orderedAt = $baseTime->copy()->addSeconds($rowIdx)->toDateTimeString();
             $notes     = implode(' | ', array_filter([$an, $ketPost])) ?: null;
@@ -252,7 +287,7 @@ class OrderImportService
                 'ordered_at'           => $orderedAt,
                 'created_by'           => $createdBy,
                 'subtotal'             => $unitPrice,
-                'discount_amount'      => $bestDiscount,
+                'discount_amount'      => $appliedDiscount,
                 'shipping_fee'         => $shippingFee,
                 'shipping_discount'    => $shippingDiscount,
                 'shipping_weight_gram' => $weightGram,
@@ -360,20 +395,25 @@ class OrderImportService
         return (int) $m[1] >= 1900 && (int) $m[1] <= 2100 && checkdate((int) $m[2], (int) $m[3], (int) $m[1]);
     }
 
+    /**
+     * Fix #1: insert orders one-by-one with insertGetId() to capture each real
+     * auto-increment ID. The previous approach used lastInsertId() after a bulk
+     * insert and assumed consecutive IDs — unsafe under concurrent load where
+     * another request can insert rows between ours, causing items and payments
+     * to be linked to the wrong orders silently.
+     *
+     * Items and payments are still bulk-inserted (they reference the now-known
+     * order IDs), so throughput remains high.
+     */
     private function flushOrderBatch(array &$orders, array &$items, array &$payments): void
     {
         if (empty($orders)) return;
-        $count = count($orders);
 
-        foreach ($orders as $i => &$order) {
+        $insertedIds = [];
+        foreach ($orders as $i => $order) {
             $order['order_number'] = 'ORD-' . strtoupper(bin2hex(random_bytes(5)));
+            $insertedIds[$i] = DB::table('orders')->insertGetId($order);
         }
-        unset($order);
-
-        DB::table('orders')->insert($orders);
-
-        $firstId = (int) DB::getPdo()->lastInsertId();
-        $insertedIds = range($firstId, $firstId + $count - 1);
 
         $itemsToInsert = [];
         foreach ($items as $item) {

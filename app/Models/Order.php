@@ -44,6 +44,27 @@ class Order extends Model
         return $this->total_amount - $this->deposit_paid;
     }
 
+    /**
+     * Fix #2: single source of truth for payment status recalculation.
+     * Previously duplicated identically in OrderController, PaymentController,
+     * and CreditReallocationService — any bug fix had to be applied in 3 places.
+     * All three now delegate here instead of maintaining their own copy.
+     */
+    public function recalcPaymentStatus(): void
+    {
+        $payments = $this->payments()->whereNull('voided_at')->get();
+        $paid = $payments->where('type', '!=', 'refund')->sum('amount')
+              - $payments->where('type', 'refund')->sum('amount');
+        $status = $paid <= 0 ? 'unpaid'
+            : ($paid >= $this->total_amount ? 'paid' : 'partial');
+        // Auto-confirm pending items when fully paid.
+        // Do NOT revert confirmed items when a payment is voided (intentional).
+        if ($status === 'paid') {
+            $this->items()->where('status', 'pending')->update(['status' => 'confirmed']);
+        }
+        $this->update(['deposit_paid' => max(0, $paid), 'payment_status' => $status]);
+    }
+
     public function getPaymentStatusBadgeAttribute(): string
     {
         return match($this->payment_status) {

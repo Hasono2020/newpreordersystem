@@ -606,7 +606,7 @@ class OrderController extends Controller
         if ($tripId)            $query->where('trip_id', $tripId);
         if (!empty($orderIds))  $query->whereIn('id', $orderIds);
 
-        $orders = $query->orderBy('ordered_at')->get();
+        $orders = $query->with('items.product', 'items.variant', 'shippingArea')->orderBy('ordered_at')->get();
 
         if ($orders->isEmpty()) {
             return back()->with('error', 'No orders found for this customer.');
