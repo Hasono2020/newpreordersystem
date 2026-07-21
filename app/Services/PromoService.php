@@ -22,14 +22,7 @@ class PromoService
         $this->ruleCache = [];
     }
 
-    /**
-     * Fix #5: accept optional $actualShippingFee so we compare REAL benefit
-     * when picking the best promo, not the theoretical max subsidy.
-     * Old code compared raw discount + max_shipping_subsidy, which could pick
-     * a subsidy-heavy rule over a better discount rule when actual shipping
-     * is lower than the subsidy cap.
-     */
-    public function getBestPromo(string $customerType, int $tripId, \Illuminate\Support\Collection $activeItems, ?float $actualShippingFee = null): ?array
+    public function getBestPromo(string $customerType, int $tripId, \Illuminate\Support\Collection $activeItems): ?array
     {
         if (!isset($this->ruleCache[$tripId])) {
             $this->ruleCache[$tripId] = PromoRule::where('is_active', true)
@@ -42,7 +35,7 @@ class PromoService
         $rules = $this->ruleCache[$tripId];
 
         $best        = null;
-        $bestBenefit = -1;
+        $bestDiscount = -1;
 
         foreach ($rules as $rule) {
             // Filter out excluded product codes
@@ -51,18 +44,11 @@ class PromoService
 
             if (!$rule->appliesTo($customerType, $itemCount)) continue;
 
-            $calc = $rule->calculateDiscount($itemCount);
+            $calc         = $rule->calculateDiscount($itemCount);
+            $totalBenefit = $calc['discount'] + $calc['max_shipping_subsidy'];
 
-            // Cap the subsidy by actual shipping when known, so comparison
-            // reflects real value rather than theoretical maximum.
-            $effectiveSubsidy = $actualShippingFee !== null
-                ? min($calc['max_shipping_subsidy'], $actualShippingFee)
-                : $calc['max_shipping_subsidy'];
-
-            $totalBenefit = $calc['discount'] + $effectiveSubsidy;
-
-            if ($totalBenefit > $bestBenefit) {
-                $bestBenefit = $totalBenefit;
+            if ($totalBenefit > $bestDiscount) {
+                $bestDiscount = $totalBenefit;
                 $best = [
                     'rule'                => $rule,
                     'discount'            => $calc['discount'],
@@ -144,8 +130,8 @@ class PromoService
         $orders = \App\Models\Order::with('items.product', 'items.variant', 'customer', 'shippingArea')
             ->where('customer_id', $customerId)
             ->where('trip_id', $tripId)
-            ->whereNotIn('payment_status', []) // all statuses
-            ->orderBy('ordered_at')->orderBy('id')
+            ->orderByRaw('COALESCE(ordered_at, created_at) ASC')
+            ->orderBy('id')
             ->get();
 
         if ($orders->isEmpty()) return;
@@ -154,25 +140,6 @@ class PromoService
         $allActiveItems = $orders->flatMap(fn($o) =>
             $o->items->whereNotIn('status', ['cancelled', 'sold_out'])
         );
-
-        // Fix #4: if every item is cancelled/sold_out, zero all financial fields
-        // rather than applying a discount to an anchor with subtotal = 0.
-        if ($allActiveItems->isEmpty()) {
-            \DB::transaction(function () use ($orders) {
-                foreach ($orders as $order) {
-                    $order->update([
-                        'subtotal'             => 0,
-                        'discount_amount'      => 0,
-                        'shipping_fee'         => 0,
-                        'shipping_discount'    => 0,
-                        'shipping_weight_gram' => 0,
-                        'shipping_kg_charged'  => 0,
-                        'total_amount'         => 0,
-                    ]);
-                }
-            });
-            return;
-        }
         $combinedGrams = $this->calcTotalWeightGram($allActiveItems);
 
         // Pick a shipping area (first order that has one)

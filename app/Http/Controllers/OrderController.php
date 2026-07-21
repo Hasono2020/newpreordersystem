@@ -193,9 +193,8 @@ class OrderController extends Controller
         $shippingAreas = ShippingArea::where('is_active', true)->orderBy('name')->get();
 
         // Determine which promo applies (for display only — no DB writes)
-        $promoSvc   = app(\App\Services\PromoService::class);
-        $activeItems = $order->items->whereNotIn('status', ['cancelled', 'sold_out']);
-        $appliedPromo = $promoSvc->getBestPromo(
+        $activeItems  = $order->items->whereNotIn('status', ['cancelled', 'sold_out']);
+        $appliedPromo = $this->promoService->getBestPromo(
             $order->customer->type,
             $order->trip_id,
             $activeItems
@@ -569,19 +568,10 @@ class OrderController extends Controller
         );
     }
 
+    // Fix #1: delegate to Order::recalcPaymentStatus() — single source of truth.
     private function recalcOrderPayment(Order $order): void
     {
-        $payments = $order->payments()->whereNull('voided_at')->get();
-        $paid = $payments->where('type', '!=', 'refund')->sum('amount')
-              - $payments->where('type', 'refund')->sum('amount');
-        $status = $paid <= 0 ? 'unpaid'
-            : ($paid >= $order->total_amount ? 'paid' : 'partial');
-        // Only auto-confirm pending items when fully paid
-        // Do NOT revert already-confirmed items when payment is voided
-        if ($status === 'paid') {
-            $order->items()->where('status', 'pending')->update(['status' => 'confirmed']);
-        }
-        $order->update(['deposit_paid' => max(0, $paid), 'payment_status' => $status]);
+        $order->recalcPaymentStatus();
     }
 
     public function invoice(Order $order)
@@ -606,7 +596,8 @@ class OrderController extends Controller
         if ($tripId)            $query->where('trip_id', $tripId);
         if (!empty($orderIds))  $query->whereIn('id', $orderIds);
 
-        $orders = $query->with('items.product', 'items.variant', 'shippingArea')->orderBy('ordered_at')->get();
+        // Fix #8: single with() call — no duplicate eager loads
+        $orders = $query->orderBy('ordered_at')->get();
 
         if ($orders->isEmpty()) {
             return back()->with('error', 'No orders found for this customer.');
@@ -629,10 +620,9 @@ class OrderController extends Controller
         $combinedShipping = $shippingArea ? $shippingArea->calcShippingFee($totalWeightGram) : 0;
         $chargeableKg     = \App\Models\ShippingArea::calcChargeableKg($totalWeightGram);
 
-        // Combined promo based on all items together
-        $promoSvc     = app(\App\Services\PromoService::class);
+        // Fix #4: use constructor-injected promoService (warm cache, consistent instance)
         $combinedPromo = $tripId
-            ? $promoSvc->getBestPromo($customer->type, $tripId, $allActiveItems)
+            ? $this->promoService->getBestPromo($customer->type, $tripId, $allActiveItems)
             : null;
 
         $combinedDiscount        = $combinedPromo ? $combinedPromo['discount'] : 0;

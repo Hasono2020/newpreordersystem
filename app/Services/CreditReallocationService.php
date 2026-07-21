@@ -123,7 +123,7 @@ class CreditReallocationService
         }
     }
 
-    // Fix #2: delegate to Order::recalcPaymentStatus() — single source of truth.
+    // Fix #1: delegate to Order::recalcPaymentStatus() — single source of truth.
     private function recalcOrderPayment(Order $order): void
     {
         $order->recalcPaymentStatus();

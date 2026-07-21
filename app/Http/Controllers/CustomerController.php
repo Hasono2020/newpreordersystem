@@ -165,8 +165,10 @@ class CustomerController extends Controller
             ->whereHas('trip', fn($q) => $q->where('status', '!=', 'closed'))
             ->update(['shipping_area_id' => $areaId]);
 
-        // Also catch orders with no area at all
-        $customer->orders()->whereNull('shipping_area_id')
+        // Also catch orders with no area at all — but still respect the closed-trip rule
+        $customer->orders()
+            ->whereNull('shipping_area_id')
+            ->whereHas('trip', fn($q) => $q->where('status', '!=', 'closed'))
             ->update(['shipping_area_id' => $areaId]);
 
         // Recalculate shipping + promo per trip

@@ -170,16 +170,32 @@ class ShippingAreaController extends Controller
 
         \App\Models\ActivityLog::record(
             'shipping.price_synced',
-            "Shipping rate updated for \"{$shipping->name}\" → Rp " . number_format($shipping->price_per_kg, 0, ',', '.') .
-                "/kg. Auto-recalculated shipping fee on {$orderCount} order(s) in open trips: {$sample}",
+            "Shipping rate updated for \"{$shipping->name}\" → " . ($shipping->isFlatFee()
+                ? 'Flat Rp ' . number_format($shipping->flat_fee, 0, ',', '.')
+                : 'Rp ' . number_format($shipping->price_per_kg, 0, ',', '.') . '/kg') .
+                ". Auto-recalculated shipping fee on {$orderCount} order(s) in open trips: {$sample}",
             'shipping_area',
             $shipping->id,
-            ['price_per_kg' => ['old' => $shipping->getOriginal('price_per_kg'), 'new' => $shipping->price_per_kg]]
+            [
+                'old' => $shipping->isFlatFee()
+                    ? ['type' => 'flat', 'flat_fee' => $shipping->flat_fee]
+                    : ['type' => 'per_kg', 'price_per_kg' => $shipping->price_per_kg],
+            ]
         );
     }
 
     public function destroy(ShippingArea $shipping)
     {
+        $customerCount = \App\Models\Customer::where('default_shipping_area_id', $shipping->id)->count();
+        $orderCount    = \App\Models\Order::where('shipping_area_id', $shipping->id)->count();
+
+        if ($customerCount > 0 || $orderCount > 0) {
+            return back()->with('error',
+                "Cannot delete \"{$shipping->name}\" — it is still used by {$customerCount} customer(s) and {$orderCount} order(s). " .
+                "Reassign them first or use bulk delete to forcefully remove."
+            );
+        }
+
         $shipping->delete();
         return redirect()->route('shipping.index')->with('success', 'Deleted.');
     }
@@ -192,19 +208,31 @@ class ShippingAreaController extends Controller
     public function template()
     {
         return $this->streamXlsx('shipping_areas_template.xlsx', [
-            ['name', 'province', 'price_per_kg', 'is_active', 'notes'],
-            ['Batam', 'Kepulauan Riau', 25000, 1, ''],
-            ['Jakarta Pusat', 'DKI Jakarta', 30000, 1, ''],
-            ['Surabaya', 'Jawa Timur', 35000, 1, ''],
+            ['name', 'province', 'pricing_mode', 'price_per_kg', 'flat_fee', 'flat_fee_subsidy_cap', 'is_active', 'notes'],
+            // pricing_mode: per_kg | flat
+            // If pricing_mode=flat, fill flat_fee (and optionally flat_fee_subsidy_cap); leave price_per_kg blank.
+            // If pricing_mode=per_kg, fill price_per_kg; leave flat_fee blank.
+            ['Batam',          'Kepulauan Riau', 'flat',   '',     10000, '', 1, ''],
+            ['Jakarta Pusat',  'DKI Jakarta',    'per_kg', 30000,  '',    '', 1, ''],
+            ['Surabaya',       'Jawa Timur',     'per_kg', 35000,  '',    '', 1, ''],
         ]);
     }
 
     public function export()
     {
         $areas = ShippingArea::orderBy('name')->get();
-        $rows  = [['name', 'province', 'price_per_kg', 'is_active', 'notes']];
+        $rows  = [['name', 'province', 'pricing_mode', 'price_per_kg', 'flat_fee', 'flat_fee_subsidy_cap', 'is_active', 'notes']];
         foreach ($areas as $area) {
-            $rows[] = [$area->name, $area->province, $area->price_per_kg, $area->is_active ? 1 : 0, $area->notes];
+            $rows[] = [
+                $area->name,
+                $area->province,
+                $area->isFlatFee() ? 'flat' : 'per_kg',
+                $area->price_per_kg,
+                $area->flat_fee ?? '',
+                $area->flat_fee_subsidy_cap ?? '',
+                $area->is_active ? 1 : 0,
+                $area->notes,
+            ];
         }
         return $this->streamXlsx('shipping_areas_export.xlsx', $rows);
     }
@@ -223,18 +251,34 @@ class ShippingAreaController extends Controller
         $errors   = [];
 
         foreach ($rows as $row) {
-            $name      = trim($row[0] ?? '');
-            $province  = trim($row[1] ?? '');
-            $price     = (float) str_replace(',', '', $row[2] ?? 0);
-            $isActive  = in_array(strtolower((string)($row[3] ?? '1')), ['1','true','yes','active']);
-            $notes     = trim($row[4] ?? '');
+            $name             = trim($row[0] ?? '');
+            $province         = trim($row[1] ?? '');
+            $pricingMode      = strtolower(trim($row[2] ?? 'per_kg'));
+            $pricePerKg       = (float) str_replace(',', '', $row[3] ?? 0);
+            $flatFee          = $row[4] !== '' && $row[4] !== null ? (float) str_replace(',', '', $row[4]) : null;
+            $flatFeeSubsidy   = $row[5] !== '' && $row[5] !== null ? (float) str_replace(',', '', $row[5]) : null;
+            $isActive         = in_array(strtolower((string)($row[6] ?? '1')), ['1','true','yes','active']);
+            $notes            = trim($row[7] ?? '');
 
             if (empty($name)) continue;
+
+            // Infer pricing_mode from data if not explicitly set
+            if (!in_array($pricingMode, ['flat', 'per_kg'])) {
+                $pricingMode = ($flatFee !== null && $flatFee > 0) ? 'flat' : 'per_kg';
+            }
+
+            $attrs = $pricingMode === 'flat'
+                ? ['flat_fee' => $flatFee, 'flat_fee_subsidy_cap' => $flatFeeSubsidy, 'price_per_kg' => 0]
+                : ['price_per_kg' => $pricePerKg, 'flat_fee' => null, 'flat_fee_subsidy_cap' => null];
 
             try {
                 ShippingArea::updateOrCreate(
                     ['name' => $name],
-                    ['province' => $province, 'price_per_kg' => $price, 'is_active' => $isActive, 'notes' => $notes]
+                    array_merge($attrs, [
+                        'province'  => $province,
+                        'is_active' => $isActive,
+                        'notes'     => $notes,
+                    ])
                 );
                 $imported++;
             } catch (\Exception $e) {

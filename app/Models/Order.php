@@ -45,10 +45,9 @@ class Order extends Model
     }
 
     /**
-     * Fix #2: single source of truth for payment status recalculation.
-     * Previously duplicated identically in OrderController, PaymentController,
+     * Fix #1: single source of truth for payment recalculation.
+     * Previously duplicated in OrderController, PaymentController,
      * and CreditReallocationService — any bug fix had to be applied in 3 places.
-     * All three now delegate here instead of maintaining their own copy.
      */
     public function recalcPaymentStatus(): void
     {
@@ -79,9 +78,11 @@ class Order extends Model
         parent::boot();
         static::creating(function ($order) {
             if (!$order->order_number) {
+                $attempts = 0;
                 do {
                     $number = 'ORD-' . strtoupper(substr(md5(uniqid(mt_rand(), true)), 0, 10));
-                } while (static::where('order_number', $number)->exists());
+                    $attempts++;
+                } while (static::where('order_number', $number)->exists() && $attempts < 10);
                 $order->order_number = $number;
             }
         });

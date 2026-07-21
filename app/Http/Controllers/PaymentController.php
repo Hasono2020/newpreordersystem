@@ -307,7 +307,11 @@ class PaymentController extends Controller
                     ->where('trip_id', $data['trip_id'])
                     ->where('customer_id', $data['customer_id'])
                     ->first();
-                if (!$order) continue;
+                // Fix #9: throw so the transaction rolls back and user sees an error,
+                // rather than silently skipping and showing a misleading success message.
+                if (!$order) {
+                    throw new \RuntimeException("Order #{$alloc['order_id']} does not belong to this customer or trip.");
+                }
 
                 $order->payments()->create([
                     'batch_id'    => $batchId,
@@ -322,7 +326,6 @@ class PaymentController extends Controller
                 $affectedOrderIds[] = $order->id;
             }
 
-            // Recalculate each affected order's payment status
             foreach (array_unique($affectedOrderIds) as $oid) {
                 $this->recalcOrderPayment(Order::find($oid));
             }
@@ -678,7 +681,7 @@ class PaymentController extends Controller
         return back()->with('success', 'Payment marked as disputed.');
     }
 
-    // Fix #2: delegate to Order::recalcPaymentStatus() — single source of truth.
+    // Fix #1: delegate to Order::recalcPaymentStatus() — single source of truth.
     private function recalcOrderPayment(?Order $order): void
     {
         if (!$order) return;
