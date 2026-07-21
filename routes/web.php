@@ -56,6 +56,7 @@ Route::middleware('auth')->group(function () {
 
     // Customers
     Route::delete('customers-bulk', [CustomerController::class, 'bulkDestroy'])->middleware('perm:customers.delete')->name('customers.bulk-destroy');
+    Route::post('customers/{customer}/apply-shipping', [CustomerController::class, 'applyShipping'])->middleware('perm:customers.edit')->name('customers.apply-shipping');
     Route::resource('customers', CustomerController::class);
     Route::get('customers-export', [CustomerController::class, 'export'])->name('customers.export');
     Route::get('customers-import-template', [CustomerController::class, 'importTemplate'])->name('customers.import.template');

@@ -11,6 +11,15 @@
     <a href="{{ route('customers.edit', $customer) }}" class="btn btn-sm btn-outline-secondary">
         <i class="bi bi-pencil me-1"></i>Edit
     </a>
+    @if($customer->default_shipping_area_id)
+    <form method="POST" action="{{ route('customers.apply-shipping', $customer) }}" class="d-inline"
+          onsubmit="return confirm('Apply {{ $customer->defaultShippingArea->name }} to all orders in non-closed trips and recalculate? This affects all payment statuses.')">
+        @csrf
+        <button type="submit" class="btn btn-sm btn-outline-warning">
+            <i class="bi bi-arrow-repeat me-1"></i>Apply Shipping to Orders
+        </button>
+    </form>
+    @endif
     @endif
 @if(auth()->user()->hasPermission('orders.create'))
     <a href="{{ route('orders.create', ['customer_id' => $customer->id]) }}" class="btn btn-sm btn-primary">

@@ -114,16 +114,14 @@ class CustomerController extends Controller
         $promoSvc = app(\App\Services\PromoService::class);
 
         if ($newAreaId && $newAreaId != $oldAreaId) {
-            // Always fill in orders that have no area set
-            $customer->orders()->whereNull('shipping_area_id')
+            // Update ALL orders in non-closed trips — only closed trips are exempt
+            // because goods have arrived and shipping is fully settled.
+            $customer->orders()
+                ->whereHas('trip', fn($q) => $q->where('status', '!=', 'closed'))
                 ->update(['shipping_area_id' => $newAreaId]);
 
-            // Update unpaid orders in any non-closed trip.
-            // Skip paid/partial — total has already been invoiced to the customer.
-            // Skip closed trips — goods have arrived, shipping is settled.
-            $customer->orders()
-                ->where('payment_status', 'unpaid')
-                ->whereHas('trip', fn($q) => $q->where('status', '!=', 'closed'))
+            // Also catch any orders with no trip or null shipping area
+            $customer->orders()->whereNull('shipping_area_id')
                 ->update(['shipping_area_id' => $newAreaId]);
         }
 
@@ -142,12 +140,43 @@ class CustomerController extends Controller
             if ($typeChanged) {
                 $msg .= " Customer type changed — promo and totals recalculated across {$tripIds->count()} trip(s).";
             } elseif ($areaChanged) {
-                $msg .= ' Shipping area updated — all unpaid orders recalculated. Paid orders and closed trips were not changed.';
+                $msg .= ' Shipping area updated — all orders recalculated. Closed trips were not changed.';
             }
             return redirect()->route('customers.show', $customer)->with('success', $msg);
         }
 
         return redirect()->route('customers.show', $customer)->with('success', 'Customer updated.');
+    }
+
+    /**
+     * Force-apply the customer's current default_shipping_area to all their
+     * orders in non-closed trips, then recalculate shipping + promo for each trip.
+     * Useful when the area was already correct but old orders still show the old area.
+     */
+    public function applyShipping(Customer $customer)
+    {
+        $areaId = $customer->default_shipping_area_id;
+        if (!$areaId) {
+            return back()->with('error', 'This customer has no default shipping area set.');
+        }
+
+        // Update ALL orders in non-closed trips regardless of payment status
+        $updated = $customer->orders()
+            ->whereHas('trip', fn($q) => $q->where('status', '!=', 'closed'))
+            ->update(['shipping_area_id' => $areaId]);
+
+        // Also catch orders with no area at all
+        $customer->orders()->whereNull('shipping_area_id')
+            ->update(['shipping_area_id' => $areaId]);
+
+        // Recalculate shipping + promo per trip
+        $promoSvc = app(\App\Services\PromoService::class);
+        $tripIds  = $customer->orders()->distinct()->pluck('trip_id')->filter();
+        foreach ($tripIds as $tripId) {
+            $promoSvc->recalcCustomerShipping($customer->id, $tripId);
+        }
+
+        return back()->with('success', "Shipping area applied to {$updated} order(s) and recalculated.");
     }
 
     public function destroy(Customer $customer)
