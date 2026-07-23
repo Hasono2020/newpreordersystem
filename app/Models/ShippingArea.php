@@ -36,13 +36,13 @@ class ShippingArea extends Model
 
     /**
      * Calculate chargeable kg from total grams.
-     * Rule: <= 1350g = 1kg, <= 2350g = 2kg, etc.
+     * Rule: <= 1320g = 1kg, <= 2320g = 2kg, etc.
      */
     public static function calcChargeableKg(int $grams): float
     {
         if ($grams <= 0) return 0;
-        if ($grams <= 1350) return 1;
-        return ceil(($grams - 350) / 1000);
+        if ($grams <= 1320) return 1;
+        return ceil(($grams - 320) / 1000);
     }
 
     /**
@@ -66,6 +66,65 @@ class ShippingArea extends Model
      * For flat-fee areas, the cap is the flat fee itself (or flat_fee_subsidy_cap if set).
      * For per-kg areas, null means no area-level cap (promo rule decides).
      */
+    /**
+     * Build a [lowercase name => id] map for bulk imports (one query).
+     * Areas with a blank name are excluded — an empty key makes
+     * str_contains() match EVERY lookup and silently assign the wrong area.
+     */
+    public static function importLookup(): array
+    {
+        return static::query()->get(['id', 'name'])
+            ->reduce(function (array $carry, $area) {
+                $key = strtolower(trim((string) $area->name));
+                if ($key !== '') {
+                    $carry[$key] = $area->id;
+                }
+                return $carry;
+            }, []);
+    }
+
+    /**
+     * Resolve a spreadsheet area name against importLookup().
+     *
+     * Exact match always wins. Only then do we fall back to a substring
+     * match, and the LONGEST matching area name wins rather than whichever
+     * row the database happened to return first. That matters: with a
+     * first-match-wins loop, an area named "JAK" would silently swallow
+     * "JAKBAR", "JAKPUS" and "JAKUT", and which one you got depended on
+     * arbitrary row order.
+     *
+     * Returns null when nothing matches — callers must handle that
+     * explicitly rather than quietly saving a customer with no area.
+     */
+    public static function resolveFromLookup(string $needle, array $lookup): ?int
+    {
+        $key = strtolower(trim($needle));
+        if ($key === '') {
+            return null;
+        }
+
+        if (isset($lookup[$key])) {
+            return $lookup[$key];
+        }
+
+        $bestId  = null;
+        $bestLen = 0;
+        foreach ($lookup as $name => $id) {
+            $name = (string) $name; // numeric-looking names become int keys in PHP
+            if ($name === '') {
+                continue;
+            }
+            if (str_contains($name, $key) || str_contains($key, $name)) {
+                if (strlen($name) > $bestLen) {
+                    $bestLen = strlen($name);
+                    $bestId  = $id;
+                }
+            }
+        }
+
+        return $bestId;
+    }
+
     public function getSubsidyCap(): ?float
     {
         if ($this->isFlatFee()) {

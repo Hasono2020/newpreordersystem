@@ -59,9 +59,11 @@ class CustomerController extends Controller
             'type'                     => 'required|in:customer,reseller,selected_customer',
             'notes'                    => 'nullable|string',
             'default_shipping_area_id' => 'required|exists:shipping_areas,id',
+            'use_cargo'                => 'boolean',
         ], [
             'phone.unique' => 'This phone number is already registered to another customer.',
         ]);
+        $data['use_cargo'] = $request->boolean('use_cargo');
 
         $data['created_by'] = \Illuminate\Support\Facades\Auth::id();
         $customer = Customer::create($data);
@@ -101,13 +103,16 @@ class CustomerController extends Controller
             'type'                     => 'required|in:customer,reseller,selected_customer',
             'notes'                    => 'nullable|string',
             'default_shipping_area_id' => 'required|exists:shipping_areas,id',
+            'use_cargo'                => 'boolean',
         ], [
             'phone.unique' => 'This phone number is already registered to another customer.',
         ]);
+        $data['use_cargo'] = $request->boolean('use_cargo');
 
-        $oldAreaId = $customer->default_shipping_area_id;
-        $newAreaId = $data['default_shipping_area_id'];
-        $oldType   = $customer->type;
+        $oldAreaId  = $customer->default_shipping_area_id;
+        $newAreaId  = $data['default_shipping_area_id'];
+        $oldType    = $customer->type;
+        $oldCargo   = (bool) $customer->use_cargo;
 
         $customer->update($data);
 
@@ -125,12 +130,14 @@ class CustomerController extends Controller
                 ->update(['shipping_area_id' => $newAreaId]);
         }
 
-        // If the customer type changed (affects promo tier) OR the shipping area changed,
+        // If the customer type changed (affects promo tier), the shipping area
+        // changed, or the cargo flag changed (affects chargeable weight),
         // recombine shipping + promo across all the customer's orders, per trip.
-        $typeChanged = $oldType !== $customer->type;
-        $areaChanged = $newAreaId && $newAreaId != $oldAreaId;
+        $typeChanged  = $oldType !== $customer->type;
+        $areaChanged  = $newAreaId && $newAreaId != $oldAreaId;
+        $cargoChanged = $oldCargo !== (bool) $customer->use_cargo;
 
-        if ($typeChanged || $areaChanged) {
+        if ($typeChanged || $areaChanged || $cargoChanged) {
             $tripIds = $customer->orders()->distinct()->pluck('trip_id')->filter();
             foreach ($tripIds as $tripId) {
                 $promoSvc->recalcCustomerShipping($customer->id, $tripId);
@@ -141,6 +148,8 @@ class CustomerController extends Controller
                 $msg .= " Customer type changed — promo and totals recalculated across {$tripIds->count()} trip(s).";
             } elseif ($areaChanged) {
                 $msg .= ' Shipping area updated — all orders recalculated. Closed trips were not changed.';
+            } elseif ($cargoChanged) {
+                $msg .= ' Cargo setting changed — shipping weight and totals recalculated across '.$tripIds->count().' trip(s).';
             }
             return redirect()->route('customers.show', $customer)->with('success', $msg);
         }
@@ -245,8 +254,7 @@ class CustomerController extends Controller
             ->pluck('name')
             ->mapWithKeys(fn($n) => [strtolower(trim($n)) => true])->toArray();
 
-        $shippingAreas = \App\Models\ShippingArea::all()
-            ->mapWithKeys(fn($a) => [strtolower(trim($a->name)) => $a->id])->toArray();
+        $shippingAreas = \App\Models\ShippingArea::importLookup();
 
         // ── Validation pass ─────────────────────────────────────────────
         $validationErrors = [];
@@ -271,9 +279,10 @@ class CustomerController extends Controller
 
         // ── Import pass ─────────────────────────────────────────────────
         $imported    = 0;
-        $skipped     = 0;
-        $skipReasons = [];
-        $toInsert    = [];
+        $skipped        = 0;
+        $skipReasons    = [];
+        $unmatchedAreas = [];
+        $toInsert       = [];
         $now         = now()->toDateTimeString();
 
         foreach ($rows as $rowIdx => $row) {
@@ -297,22 +306,14 @@ class CustomerController extends Controller
                 $skipped++; $skipReasons[] = "Row {$lineNum} ({$name}): name already exists."; continue;
             }
 
-            // Resolve shipping area in memory
-            $areaId = null;
-            if ($areaName) {
-                $key = strtolower($areaName);
-                $areaId = $shippingAreas[$key] ?? null;
-                if (!$areaId) {
-                    // fuzzy match
-                    foreach ($shippingAreas as $aKey => $aId) {
-                        if (str_contains($aKey, $key) || str_contains($key, $aKey)) {
-                            $areaId = $aId; break;
-                        }
-                    }
-                }
-                if (!$areaId) {
-                    $skipped++; $skipReasons[] = "Row {$lineNum} ({$name}): area '{$areaName}' not found."; continue;
-                }
+            // Resolve shipping area in memory (exact match first, then a
+            // longest-wins substring fallback - see ShippingArea::resolveFromLookup).
+            $areaId = \App\Models\ShippingArea::resolveFromLookup($areaName, $shippingAreas);
+            if ($areaName !== '' && !$areaId) {
+                $skipped++;
+                $unmatchedAreas[strtoupper($areaName)] = true;
+                $skipReasons[] = "Row {$lineNum} ({$name}): area '{$areaName}' not found.";
+                continue;
             }
 
             $toInsert[] = [
@@ -345,6 +346,17 @@ class CustomerController extends Controller
 
         $msg = "✓ Imported {$imported} customer(s).";
         if ($skipped) $msg .= " {$skipped} skipped.";
+        // Name the area values that matched nothing. Without this the only
+        // clue was a per-row reason buried in a long list, so a whole column
+        // of unrecognised area names looked like "the import just lost them".
+        if (!empty($unmatchedAreas)) {
+            $names = array_keys($unmatchedAreas);
+            sort($names);
+            $shown = implode(', ', array_slice($names, 0, 10));
+            if (count($names) > 10) $shown .= ' (+' . (count($names) - 10) . ' more)';
+            $msg .= ' These shipping area names are not in the system yet: ' . $shown
+                  . '. Create them under Shipping Areas, then re-import those rows.';
+        }
         return redirect()->route('customers.index')->with($skipped ? 'warning' : 'success', $msg);
     }
     public function bulkDestroy(Request $request)

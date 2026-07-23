@@ -64,12 +64,28 @@ class PromoService
     /**
      * Calculate total weight in grams from active order items.
      */
-    public function calcTotalWeightGram(\Illuminate\Support\Collection $activeItems): int
+    /**
+     * Total chargeable weight across a set of active items, optionally
+     * bumped by the customer's "use cargo" flag.
+     *
+     * The +1000g only applies once here, regardless of how many times
+     * this is called per shipment — callers combining multiple orders
+     * into one shipment (recalcCustomerShipping) must call this ONCE on
+     * the combined item set, not once per order, or the bump would
+     * effectively multiply per order despite the intended "once per
+     * shipment" behavior.
+     */
+    public function calcTotalWeightGram(\Illuminate\Support\Collection $activeItems, bool $useCargo = false): int
     {
         $total = 0;
         foreach ($activeItems as $item) {
             $weight = $item->product?->weight_gram ?? 0;
             $total += $weight * $item->quantity;
+        }
+        // No bump for an empty/zero-weight shipment — nothing is actually
+        // being shipped, so there's no package to add cargo weight to.
+        if ($useCargo && $total > 0) {
+            $total += 1000;
         }
         return $total;
     }
@@ -85,7 +101,7 @@ class PromoService
         $subtotal    = $activeItems->sum('line_total');
 
         // Weight-based shipping
-        $totalGrams    = $this->calcTotalWeightGram($activeItems);
+        $totalGrams    = $this->calcTotalWeightGram($activeItems, (bool) ($order->customer->use_cargo ?? false));
         $chargeableKg  = ShippingArea::calcChargeableKg($totalGrams);
         $shippingFee   = $order->shippingArea
             ? $order->shippingArea->calcShippingFee($totalGrams)
@@ -125,6 +141,32 @@ class PromoService
      *
      * Called after any order create / update / item change / delete.
      */
+    /**
+     * Active (non-cancelled, non-sold-out) items across ALL of a customer's
+     * orders in one trip. Single source of truth for "combined" promo/
+     * shipping eligibility — item-count thresholds like "30+ items" are
+     * meant to be met across a customer's whole trip, not per order.
+     *
+     * Was previously duplicated inline inside recalcCustomerShipping(),
+     * while OrderController::show() computed its OWN promo-status display
+     * from $order->items alone — so a customer whose combined orders
+     * genuinely qualified for a promo (and had it correctly applied to
+     * their total) could still see a "No promo applied — needs N more
+     * items" banner on the order page, because that banner was counting
+     * only the order being viewed.
+     */
+    public function combinedActiveItems(int $customerId, int $tripId): \Illuminate\Support\Collection
+    {
+        $orders = \App\Models\Order::with('items')
+            ->where('customer_id', $customerId)
+            ->where('trip_id', $tripId)
+            ->get();
+
+        return $orders->flatMap(fn($o) =>
+            $o->items->whereNotIn('status', ['cancelled', 'sold_out'])
+        );
+    }
+
     public function recalcCustomerShipping(int $customerId, int $tripId): void
     {
         $orders = \App\Models\Order::with('items.product', 'items.variant', 'customer', 'shippingArea')
@@ -140,7 +182,11 @@ class PromoService
         $allActiveItems = $orders->flatMap(fn($o) =>
             $o->items->whereNotIn('status', ['cancelled', 'sold_out'])
         );
-        $combinedGrams = $this->calcTotalWeightGram($allActiveItems);
+        // The +1000g bump applies ONCE here, on the combined set — not per
+        // order — matching the "one shipment, one bump" behavior even when
+        // several of the customer's orders in this trip are being combined.
+        $useCargo      = (bool) ($orders->first()->customer->use_cargo ?? false);
+        $combinedGrams = $this->calcTotalWeightGram($allActiveItems, $useCargo);
 
         // Pick a shipping area (first order that has one)
         $shippingArea = $orders->first(fn($o) => $o->shippingArea)?->shippingArea;

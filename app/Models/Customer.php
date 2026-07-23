@@ -9,7 +9,9 @@ class Customer extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['name', 'phone', 'address', 'type', 'notes', 'default_shipping_area_id', 'created_by'];
+    protected $fillable = ['name', 'phone', 'address', 'type', 'notes', 'default_shipping_area_id', 'use_cargo', 'created_by'];
+
+    protected $casts = ['use_cargo' => 'boolean'];
 
     public function createdBy() { return $this->belongsTo(User::class, 'created_by'); }
 

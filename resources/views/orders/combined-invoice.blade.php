@@ -167,8 +167,11 @@ td.r { text-align:right; }
 </div>
 
 @php
-    // Group items by product for compact display
-    $groupedItems = $allItems->groupBy(fn($row) => $row['item']->product_id);
+    // Group items by product for compact display, sorted by product code
+    // ascending — groupBy() alone preserves whatever order the items
+    // happened to be queried in, not product code order.
+    $groupedItems = $allItems->groupBy(fn($row) => $row['item']->product_id)
+        ->sortBy(fn($rows) => $rows->first()['item']->product->product_code ?? '');
     $activeCount  = $allItems->filter(fn($row) => !in_array($row['item']->status, ['sold_out','cancelled']))->count();
     $soldOutCount = $allItems->filter(fn($row) => $row['item']->status === 'sold_out')->count();
 @endphp

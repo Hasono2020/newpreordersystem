@@ -317,13 +317,13 @@ class ReportController extends Controller
             ->toArray(); // [name => true]
 
         // Pre-load shipping areas keyed by lowercase name
-        $shippingAreas = ShippingArea::all()->keyBy(fn($a) => strtolower(trim($a->name)));
-        $areaIdCache   = []; // [search_term => area_id]
+        $shippingAreas = ShippingArea::importLookup();
 
-        $imported    = 0;
-        $skipped     = 0;
-        $toInsert    = [];
-        $skipReasons = [];
+        $imported       = 0;
+        $skipped        = 0;
+        $toInsert       = [];
+        $skipReasons    = [];
+        $unmatchedAreas = [];
 
         foreach ($rows as $rowIdx => $row) {
             $lineNum  = $rowIdx + 2;
@@ -350,22 +350,21 @@ class ReportController extends Controller
                 continue;
             }
 
-            // Resolve shipping area in memory
-            $areaId = null;
-            if ($areaName) {
-                $cacheKey = strtolower($areaName);
-                if (!array_key_exists($cacheKey, $areaIdCache)) {
-                    // Find best match by substring
-                    $match = null;
-                    foreach ($shippingAreas as $key => $area) {
-                        if (str_contains($key, $cacheKey) || str_contains($cacheKey, $key)) {
-                            $match = $area;
-                            break;
-                        }
-                    }
-                    $areaIdCache[$cacheKey] = $match?->id;
-                }
-                $areaId = $areaIdCache[$cacheKey];
+            // Resolve shipping area in memory.
+            //
+            // This previously fell straight to a first-match-wins substring
+            // scan with NO exact-match attempt, and - critically - when
+            // nothing matched it left $areaId as null and imported the
+            // customer anyway. The row was then reported as a success while
+            // silently losing its shipping area, which is exactly how a file
+            // full of valid-looking area names ends up as thousands of
+            // "No area" customers. Unmatched names are now surfaced instead.
+            $areaId = ShippingArea::resolveFromLookup($areaName, $shippingAreas);
+            if ($areaName !== '' && !$areaId) {
+                $skipped++;
+                $unmatchedAreas[strtoupper($areaName)] = true;
+                $skipReasons[] = "Row {$lineNum} ({$name}): area '{$areaName}' not found.";
+                continue;
             }
 
             $validType = in_array($type, ['customer','reseller','selected_customer']) ? $type : 'customer';
@@ -378,6 +377,9 @@ class ReportController extends Controller
                 'default_shipping_area_id' => $areaId,
                 'address'                  => $address ?: null,
                 'notes'                    => $notes ?: null,
+                // Was missing here while the main importer sets it, leaving
+                // these customers unattributable and invisible to own_data scoping.
+                'created_by'               => \Illuminate\Support\Facades\Auth::id(),
                 'created_at'               => $now,
                 'updated_at'               => $now,
             ];
@@ -401,7 +403,15 @@ class ReportController extends Controller
         }
 
         $msg = "✓ Imported {$imported} customer(s).";
-        if ($skipped) $msg .= " {$skipped} skipped (duplicates).";
+        if ($skipped) $msg .= " {$skipped} skipped.";
+        if (!empty($unmatchedAreas)) {
+            $names = array_keys($unmatchedAreas);
+            sort($names);
+            $shown = implode(', ', array_slice($names, 0, 10));
+            if (count($names) > 10) $shown .= ' (+' . (count($names) - 10) . ' more)';
+            $msg .= ' These shipping area names are not in the system yet: ' . $shown
+                  . '. Create them under Shipping Areas, then re-import those rows.';
+        }
 
         return redirect()->route('customers.index')
             ->with($skipped ? 'warning' : 'success', $msg);

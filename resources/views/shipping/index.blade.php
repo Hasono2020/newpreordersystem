@@ -60,7 +60,7 @@
 {{-- Info --}}
 <div class="alert alert-info py-2 small mb-3">
     <i class="bi bi-info-circle me-1"></i>
-    <strong>Shipping formula:</strong> ≤1,350g = 1kg · ≤2,350g = 2kg · formula: <code>ceil((grams−350)/1000)</code>, min 1kg.
+    <strong>Shipping formula:</strong> ≤1,320g = 1kg · ≤2,320g = 2kg · formula: <code>ceil((grams−320)/1000)</code>, min 1kg.
 </div>
 
 {{-- Table --}}

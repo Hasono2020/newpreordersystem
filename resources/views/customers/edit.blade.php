@@ -51,6 +51,13 @@
                 @error('default_shipping_area_id')<div class="invalid-feedback">{{ $message }}</div>@enderror
             </div>
 
+            <div class="mb-3 form-check">
+                <input type="checkbox" class="form-check-input" id="useCargo" name="use_cargo" value="1"
+                    {{ old('use_cargo', $customer->use_cargo ?? false) ? 'checked' : '' }}>
+                <label class="form-check-label fw-semibold" for="useCargo">Use Cargo</label>
+                <div class="form-text">Adds 1kg to the chargeable shipping weight on every shipment for this customer.</div>
+            </div>
+
             <div class="mb-3">
                 <label class="form-label fw-semibold">Address</label>
                 <textarea name="address" class="form-control" rows="2"

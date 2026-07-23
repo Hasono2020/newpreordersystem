@@ -192,8 +192,15 @@ class OrderController extends Controller
         $order->load(['customer', 'trip', 'shippingArea', 'items.product', 'items.variant', 'payments', 'createdBy', 'csAgent']);
         $shippingAreas = ShippingArea::where('is_active', true)->orderBy('name')->get();
 
-        // Determine which promo applies (for display only — no DB writes)
-        $activeItems  = $order->items->whereNotIn('status', ['cancelled', 'sold_out']);
+        // Determine which promo applies (for display only — no DB writes).
+        // Uses combined items across ALL the customer's orders in this
+        // trip — the same set recalcCustomerShipping() uses for the real
+        // total — so this banner can't disagree with what was actually
+        // charged. Checking only $order->items here previously made a
+        // customer who genuinely qualified via their combined orders show
+        // "No promo applied — needs N more items" on an order that, in
+        // reality, already had the promo correctly applied to its total.
+        $activeItems  = $this->promoService->combinedActiveItems($order->customer_id, $order->trip_id);
         $appliedPromo = $this->promoService->getBestPromo(
             $order->customer->type,
             $order->trip_id,
@@ -201,16 +208,17 @@ class OrderController extends Controller
         );
 
         // Next promo tier hint (moved out of the Blade view to avoid a query in the template)
+        $combinedItemCount = $activeItems->sum('quantity');
         $nextRule = null;
         if (!$appliedPromo) {
-            $itemCount = $activeItems->sum('quantity');
+            $itemCount = $combinedItemCount;
             $nextRule  = \App\Models\PromoRule::where('is_active', true)
                 ->where(fn($q) => $q->where('trip_id', $order->trip_id)->orWhereNull('trip_id'))
                 ->where('min_items', '>', $itemCount)
                 ->orderBy('min_items')->first();
         }
 
-        return view('orders.show', compact('order', 'shippingAreas', 'appliedPromo', 'nextRule'));
+        return view('orders.show', compact('order', 'shippingAreas', 'appliedPromo', 'nextRule', 'combinedItemCount'));
     }
 
     /**
@@ -615,8 +623,11 @@ class OrderController extends Controller
         $shippingArea = $orders->first(fn($o) => $o->shippingArea)?->shippingArea
             ?? $customer->defaultShippingArea;
 
-        // Combined weight and shipping
-        $totalWeightGram  = $allActiveItems->sum(fn($i) => ($i->product->weight_gram ?? 0) * $i->quantity);
+        // Combined weight and shipping — routed through the same
+        // calcTotalWeightGram() helper recalcCustomerShipping() uses, so
+        // this printed preview can't drift from what was actually charged
+        // (e.g. by missing the cargo weight bump).
+        $totalWeightGram  = $this->promoService->calcTotalWeightGram($allActiveItems, (bool) $customer->use_cargo);
         $combinedShipping = $shippingArea ? $shippingArea->calcShippingFee($totalWeightGram) : 0;
         $chargeableKg     = \App\Models\ShippingArea::calcChargeableKg($totalWeightGram);
 
@@ -667,7 +678,7 @@ class OrderController extends Controller
             ->orWhere('phone', 'like', "%{$q}%")
             ->orderBy('name')
             ->limit(20)
-            ->get(['id', 'name', 'phone', 'type', 'address', 'default_shipping_area_id']);
+            ->get(['id', 'name', 'phone', 'type', 'address', 'default_shipping_area_id', 'use_cargo']);
         return response()->json($customers);
     }
 

@@ -124,8 +124,8 @@
 <script>
 function calcKg(grams) {
     if (grams <= 0) return 0;
-    if (grams <= 1350) return 1;
-    return Math.ceil((grams - 350) / 1000);
+    if (grams <= 1320) return 1;
+    return Math.ceil((grams - 320) / 1000);
 }
 function fmt(n) { return 'Rp ' + Math.round(n).toLocaleString('id-ID'); }
 
@@ -133,10 +133,10 @@ const samples = [
     {label: '300g',   grams: 300},
     {label: '500g',   grams: 500},
     {label: '1 kg',   grams: 1000},
-    {label: '1.35kg', grams: 1350},
+    {label: '1.32kg', grams: 1320},
     {label: '1.5kg',  grams: 1500},
     {label: '2kg',    grams: 2000},
-    {label: '2.35kg', grams: 2350},
+    {label: '2.32kg', grams: 2320},
     {label: '3kg',    grams: 3000},
     {label: '5kg',    grams: 5000},
 ];

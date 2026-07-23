@@ -145,6 +145,8 @@
                                 @foreach($shippingAreas as $area)
                                     <option value="{{ $area->id }}"
                                         data-price="{{ $area->price_per_kg }}"
+                                        data-flat="{{ $area->isFlatFee() ? '1' : '0' }}"
+                                        data-flatfee="{{ $area->flat_fee ?? 0 }}"
                                         data-name="{{ $area->name }}">
                                         {{ $area->name }}{{ $area->province ? ' ('.$area->province.')' : '' }}
                                         — {{ $area->isFlatFee() ? 'Flat Rp '.number_format($area->flat_fee,0,',','.') : 'Rp '.number_format($area->price_per_kg,0,',','.').' /kg' }}
@@ -374,7 +376,7 @@ let nameTimer     = null;
 
 function fmt(n)    { return 'Rp ' + Math.round(n).toLocaleString('id-ID'); }
 function fmtG(g)   { return g >= 1000 ? (g/1000).toFixed(2).replace(/\.?0+$/,'') + ' kg' : g + ' g'; }
-function calcKg(g) { if(g<=0) return 0; if(g<=1350) return 1; return Math.ceil((g-350)/1000); }
+function calcKg(g) { if(g<=0) return 0; if(g<=1320) return 1; return Math.ceil((g-320)/1000); }
 function initials(name) {
     const parts = name.trim().split(' ');
     return parts.length >= 2 ? (parts[0][0] + parts[1][0]).toUpperCase() : name.slice(0,2).toUpperCase();
@@ -397,6 +399,11 @@ const nameSearchDiv    = document.getElementById('nameSearch');
 
 phoneInput.focus();
 
+// Tracks whether the currently-selected customer has "use cargo" enabled,
+// so the live shipping preview here matches what recalcCustomerShipping()
+// will actually charge after the order is saved.
+let selectedCustomerUsesCargo = false;
+
 function showCustomerFound(c) {
     document.getElementById('customerId').value = c.id;
     document.getElementById('selectedCustomerName').textContent  = c.name;
@@ -408,7 +415,9 @@ function showCustomerFound(c) {
     customerNotFound.style.display   = 'none';
     nameSearchDiv.style.display      = 'none';
     phoneInput.classList.add('is-valid-phone');
+    selectedCustomerUsesCargo = !!c.use_cargo;
     if (c.default_shipping_area_id) applyShippingArea(c.default_shipping_area_id);
+    recalc();
 }
 
 function clearCustomerState() {
@@ -421,6 +430,7 @@ function clearCustomerState() {
     phoneInput.classList.remove('is-valid-phone','is-invalid-phone');
     document.getElementById('shippingCalcBox').style.display = 'none';
     document.getElementById('selectedCustomerArea').textContent = '';
+    selectedCustomerUsesCargo = false;
 }
 
 // Lookup on Tab / blur (full number)
@@ -637,12 +647,14 @@ function applyShippingArea(areaId) {
     const areaSel    = document.getElementById('qcShippingArea');
     if (hiddenArea) hiddenArea.value = areaId;
 
-    let areaName = '', pricePerKg = 0;
+    let areaName = '', pricePerKg = 0, isFlat = false, flatFee = 0;
     if (areaSel) {
         for (const opt of areaSel.options) {
             if (opt.value == areaId) {
                 areaName   = opt.dataset.name || opt.text.split('—')[0].trim();
                 pricePerKg = parseFloat(opt.dataset.price || 0);
+                isFlat     = opt.dataset.flat === '1';
+                flatFee    = parseFloat(opt.dataset.flatfee || 0);
                 break;
             }
         }
@@ -653,7 +665,8 @@ function applyShippingArea(areaId) {
 
     const calcBox    = document.getElementById('shippingCalcBox');
     const areaNameEl = document.getElementById('shippingAreaName');
-    if (calcBox)    calcBox.style.display = pricePerKg > 0 ? 'block' : 'none';
+    const hasRate    = isFlat ? flatFee > 0 : pricePerKg > 0;
+    if (calcBox)    calcBox.style.display = hasRate ? 'block' : 'none';
     if (areaNameEl) areaNameEl.textContent = areaName;
 
     recalc();
@@ -902,27 +915,44 @@ function recalc() {
         totalGrams += lineGrams;
     });
 
-    const kg       = calcKg(totalGrams);
+    // Cargo bump: matches PromoService::calcTotalWeightGram() server-side —
+    // +1000g once for the whole shipment, only when there's actually
+    // something being shipped, so this preview doesn't drift from what
+    // gets charged after saving.
+    let chargeableGrams = totalGrams;
+    if (selectedCustomerUsesCargo && totalGrams > 0) chargeableGrams += 1000;
+
+    const kg       = calcKg(chargeableGrams);
     const areaId   = document.getElementById('shippingAreaSelect').value;
-    let pricePerKg = 0;
+    let pricePerKg = 0, isFlat = false, flatFee = 0;
     if (areaId) {
         for (const opt of document.getElementById('qcShippingArea').options) {
-            if (opt.value === areaId) { pricePerKg = parseFloat(opt.dataset.price||0); break; }
+            if (opt.value === areaId) {
+                pricePerKg = parseFloat(opt.dataset.price||0);
+                isFlat     = opt.dataset.flat === '1';
+                flatFee    = parseFloat(opt.dataset.flatfee||0);
+                break;
+            }
         }
     }
-    const shippingFee = kg * pricePerKg;
+    const shippingFee = isFlat ? flatFee : (kg * pricePerKg);
+    const hasRate     = isFlat ? flatFee > 0 : pricePerKg > 0;
 
     document.getElementById('displaySubtotal').textContent = fmt(subtotal);
-    document.getElementById('displayWeight').textContent   = `${totalGrams.toLocaleString('id-ID')} g → ${kg} kg charged`;
+    document.getElementById('displayWeight').textContent   = selectedCustomerUsesCargo && totalGrams > 0
+        ? `${totalGrams.toLocaleString('id-ID')} g + 1,000 g cargo → ${kg} kg charged`
+        : `${totalGrams.toLocaleString('id-ID')} g → ${kg} kg charged`;
     document.getElementById('displayShipping').textContent = fmt(shippingFee);
     document.getElementById('displayTotal').textContent    = fmt(subtotal + shippingFee);
 
     const calcBox = document.getElementById('shippingCalcBox');
-    if (pricePerKg > 0) {
+    if (hasRate) {
         calcBox.style.display = 'block';
         document.getElementById('shippingFeeDisplay').textContent = fmt(shippingFee);
         const noteEl = document.getElementById('shippingWeightNote');
-        if (noteEl) noteEl.textContent = totalGrams > 0 ? `(${totalGrams.toLocaleString('id-ID')}g → ${kg} kg)` : '';
+        if (noteEl) noteEl.textContent = isFlat
+            ? 'Flat rate'
+            : (chargeableGrams > 0 ? `(${chargeableGrams.toLocaleString('id-ID')}g → ${kg} kg)` : '');
     }
 
     const warn = document.getElementById('zeroPriceWarning');

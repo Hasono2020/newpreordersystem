@@ -87,6 +87,18 @@
                         </td>
                     </tr>
                     <tr>
+                        <td class="text-muted ps-3">Cargo</td>
+                        <td>
+                            @if($customer->use_cargo)
+                                <span class="badge bg-info-subtle text-info-emphasis">
+                                    <i class="bi bi-box-seam me-1"></i>Yes — +1kg per shipment
+                                </span>
+                            @else
+                                <span class="text-muted small">No</span>
+                            @endif
+                        </td>
+                    </tr>
+                    <tr>
                         <td class="text-muted ps-3">Address</td>
                         <td>{{ $customer->address ?: '—' }}</td>
                     </tr>

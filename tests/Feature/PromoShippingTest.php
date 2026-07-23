@@ -15,7 +15,7 @@ use App\Services\PromoService;
  *
  * Reference formulas (from the code under test):
  *   ShippingArea::calcChargeableKg(grams):
- *     <=0 -> 0 ; <=1350 -> 1kg ; else ceil((grams-350)/1000)
+ *     <=0 -> 0 ; <=1320 -> 1kg ; else ceil((grams-320)/1000)
  *   ShippingArea->calcShippingFee(grams) = chargeableKg * price_per_kg
  *   PromoRule->calculateDiscount(count):
  *     per_item discount (if >0) = discount_per_item * count ; else discount_flat
@@ -73,10 +73,10 @@ function makeOrderWithItems(Trip $trip, Customer $customer, ShippingArea $area, 
 test('chargeable kg follows the tier formula', function () {
     expect(ShippingArea::calcChargeableKg(0))->toBe(0.0)
         ->and(ShippingArea::calcChargeableKg(500))->toBe(1.0)
-        ->and(ShippingArea::calcChargeableKg(1350))->toBe(1.0)   // boundary: still 1kg
-        ->and(ShippingArea::calcChargeableKg(1351))->toBe(2.0)   // just over -> 2kg
-        ->and(ShippingArea::calcChargeableKg(2350))->toBe(2.0)
-        ->and(ShippingArea::calcChargeableKg(2351))->toBe(3.0);
+        ->and(ShippingArea::calcChargeableKg(1320))->toBe(1.0)   // boundary: still 1kg
+        ->and(ShippingArea::calcChargeableKg(1321))->toBe(2.0)   // just over -> 2kg
+        ->and(ShippingArea::calcChargeableKg(2320))->toBe(2.0)
+        ->and(ShippingArea::calcChargeableKg(2321))->toBe(3.0);
 });
 
 test('shipping fee is chargeable kg times price per kg', function () {

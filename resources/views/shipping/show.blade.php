@@ -147,7 +147,7 @@
                     </div>
                     <div class="form-text mt-2">
                         Rate: Rp {{ number_format($shipping->price_per_kg, 0, ',', '.') }}/kg<br>
-                        Formula: <code>ceil((grams−350)/1000)</code>, min 1 kg
+                        Formula: <code>ceil((grams−320)/1000)</code>, min 1 kg
                     </div>
                 @endif
             </div>
@@ -164,7 +164,7 @@ function calcFee() {
     const grams  = parseInt(document.getElementById('calcInput').value) || 0;
     const result = document.getElementById('calcResult');
     if (grams <= 0) { result.style.display = 'none'; return; }
-    const kg  = grams <= 1350 ? 1 : Math.ceil((grams - 350) / 1000);
+    const kg  = grams <= 1320 ? 1 : Math.ceil((grams - 320) / 1000);
     const fee = kg * pricePerKg;
     document.getElementById('calcFeeOut').textContent = 'Rp ' + fee.toLocaleString('id-ID');
     document.getElementById('calcKgOut').textContent  = grams.toLocaleString('id-ID') + 'g → charged as ' + kg + ' kg';

@@ -185,7 +185,7 @@ td.right { text-align:right; }
             </tr>
         </thead>
         <tbody>
-            @foreach($order->items as $item)
+            @foreach($order->items->sortBy(fn($i) => $i->product->product_code ?? '') as $item)
             @php $soldOut = in_array($item->status, ['sold_out', 'cancelled']); @endphp
             <tr {{ $soldOut ? 'style=opacity:.55' : '' }}>
                 <td>

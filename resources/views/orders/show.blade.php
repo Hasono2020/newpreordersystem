@@ -255,8 +255,10 @@
                     <div class="alert alert-light border py-2 px-3 mb-3 small text-muted">
                         <i class="bi bi-tag me-1"></i>No promo applied
                         @if($nextRule)
-                            @php $itemCount = $order->items->whereNotIn('status',['cancelled','sold_out'])->sum('quantity'); @endphp
-                            — needs {{ $nextRule->min_items - $itemCount }} more item(s) for <strong>{{ $nextRule->name }}</strong>
+                            {{-- $combinedItemCount is across ALL the customer's orders in
+                                 this trip, matching how the real total was calculated —
+                                 not just this order's own items. --}}
+                            — needs {{ $nextRule->min_items - $combinedItemCount }} more item(s) for <strong>{{ $nextRule->name }}</strong>
                         @endif
                     </div>
                 @endif
