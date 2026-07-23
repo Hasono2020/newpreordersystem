@@ -112,7 +112,7 @@ class ShippingAreaController extends Controller
         $newFlatFee    = (float) ($shipping->fresh()->flat_fee ?? 0);
 
         if ($oldPricePerKg !== $newPricePerKg || $oldFlatFee !== $newFlatFee) {
-            $this->syncShippingPriceToOpenOrders($shipping);
+            $this->syncShippingPriceToOpenOrders($shipping, $oldPricePerKg, $oldFlatFee);
         }
 
         return redirect()->route('shipping.index')->with('success', 'Shipping area updated.');
@@ -122,7 +122,11 @@ class ShippingAreaController extends Controller
      * When a shipping area's price_per_kg changes, recalculate shipping fees
      * for all orders using this area that belong to open trips.
      */
-    private function syncShippingPriceToOpenOrders(\App\Models\ShippingArea $shipping): void
+    private function syncShippingPriceToOpenOrders(
+        \App\Models\ShippingArea $shipping,
+        ?float $oldPricePerKg = null,
+        ?float $oldFlatFee = null
+    ): void
     {
         $affectedOrders = \App\Models\Order::where('shipping_area_id', $shipping->id)
             ->whereHas('trip', fn($q) => $q->where('status', 'open'))
@@ -176,10 +180,19 @@ class ShippingAreaController extends Controller
                 ". Auto-recalculated shipping fee on {$orderCount} order(s) in open trips: {$sample}",
             'shipping_area',
             $shipping->id,
+            // Record a proper old -> new pair. This previously stored the
+            // CURRENT (already-updated) values under a key literally named
+            // 'old', so the audit trail claimed the new rate was the old one.
+            // Uses the same {field: {old, new}} shape as product.price_synced.
             [
-                'old' => $shipping->isFlatFee()
-                    ? ['type' => 'flat', 'flat_fee' => $shipping->flat_fee]
-                    : ['type' => 'per_kg', 'price_per_kg' => $shipping->price_per_kg],
+                'price_per_kg' => [
+                    'old' => $oldPricePerKg,
+                    'new' => (float) $shipping->price_per_kg,
+                ],
+                'flat_fee' => [
+                    'old' => $oldFlatFee,
+                    'new' => $shipping->flat_fee === null ? null : (float) $shipping->flat_fee,
+                ],
             ]
         );
     }

@@ -54,7 +54,11 @@ test('product code must be unique per trip', function () {
     $trip    = $this->openTrip();
     $supplier = makeSupplier();
 
-    // Create first product
+    // store() rejects a product with no variants ("Please add at least one
+    // variant..."), returning back() — which is still a 302, so a bare
+    // assertRedirect() would pass while silently creating nothing. Send a
+    // variant, and assert the first product really exists before testing
+    // that the second one is rejected as a duplicate.
     $this->actingAs($admin)->post('/products', [
         'trip_id'      => $trip->id,
         'supplier_id'  => $supplier->id,
@@ -62,7 +66,10 @@ test('product code must be unique per trip', function () {
         'product_code' => 'DUPE_01',
         'price'        => 100000,
         'weight_gram'  => 350,
+        'variants'     => [['color' => 'Black', 'size' => 'S']],
     ])->assertRedirect();
+
+    expect(Product::where('product_code', 'DUPE_01')->where('trip_id', $trip->id)->exists())->toBeTrue();
 
     // Duplicate code in same trip
     $this->actingAs($admin)->post('/products', [
@@ -72,5 +79,6 @@ test('product code must be unique per trip', function () {
         'product_code' => 'DUPE_01',
         'price'        => 150000,
         'weight_gram'  => 400,
+        'variants'     => [['color' => 'Black', 'size' => 'M']],
     ])->assertSessionHasErrors('product_code');
 });

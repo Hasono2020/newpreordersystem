@@ -13,21 +13,75 @@ abstract class TestCase extends BaseTestCase
     use RefreshDatabase;
 
     /**
-     * Bypass CSRF for all test HTTP requests.
-     * Tests use actingAs() for authentication — CSRF adds no security value
-     * in the test environment and causes 419 responses.
+     * Databases the test suite is allowed to touch. Anything else aborts.
      */
-    protected bool $withCsrfBypass = true;
+    protected const ALLOWED_TEST_DATABASES = [
+        'newpreordersystem_test',
+        ':memory:',
+    ];
+
+    /**
+     * HARD SAFETY GUARD - do not remove.
+     *
+     * RefreshDatabase runs `migrate:fresh`, which DROPS EVERY TABLE in
+     * whatever database the app happens to be connected to. phpunit.xml
+     * overrides DB_DATABASE to a dedicated test database, but that override
+     * silently does nothing if Laravel is reading a CACHED config
+     * (bootstrap/cache/config.php) instead of environment variables - in
+     * which case the target is the REAL database.
+     *
+     * This guard runs before RefreshDatabase does anything, so a
+     * misconfigured environment fails loudly instead of destroying data.
+     */
+    protected function refreshApplication()
+    {
+        parent::refreshApplication();
+
+        $connection = config('database.default');
+        $database   = config("database.connections.{$connection}.database");
+
+        if (in_array($database, self::ALLOWED_TEST_DATABASES, true)) {
+            return;
+        }
+
+        throw new \RuntimeException(
+            "\n\n"
+            . "==================== TEST RUN ABORTED ====================\n"
+            . "Tests are pointed at database [{$database}] on connection [{$connection}].\n"
+            . "That is NOT an approved test database, and RefreshDatabase would\n"
+            . "DROP EVERY TABLE in it.\n\n"
+            . "Most likely cause: a cached config file is overriding phpunit.xml.\n"
+            . "Fix with:\n"
+            . "    php artisan config:clear\n"
+            . "    php artisan cache:clear\n\n"
+            . "Then make sure the test database exists:\n"
+            . "    CREATE DATABASE newpreordersystem_test;\n"
+            . "==========================================================\n"
+        );
+    }
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        if ($this->withCsrfBypass) {
-            // Works in all Laravel versions — sets the session _token to match
-            // what the test client will send, bypassing CSRF validation cleanly.
-            $this->session(['_token' => 'test-token']);
-            $this->withHeader('X-XSRF-TOKEN', 'test-token');
+        // Disable CSRF for test requests.
+        //
+        // Laravel normally skips CSRF automatically when app.env === 'testing'.
+        // Disabling the middleware explicitly makes tests independent of that,
+        // so a stale config cache can't silently turn every POST/PUT/DELETE
+        // into a 419.
+        //
+        // NOTE: setting an X-XSRF-TOKEN header does NOT work - Laravel expects
+        // that header to be an ENCRYPTED value and throws DecryptException on a
+        // plain string, which is exactly what produces the 419s.
+        foreach ([
+            \Illuminate\Foundation\Http\Middleware\PreventRequestForgery::class,
+            \Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class,
+            \Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class,
+        ] as $middleware) {
+            if (class_exists($middleware)) {
+                $this->withoutMiddleware($middleware);
+            }
         }
     }
 
