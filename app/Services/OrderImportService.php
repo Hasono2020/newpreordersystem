@@ -12,6 +12,8 @@ class OrderImportService
 {
     use \App\Traits\HandlesXlsx;
 
+    public function __construct(protected \App\Services\PromoService $promoService) {}
+
     /**
      * Read the xlsx file and run the full validation pass (no DB writes).
      * Returns ['rows' => array, 'errors' => array]. If errors is non-empty,
@@ -251,7 +253,11 @@ class OrderImportService
             // Fix #9: use the customer's TOTAL eligible item count (across all their
             // rows) so a 5-item customer gets the 5-item promo, not the 1-item promo.
             // Promo discount is applied only on their FIRST order row to avoid
-            // multiplying it; recalcCustomerShipping() called post-import normalises everything.
+            // multiplying it; the per-row shipping fee/subsidy computed below is
+            // provisional — recalcCustomerShipping() runs once per customer at the
+            // end of this method and normalises weight, fee, and subsidy across
+            // ALL of that customer's rows. (This comment used to assert that
+            // already happened; it didn't — see the loop after flushOrderBatch.)
             $totalEligibleQty = $customerItemCounts[$customerId] ?? 0;
             $bestDiscount = 0;
             $bestSubsidy  = 0;
@@ -334,7 +340,27 @@ class OrderImportService
             $this->flushOrderBatch($ordersBatch, $itemsBatch, $paymentsBatch);
         }
 
-        return ['imported' => $imported, 'skipped' => $skipped];
+        // Every row above computed its shipping fee (and, for all but a
+        // customer's first row, zero promo shipping subsidy) using ONLY
+        // that row's own product weight — because each row becomes its
+        // own order, and at the point a row is inserted, its sibling rows
+        // for the same customer don't exist as orders yet to combine with.
+        //
+        // recalcCustomerShipping() is the same combining pass manually-
+        // created orders already go through; running it once per distinct
+        // customer here normalises weight, shipping fee, and promo
+        // subsidy across all of that customer's orders from this import —
+        // matching the comment above that assumed this already happened.
+        $affectedCustomerIds = array_unique(array_values($resolvedCustomers));
+        foreach ($affectedCustomerIds as $customerId) {
+            $this->promoService->recalcCustomerShipping((int) $customerId, $trip->id);
+        }
+
+        return [
+            'imported'     => $imported,
+            'skipped'      => $skipped,
+            'recalculated' => count($affectedCustomerIds),
+        ];
     }
 
     /**

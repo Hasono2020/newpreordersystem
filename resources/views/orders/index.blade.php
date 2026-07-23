@@ -364,7 +364,8 @@ function renderImportRow(job) {
 
     let detail = '';
     if (job.status === 'done') {
-        detail = `Imported ${job.imported_count ?? 0} order(s)` + (job.skipped_count ? `, ${job.skipped_count} skipped` : '') + '.';
+        detail = `Imported ${job.imported_count ?? 0} order(s)` + (job.skipped_count ? `, ${job.skipped_count} skipped` : '') + '.'
+            + (job.recalculated_count ? ` Shipping/promo recalculated for ${job.recalculated_count} customer(s).` : '');
     } else if (job.status === 'failed') {
         if (job.row_errors && job.row_errors.length) {
             detail = `${job.row_errors.length} row error(s) — fix the file and re-import. ` +

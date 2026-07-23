@@ -70,10 +70,11 @@ class ImportOrdersJob implements ShouldQueue
             $result = $importService->importRows($validated['rows'], $trip, $importJob->created_by);
 
             $importJob->update([
-                'status'         => 'done',
-                'imported_count' => $result['imported'],
-                'skipped_count'  => $result['skipped'],
-                'finished_at'    => now(),
+                'status'             => 'done',
+                'imported_count'     => $result['imported'],
+                'skipped_count'      => $result['skipped'],
+                'recalculated_count' => $result['recalculated'] ?? null,
+                'finished_at'        => now(),
             ]);
         } catch (\Throwable $e) {
             $importJob->update([

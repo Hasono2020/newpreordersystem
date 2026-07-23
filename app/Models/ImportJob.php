@@ -11,7 +11,7 @@ class ImportJob extends Model
 
     protected $fillable = [
         'trip_id', 'created_by', 'original_filename', 'stored_path',
-        'status', 'total_rows', 'imported_count', 'skipped_count',
+        'status', 'total_rows', 'imported_count', 'skipped_count', 'recalculated_count',
         'error_message', 'row_errors', 'started_at', 'finished_at',
     ];
 

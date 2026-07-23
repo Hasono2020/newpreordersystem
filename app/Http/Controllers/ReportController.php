@@ -284,7 +284,7 @@ class ReportController extends Controller
         $jobs = \App\Models\ImportJob::where('created_by', Auth::id())
             ->orderByDesc('id')
             ->limit(5)
-            ->get(['id', 'trip_id', 'original_filename', 'status', 'total_rows', 'imported_count', 'skipped_count', 'error_message', 'row_errors', 'created_at', 'finished_at']);
+            ->get(['id', 'trip_id', 'original_filename', 'status', 'total_rows', 'imported_count', 'skipped_count', 'recalculated_count', 'error_message', 'row_errors', 'created_at', 'finished_at']);
 
         return response()->json($jobs);
     }
