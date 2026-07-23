@@ -139,8 +139,16 @@ class CustomerController extends Controller
 
         if ($typeChanged || $areaChanged || $cargoChanged) {
             $tripIds = $customer->orders()->distinct()->pluck('trip_id')->filter();
+            $reallocator = app(\App\Services\CreditReallocationService::class);
             foreach ($tripIds as $tripId) {
                 $promoSvc->recalcCustomerShipping($customer->id, $tripId);
+                // A type/area/cargo change can leave one of this customer's
+                // orders overpaid and another underpaid in the same trip —
+                // same as a price or shipping-rate sync already handles.
+                // This path previously didn't, so credit changed here could
+                // sit stranded until someone ran the reallocate-credit
+                // command by hand.
+                $reallocator->reallocate($customer->id, $tripId);
             }
 
             $msg = 'Customer updated.';
@@ -182,9 +190,11 @@ class CustomerController extends Controller
 
         // Recalculate shipping + promo per trip
         $promoSvc = app(\App\Services\PromoService::class);
+        $reallocator = app(\App\Services\CreditReallocationService::class);
         $tripIds  = $customer->orders()->distinct()->pluck('trip_id')->filter();
         foreach ($tripIds as $tripId) {
             $promoSvc->recalcCustomerShipping($customer->id, $tripId);
+            $reallocator->reallocate($customer->id, $tripId);
         }
 
         return back()->with('success', "Shipping area applied to {$updated} order(s) and recalculated.");

@@ -18,7 +18,17 @@
     // Voided payments are already excluded from deposit_paid (recalculated
     // when a payment is voided), so exclude them here too — otherwise a
     // voided payment would still show up as a real line item on the invoice.
-    $allPayments       = $orders->flatMap(fn($o) => $o->payments)->reject(fn($p) => $p->isVoided())->sortBy('paid_at');
+    // Reallocation payments (the paired refund+partial records
+    // CreditReallocationService creates when moving credit between two of
+    // a customer's own orders) are an internal accounting correction, not
+    // a real transaction the customer made. Showing "Refund +Rp160.000"
+    // followed by "Partial +Rp160.000" on the SAME day makes it look like
+    // money moved in and out of nowhere — confusing on a document meant
+    // to explain what the customer actually paid.
+    $allPayments       = $orders->flatMap(fn($o) => $o->payments)
+        ->reject(fn($p) => $p->isVoided())
+        ->reject(fn($p) => $p->method === 'reallocation')
+        ->sortBy('paid_at');
 @endphp
 <!DOCTYPE html>
 <html lang="id">
@@ -131,9 +141,6 @@ td.r { text-align:right; }
             @else
                 <span class="type-pill" style="background:#f1f5f9;color:#475569;">Customer</span>
             @endif
-            @if($customer->use_cargo)
-                <span class="type-pill" style="background:#e0f2fe;color:#0369a1;">Cargo</span>
-            @endif
         </div>
         @if($customer->address)
             <div class="sm" style="margin-top:2px;">{{ $customer->address }}</div>
@@ -146,11 +153,7 @@ td.r { text-align:right; }
                 {{ $shippingArea->name }}
                 @if($shippingArea->province), {{ $shippingArea->province }}@endif
             </div>
-            <div class="sm">Weight: <strong>{{ number_format($totalWeightGram) }}g</strong> ({{ $chargeableKg }} kg)
-                @if($customer->use_cargo)
-                    <span style="color:#0369a1;">(includes cargo +1kg)</span>
-                @endif
-                &middot; Rate:
+            <div class="sm">Weight: <strong>{{ number_format($totalWeightGram) }}g</strong> ({{ $chargeableKg }} kg) &middot; Rate:
                 @if($shippingArea->isFlatFee())
                     Flat Rp {{ number_format($shippingArea->flat_fee, 0, ',', '.') }}
                 @else

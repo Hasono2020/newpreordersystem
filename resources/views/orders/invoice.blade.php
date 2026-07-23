@@ -151,9 +151,6 @@ td.right { text-align:right; }
                 @endif
                 <p style="margin-top:6px;font-size:12px;">
                     Weight: <strong>{{ $order->shipping_kg_charged }} kg</strong>
-                    @if($order->customer->use_cargo)
-                        <span style="color:#0369a1;">(includes cargo +1kg)</span>
-                    @endif
                 </p>
                 <p style="font-size:12px;">
                     Rate:
@@ -250,7 +247,16 @@ td.right { text-align:right; }
          the combined invoice: they're already excluded from deposit_paid,
          so showing them here would make the invoice look like the customer
          paid more than they actually did. --}}
-    @php $invoicePayments = $order->payments->reject(fn($p) => $p->isVoided()); @endphp
+    @php
+        // Same reasoning as the combined invoice: reallocation payments are
+        // an internal correction (moving credit between the customer's own
+        // orders), not a real transaction — excluded from what the
+        // customer sees, though still fully visible on the staff-facing
+        // order page for audit purposes.
+        $invoicePayments = $order->payments
+            ->reject(fn($p) => $p->isVoided())
+            ->reject(fn($p) => $p->method === 'reallocation');
+    @endphp
     @if($invoicePayments->count())
     <div class="payment-section">
         <div class="section-title">Payment History</div>

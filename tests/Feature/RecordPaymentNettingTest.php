@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Customer;
 use App\Models\Order;
 use App\Models\ShippingArea;
 use App\Models\Trip;
@@ -21,7 +22,13 @@ use App\Models\Trip;
  * being excluded.
  */
 
-function payScreenOrder($test, Trip $trip, ShippingArea $area, $customer, float $total, float $paid, ?string $orderedAt = null): Order
+/**
+ * @param mixed $test Pest binds $this to a TestCase subclass at runtime;
+ *        typed as mixed here because static analyzers see Pest's
+ *        closure-bound $this as Pest\PendingCalls\TestCall, which isn't
+ *        assignable to a concrete TestCase type hint.
+ */
+function payScreenOrder($test, Trip $trip, ShippingArea $area, Customer $customer, float $total, float $paid, ?string $orderedAt = null): Order
 {
     return Order::factory()->create([
         'trip_id' => $trip->id, 'customer_id' => $customer->id, 'created_by' => $test->adminUser()->id,
