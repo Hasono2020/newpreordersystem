@@ -32,6 +32,16 @@
                 <label class="form-label small fw-semibold">Amount Received (Rp) <span class="text-danger">*</span></label>
                 <input type="number" id="amountReceived" class="form-control mb-1" placeholder="0" step="1" min="0">
                 <div class="form-text mb-3">Total balance due: <strong>Rp {{ number_format($totalDue, 0, ',', '.') }}</strong></div>
+                @if($strandedCredit > 0)
+                    <div class="alert alert-warning py-2 px-3 small mb-3">
+                        <i class="bi bi-info-circle me-1"></i>
+                        This customer has <strong>Rp {{ number_format($strandedCredit, 0, ',', '.') }}</strong> in credit
+                        sitting on an already-overpaid order in this trip, not yet moved to cover the orders below.
+                        The total above already accounts for it, but the orders listed still individually show
+                        their full remaining balance until that credit is reallocated
+                        (<code>php artisan payments:reallocate-credit</code>) or applied manually.
+                    </div>
+                @endif
 
                 <div class="d-flex gap-2 mb-3">
                     <button type="button" class="btn btn-sm btn-outline-primary flex-fill" id="autoAllocateBtn">
@@ -135,10 +145,13 @@ function autoAllocate() {
 
 document.getElementById('autoAllocateBtn').addEventListener('click', autoAllocate);
 
-// "Full" = sum of all balances, then auto-allocate everything
+// "Full" = the true net balance due (computed server-side across ALL of
+// this customer's orders, including any overpaid one not shown below —
+// summing only the visible rows' balances would miss credit stranded
+// there and overstate what's actually still owed).
+const totalDueNet = {{ (float) $totalDue }};
 document.getElementById('payFullBtn').addEventListener('click', () => {
-    const totalBal = allocInputs.reduce((s, el) => s + (parseFloat(el.dataset.balance) || 0), 0);
-    amountReceived.value = Math.round(totalBal);
+    amountReceived.value = Math.round(totalDueNet);
     autoAllocate();
 });
 

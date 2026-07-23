@@ -239,6 +239,16 @@ class PromoService
                     'shipping_kg_charged'  => $kgCharged,
                     'total_amount'         => $total,
                 ]);
+
+                // recalcPaymentStatus() reads $this->total_amount, so it MUST run
+                // after the update above, not before. Without this, changing a
+                // total here (a price sync, a promo becoming eligible, a shipping
+                // rate change, cargo being toggled, etc.) leaves payment_status
+                // and deposit_paid exactly as they were under the OLD total —
+                // an order can end up genuinely overpaid while still reading
+                // "Partially Paid" indefinitely, because nothing ever re-derives
+                // it against the new total until a NEW payment is recorded.
+                $order->recalcPaymentStatus();
             }
         });
     }

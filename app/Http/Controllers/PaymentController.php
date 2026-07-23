@@ -242,16 +242,42 @@ class PaymentController extends Controller
 
         $trip = Trip::findOrFail($tripId);
 
-        // Unpaid orders for this customer in this trip, oldest first (FIFO allocation)
+        // Orders that still need money allocated — filtered by the ACTUAL
+        // paid-vs-total numbers (whereColumn), not the payment_status label.
+        // payment_status can go stale relative to the real figures (e.g. an
+        // order that became overpaid via a price drop but was never
+        // re-derived), and filtering on a stale label previously let an
+        // already-overpaid order sit in this list with its balance
+        // silently clamped to 0 instead of being excluded outright.
         $orders = Order::where('customer_id', $customer->id)
             ->where('trip_id', $tripId)
-            ->where('payment_status', '!=', 'paid')
+            ->whereColumn('deposit_paid', '<', 'total_amount')
             ->orderBy('ordered_at')->orderBy('id')
             ->get();
 
-        $totalDue = $orders->sum(fn($o) => max(0, $o->total_amount - $o->deposit_paid));
+        // Total actually owed = net across ALL of the customer's orders in
+        // this trip, including any that are overpaid. Summing only the
+        // (clamped-to-zero) balances of the orders above ignores credit
+        // sitting on an overpaid order entirely — a customer with Rp160,000
+        // credit on one order and Rp1,550,000 owed across others truly
+        // owes Rp1,390,000 net, not Rp1,550,000. Matches the same net
+        // calculation the Outstanding Balances tab already uses.
+        $tripTotals = Order::where('customer_id', $customer->id)
+            ->where('trip_id', $tripId)
+            ->selectRaw('SUM(total_amount) as total, SUM(deposit_paid) as paid')
+            ->first();
+        // (float) wraps max() itself, not just its arguments: PHP's max()
+        // returns whichever argument it received literally when there's a
+        // tie, so max(0, 0.0) returns int 0, not float 0.0 — this bit a
+        // test the moment there was no overpayment (a genuine 0 result).
+        $totalDue = (float) max(0, (float) ($tripTotals->total ?? 0) - (float) ($tripTotals->paid ?? 0));
 
-        return view('payments.create', compact('customer', 'trip', 'orders', 'totalDue'));
+        // Surface the gap (if any) so staff aren't left guessing why the
+        // total above doesn't match a naive sum of the rows below.
+        $clampedSum     = $orders->sum(fn($o) => max(0, $o->total_amount - $o->deposit_paid));
+        $strandedCredit = (float) max(0, $clampedSum - $totalDue);
+
+        return view('payments.create', compact('customer', 'trip', 'orders', 'totalDue', 'strandedCredit'));
     }
 
     /**

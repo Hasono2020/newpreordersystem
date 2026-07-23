@@ -145,15 +145,11 @@ class ShippingAreaController extends Controller
             $promoService->recalcCustomerShipping($order->customer_id, $order->trip_id);
         }
 
-        // Re-derive payment status from actual payments vs updated totals
-        $affectedOrderIds = $affectedOrders->pluck('id');
-        // Delegate to Order::recalcPaymentStatus() — the single source of truth.
-        // The inlined copy that used to live here omitted the auto-confirm step,
-        // so an order pushed to fully-paid by a PRICE CHANGE kept its items
-        // 'pending', while the identical end state reached via a PAYMENT
-        // confirmed them. Same outcome, two different item states.
-        \App\Models\Order::whereIn('id', $affectedOrderIds)->with('payments')->get()
-            ->each(fn($order) => $order->recalcPaymentStatus());
+        // Note: payment_status/deposit_paid re-derivation used to happen here
+        // as a separate pass. recalcCustomerShipping() now does this itself
+        // right after updating each order's total (see PromoService), since
+        // that's the actual source of the total changing — a separate pass
+        // here was one more place this same step could be forgotten again.
 
         // A rate change can leave one order overpaid while another order for
         // the SAME customer in this trip is still short — reallocate any

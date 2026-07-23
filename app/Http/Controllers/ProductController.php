@@ -690,8 +690,10 @@ class ProductController extends Controller
             }
         });
 
-        // Recalc shipping/promo per customer+trip, then recalc payment status per order
-        $affectedOrderIds = $affectedItems->pluck('order_id')->unique();
+        // Recalc shipping/promo per customer+trip — recalcCustomerShipping()
+        // re-derives payment_status/deposit_paid itself right after updating
+        // each order's total, so a separate pass isn't needed here anymore
+        // (see PromoService::recalcCustomerShipping).
 
         foreach ($affectedItems as $item) {
             $key = $item->order->customer_id . '-' . $item->order->trip_id;
@@ -699,15 +701,6 @@ class ProductController extends Controller
             $seen[$key] = true;
             $promoService->recalcCustomerShipping($item->order->customer_id, $item->order->trip_id);
         }
-
-        // Re-derive payment status from actual payments vs updated totals
-        // Delegate to Order::recalcPaymentStatus() — the single source of truth.
-        // The inlined copy that used to live here omitted the auto-confirm step,
-        // so an order pushed to fully-paid by a PRICE CHANGE kept its items
-        // 'pending', while the identical end state reached via a PAYMENT
-        // confirmed them. Same outcome, two different item states.
-        \App\Models\Order::whereIn('id', $affectedOrderIds)->with('payments')->get()
-            ->each(fn($order) => $order->recalcPaymentStatus());
 
         // A price drop can leave one order overpaid while another order for
         // the SAME customer in this trip is still short — reallocate any
