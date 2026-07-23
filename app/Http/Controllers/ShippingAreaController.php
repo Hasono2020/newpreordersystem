@@ -147,15 +147,13 @@ class ShippingAreaController extends Controller
 
         // Re-derive payment status from actual payments vs updated totals
         $affectedOrderIds = $affectedOrders->pluck('id');
+        // Delegate to Order::recalcPaymentStatus() — the single source of truth.
+        // The inlined copy that used to live here omitted the auto-confirm step,
+        // so an order pushed to fully-paid by a PRICE CHANGE kept its items
+        // 'pending', while the identical end state reached via a PAYMENT
+        // confirmed them. Same outcome, two different item states.
         \App\Models\Order::whereIn('id', $affectedOrderIds)->with('payments')->get()
-            ->each(function ($order) {
-                $payments = $order->payments->filter(fn($p) => $p->voided_at === null);
-                $paid     = $payments->where('type', '!=', 'refund')->sum('amount')
-                          - $payments->where('type', 'refund')->sum('amount');
-                $status   = $paid <= 0 ? 'unpaid'
-                    : ($paid >= $order->total_amount ? 'paid' : 'partial');
-                $order->update(['deposit_paid' => max(0, $paid), 'payment_status' => $status]);
-            });
+            ->each(fn($order) => $order->recalcPaymentStatus());
 
         // A rate change can leave one order overpaid while another order for
         // the SAME customer in this trip is still short — reallocate any
