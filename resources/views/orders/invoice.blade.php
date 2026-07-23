@@ -151,6 +151,9 @@ td.right { text-align:right; }
                 @endif
                 <p style="margin-top:6px;font-size:12px;">
                     Weight: <strong>{{ $order->shipping_kg_charged }} kg</strong>
+                    @if($order->customer->use_cargo)
+                        <span style="color:#0369a1;">(includes cargo +1kg)</span>
+                    @endif
                 </p>
                 <p style="font-size:12px;">
                     Rate:

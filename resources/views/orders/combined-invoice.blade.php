@@ -131,6 +131,9 @@ td.r { text-align:right; }
             @else
                 <span class="type-pill" style="background:#f1f5f9;color:#475569;">Customer</span>
             @endif
+            @if($customer->use_cargo)
+                <span class="type-pill" style="background:#e0f2fe;color:#0369a1;">Cargo</span>
+            @endif
         </div>
         @if($customer->address)
             <div class="sm" style="margin-top:2px;">{{ $customer->address }}</div>
@@ -143,7 +146,11 @@ td.r { text-align:right; }
                 {{ $shippingArea->name }}
                 @if($shippingArea->province), {{ $shippingArea->province }}@endif
             </div>
-            <div class="sm">Weight: <strong>{{ number_format($totalWeightGram) }}g</strong> ({{ $chargeableKg }} kg) &middot; Rate:
+            <div class="sm">Weight: <strong>{{ number_format($totalWeightGram) }}g</strong> ({{ $chargeableKg }} kg)
+                @if($customer->use_cargo)
+                    <span style="color:#0369a1;">(includes cargo +1kg)</span>
+                @endif
+                &middot; Rate:
                 @if($shippingArea->isFlatFee())
                     Flat Rp {{ number_format($shippingArea->flat_fee, 0, ',', '.') }}
                 @else

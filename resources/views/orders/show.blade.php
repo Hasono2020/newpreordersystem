@@ -279,7 +279,14 @@
                             Shipping
                             @if($order->shippingArea)
                                 <div class="small text-info">{{ $order->shippingArea->name }}</div>
-                                <div class="small text-muted">{{ number_format($order->shipping_weight_gram, 0, ',', '.') }}g → {{ $order->shipping_kg_charged }} kg</div>
+                                <div class="small text-muted">
+                                    {{ number_format($order->shipping_weight_gram, 0, ',', '.') }}g → {{ $order->shipping_kg_charged }} kg
+                                    @if($order->customer->use_cargo)
+                                        <span class="badge bg-info-subtle text-info-emphasis ms-1" style="font-size:.62rem;" title="This customer's weight includes a +1kg cargo bump">
+                                            <i class="bi bi-box-seam"></i> Cargo (+1kg)
+                                        </span>
+                                    @endif
+                                </div>
                             @endif
                         </td>
                         <td class="text-end">Rp {{ number_format($order->shipping_fee, 0, ',', '.') }}</td>
