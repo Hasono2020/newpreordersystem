@@ -288,26 +288,46 @@ td.right { text-align:right; }
     </div>
 
 </div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script>
+// html2canvas (~50KB) is only fetched the first time this button is
+// clicked, not on every page load — most invoice views are just to print
+// or check totals, and shouldn't pay for a library they never use.
+let html2canvasReady = null;
+function loadHtml2Canvas() {
+    if (!html2canvasReady) {
+        html2canvasReady = new Promise(function (resolve, reject) {
+            const script = document.createElement('script');
+            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+            script.onload = resolve;
+            script.onerror = reject;
+            document.head.appendChild(script);
+        });
+    }
+    return html2canvasReady;
+}
+
 document.getElementById('downloadImageBtn').addEventListener('click', function () {
     const btn = this;
     btn.disabled = true;
     const originalText = btn.textContent;
-    btn.textContent = 'Rendering…';
-    // scale:2 for a sharper image when zoomed in on a phone (this is
-    // meant to be shared over WhatsApp, not just viewed on a monitor).
-    html2canvas(document.querySelector('.page'), { scale: 2, backgroundColor: '#ffffff', useCORS: true })
-        .then(function (canvas) {
-            const link = document.createElement('a');
-            link.download = 'invoice-{{ \Illuminate\Support\Str::slug($order->order_number) }}.png';
-            link.href = canvas.toDataURL('image/png');
-            link.click();
-        })
-        .finally(function () {
-            btn.disabled = false;
-            btn.textContent = originalText;
-        });
+    btn.textContent = 'Preparing…';
+
+    loadHtml2Canvas().then(function () {
+        btn.textContent = 'Rendering…';
+        // scale:2 for a sharper image when zoomed in on a phone (this is
+        // meant to be shared over WhatsApp, not just viewed on a monitor).
+        return html2canvas(document.querySelector('.page'), { scale: 2, backgroundColor: '#ffffff', useCORS: true });
+    }).then(function (canvas) {
+        const link = document.createElement('a');
+        link.download = 'invoice-{{ \Illuminate\Support\Str::slug($order->order_number) }}.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+    }).catch(function () {
+        alert('Could not load the image renderer. Check your connection and try again.');
+    }).finally(function () {
+        btn.disabled = false;
+        btn.textContent = originalText;
+    });
 });
 </script>
 </body>

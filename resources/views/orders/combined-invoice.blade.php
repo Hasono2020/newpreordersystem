@@ -302,35 +302,57 @@ td.r { text-align:right; }
 </div>
 
 </div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script>
     // Auto-open the print/save dialog when ?autoprint=1 is in the URL
     if (new URLSearchParams(window.location.search).get('autoprint') === '1') {
         window.addEventListener('load', () => setTimeout(() => window.print(), 400));
     }
 
+    // html2canvas (~50KB) is only fetched the first time this button is
+    // clicked, not on every page load — most invoice views are just to
+    // print or check totals, and shouldn't pay for a library they never use.
+    let html2canvasReady = null;
+    function loadHtml2Canvas() {
+        if (!html2canvasReady) {
+            html2canvasReady = new Promise(function (resolve, reject) {
+                const script = document.createElement('script');
+                script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+                script.onload = resolve;
+                script.onerror = reject;
+                document.head.appendChild(script);
+            });
+        }
+        return html2canvasReady;
+    }
+
     document.getElementById('downloadImageBtn').addEventListener('click', function () {
         const btn = this;
         const btnBar = document.querySelector('.no-print');
-        // .no-print is a CHILD of .page here (unlike the single-order
-        // invoice, where it's a sibling) — @media print hides it for
-        // printing, but html2canvas renders the on-screen state, so it
-        // has to be hidden manually or it would show up in the image.
-        const originalDisplay = btnBar.style.display;
-        btnBar.style.display = 'none';
+        const originalText = btn.textContent;
         btn.disabled = true;
+        btn.textContent = 'Preparing…';
 
-        html2canvas(document.querySelector('.page'), { scale: 2, backgroundColor: '#ffffff', useCORS: true })
-            .then(function (canvas) {
-                const link = document.createElement('a');
-                link.download = 'invoice-{{ \Illuminate\Support\Str::slug($customer->name) }}.png';
-                link.href = canvas.toDataURL('image/png');
-                link.click();
-            })
-            .finally(function () {
-                btnBar.style.display = originalDisplay;
-                btn.disabled = false;
-            });
+        loadHtml2Canvas().then(function () {
+            btn.textContent = 'Rendering…';
+            // .no-print is a CHILD of .page here (unlike the single-order
+            // invoice, where it's a sibling) — @media print hides it for
+            // printing, but html2canvas renders the on-screen state, so it
+            // has to be hidden manually or it would show up in the image.
+            const originalDisplay = btnBar.style.display;
+            btnBar.style.display = 'none';
+            return html2canvas(document.querySelector('.page'), { scale: 2, backgroundColor: '#ffffff', useCORS: true })
+                .finally(function () { btnBar.style.display = originalDisplay; });
+        }).then(function (canvas) {
+            const link = document.createElement('a');
+            link.download = 'invoice-{{ \Illuminate\Support\Str::slug($customer->name) }}.png';
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }).catch(function () {
+            alert('Could not load the image renderer. Check your connection and try again.');
+        }).finally(function () {
+            btn.disabled = false;
+            btn.textContent = originalText;
+        });
     });
 </script>
 </body>
