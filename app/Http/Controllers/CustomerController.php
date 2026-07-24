@@ -221,11 +221,15 @@ class CustomerController extends Controller
             ->withSum('orders as total_spent', 'total_amount')
             ->orderBy('name')->get();
 
-        $rows = [['name','phone','type','shipping_area','address','notes','total_orders','total_spent']];
+        // use_cargo appended after notes (not inserted between existing
+        // columns) so a file exported before this field existed still
+        // re-imports at the same column positions it always did.
+        $rows = [['name','phone','type','shipping_area','address','notes','use_cargo','total_orders','total_spent']];
         foreach ($customers as $c) {
             $rows[] = [$c->name, $c->phone, $c->type,
                 $c->defaultShippingArea?->name ?? '',
                 $c->address, $c->notes,
+                $c->use_cargo ? 'Yes' : 'No',
                 $c->orders_count, $c->total_spent ?? 0];
         }
         return $this->streamXlsx('customers_export.xlsx', $rows);
@@ -234,13 +238,15 @@ class CustomerController extends Controller
     public function importTemplate()
     {
         return $this->streamXlsx('customer_import_template.xlsx', [
-            ['Name', 'Phone', 'Type', 'Shipping Area', 'Address', 'Notes'],
+            ['Name', 'Phone', 'Type', 'Shipping Area', 'Address', 'Notes', 'Use Cargo'],
             // Type: customer | reseller | selected_customer
             // Phone: Indonesian format (e.g. 081234567890)
             // Shipping Area: must match area name in the system
-            ['JASMINE 7911', '081234567890', 'customer', 'SURABAYA', '', ''],
-            ['SARI 0812',    '081298765432', 'reseller', 'JAKARTA',  '', 'VIP reseller'],
-            ['TONO 5566',    '085612345678', 'customer', 'BANDUNG',  'Jl. Merdeka 10', ''],
+            // Use Cargo: Yes/No (or 1/0, true/false) — adds 1kg to this
+            // customer's chargeable shipping weight on every shipment
+            ['JASMINE 7911', '081234567890', 'customer', 'SURABAYA', '', '', 'No'],
+            ['SARI 0812',    '081298765432', 'reseller', 'JAKARTA',  '', 'VIP reseller', 'Yes'],
+            ['TONO 5566',    '085612345678', 'customer', 'BANDUNG',  'Jl. Merdeka 10', '', 'No'],
         ]);
     }
 
@@ -303,6 +309,10 @@ class CustomerController extends Controller
             $areaName = trim($row[3] ?? '');
             $address  = trim($row[4] ?? '');
             $notes    = trim($row[5] ?? '');
+            // Missing on an older export/template (no column 6 at all) is
+            // treated the same as "No" - existing behavior for every
+            // customer, unaffected either way.
+            $useCargo = in_array(strtolower(trim((string) ($row[6] ?? ''))), ['yes', '1', 'true']);
 
             if (empty($name)) continue;
 
@@ -333,6 +343,7 @@ class CustomerController extends Controller
                 'default_shipping_area_id' => $areaId,
                 'address'                  => $address ?: null,
                 'notes'                    => $notes ?: null,
+                'use_cargo'                => $useCargo,
                 'created_by'               => \Illuminate\Support\Facades\Auth::id(),
                 'created_at'               => $now,
                 'updated_at'               => $now,
