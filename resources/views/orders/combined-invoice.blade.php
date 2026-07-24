@@ -104,6 +104,7 @@ td.r { text-align:right; }
 
 <div class="no-print" style="margin-bottom:14px;display:flex;gap:8px;">
     <button onclick="window.print()" style="padding:7px 18px;background:#1e2a3a;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:12px;">&#128424; Print / Save PDF</button>
+    <button id="downloadImageBtn" style="padding:7px 18px;background:#16a34a;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:12px;">&#128444; Download as Image</button>
     <button onclick="window.history.length > 1 ? window.history.back() : window.location.href='/customers'" style="padding:7px 18px;background:#f1f5f9;color:#1e2a3a;border:1px solid #e2e8f0;border-radius:5px;cursor:pointer;font-size:12px;">&#8592; Back</button>
     <span style="font-size:10px;color:#94a3b8;align-self:center;">Tip: in the print dialog, choose <strong>"Save as PDF"</strong> as the destination to save. Paper size is set to A5.</span>
 </div>
@@ -301,11 +302,36 @@ td.r { text-align:right; }
 </div>
 
 </div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script>
     // Auto-open the print/save dialog when ?autoprint=1 is in the URL
     if (new URLSearchParams(window.location.search).get('autoprint') === '1') {
         window.addEventListener('load', () => setTimeout(() => window.print(), 400));
     }
+
+    document.getElementById('downloadImageBtn').addEventListener('click', function () {
+        const btn = this;
+        const btnBar = document.querySelector('.no-print');
+        // .no-print is a CHILD of .page here (unlike the single-order
+        // invoice, where it's a sibling) — @media print hides it for
+        // printing, but html2canvas renders the on-screen state, so it
+        // has to be hidden manually or it would show up in the image.
+        const originalDisplay = btnBar.style.display;
+        btnBar.style.display = 'none';
+        btn.disabled = true;
+
+        html2canvas(document.querySelector('.page'), { scale: 2, backgroundColor: '#ffffff', useCORS: true })
+            .then(function (canvas) {
+                const link = document.createElement('a');
+                link.download = 'invoice-{{ \Illuminate\Support\Str::slug($customer->name) }}.png';
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            })
+            .finally(function () {
+                btnBar.style.display = originalDisplay;
+                btn.disabled = false;
+            });
+    });
 </script>
 </body>
 </html>

@@ -90,7 +90,10 @@ td.right { text-align:right; }
     <a href="{{ route('orders.show', $order) }}" style="color:#94a3b8;text-decoration:none;font-size:13px;">
         ← Back to Order
     </a>
-    <button onclick="window.print()" style="margin-left:auto;background:#3b82f6;color:#fff;border:none;padding:7px 20px;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600;">
+    <button id="downloadImageBtn" style="margin-left:auto;background:#16a34a;color:#fff;border:none;padding:7px 20px;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600;">
+        🖼 Download as Image
+    </button>
+    <button onclick="window.print()" style="background:#3b82f6;color:#fff;border:none;padding:7px 20px;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600;">
         🖨 Print Invoice
     </button>
 </div>
@@ -285,5 +288,27 @@ td.right { text-align:right; }
     </div>
 
 </div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script>
+document.getElementById('downloadImageBtn').addEventListener('click', function () {
+    const btn = this;
+    btn.disabled = true;
+    const originalText = btn.textContent;
+    btn.textContent = 'Rendering…';
+    // scale:2 for a sharper image when zoomed in on a phone (this is
+    // meant to be shared over WhatsApp, not just viewed on a monitor).
+    html2canvas(document.querySelector('.page'), { scale: 2, backgroundColor: '#ffffff', useCORS: true })
+        .then(function (canvas) {
+            const link = document.createElement('a');
+            link.download = 'invoice-{{ \Illuminate\Support\Str::slug($order->order_number) }}.png';
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        })
+        .finally(function () {
+            btn.disabled = false;
+            btn.textContent = originalText;
+        });
+});
+</script>
 </body>
 </html>
