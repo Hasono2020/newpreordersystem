@@ -56,6 +56,7 @@
 <div class="col-lg-10">
 <form method="POST" action="{{ route('orders.store') }}" id="orderForm">
     @csrf
+    <input type="hidden" name="client_token" id="clientToken" value="">
 
     {{-- ── Customer Card ── --}}
     <div class="card mb-3">
@@ -358,7 +359,7 @@
     </div>
 
     <div class="d-flex gap-2">
-        <button type="submit" class="btn btn-primary px-4">Save Order</button>
+        <button type="submit" class="btn btn-primary px-4" id="saveOrderBtn">Save Order</button>
         <a href="{{ route('orders.index') }}" class="btn btn-outline-secondary">Cancel</a>
     </div>
 </form>
@@ -1083,6 +1084,39 @@ document.getElementById('orderForm').addEventListener('submit', function(e) {
         // Also scroll the first offending row into view
         const firstBad = document.querySelector('.item-row[style*="dc3545"]');
         if (firstBad) firstBad.scrollIntoView({behavior:'smooth', block:'center'});
+        return;
+    }
+
+    // Validation passed — guard against duplicate orders from double-clicks or
+    // a slow/unstable connection making it look like the click didn't register.
+    const btn = document.getElementById('saveOrderBtn');
+    if (btn) {
+        if (btn.dataset.submitted === '1') {
+            // Already submitted once from this page view — block a second submit outright.
+            e.preventDefault();
+            return;
+        }
+        btn.dataset.submitted = '1';
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving...';
+    }
+});
+
+// Reset the Save button and issue a fresh token on every page view (including
+// back/forward navigation restored from bfcache), so a genuine retry after a
+// failed submit isn't permanently locked out.
+window.addEventListener('pageshow', function() {
+    const btn = document.getElementById('saveOrderBtn');
+    if (btn) {
+        btn.disabled = false;
+        btn.dataset.submitted = '';
+        btn.textContent = 'Save Order';
+    }
+    const tokenInput = document.getElementById('clientToken');
+    if (tokenInput) {
+        tokenInput.value = window.crypto?.randomUUID
+            ? window.crypto.randomUUID()
+            : (Date.now() + '-' + Math.random().toString(36).slice(2));
     }
 });
 document.addEventListener('click', e => {

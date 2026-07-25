@@ -292,6 +292,7 @@ class OrderImportService
                 'notes'                => $notes,
                 'ordered_at'           => $orderedAt,
                 'created_by'           => $createdBy,
+                'source'               => 'import',
                 'subtotal'             => $unitPrice,
                 'discount_amount'      => $appliedDiscount,
                 'shipping_fee'         => $shippingFee,

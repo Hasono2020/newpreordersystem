@@ -14,7 +14,7 @@ class Order extends Model
         'subtotal', 'discount_amount', 'shipping_fee', 'shipping_discount',
         'shipping_weight_gram', 'shipping_kg_charged',
         'total_amount', 'deposit_paid', 'payment_status', 'notes', 'ordered_at',
-        'invoice_printed_at', 'invoice_printed_by',
+        'invoice_printed_at', 'invoice_printed_by', 'source',
     ];
 
     protected $casts = ['ordered_at' => 'datetime', 'invoice_printed_at' => 'datetime'];

@@ -80,6 +80,7 @@ class OrderController extends Controller
             'items.*.product_variant_id'     => 'nullable|exists:product_variants,id',
             'items.*.quantity'               => 'required|integer|min:1',
             'items.*.unit_price'             => 'required|numeric|min:0',
+            'client_token'                   => 'nullable|string|max:100',
         ], [
             'cs_agent_id.required'        => 'Please select which Customer Service handled this order.',
             'items.required'              => 'Please add at least one product before creating the order.',
@@ -87,6 +88,40 @@ class OrderController extends Controller
             'items.*.product_id.required' => 'Each item row must have a product selected.',
             'items.*.quantity.min'        => 'Quantity must be at least 1.',
         ]);
+
+        // Duplicate-submission guard: the create form issues a fresh random
+        // client_token per page view and disables its Save button on submit,
+        // but on an unstable connection a request can still be sent twice
+        // (double-click before the button disables, or the browser itself
+        // retrying a request that looked like it failed). Cache::add() is
+        // atomic, so only the first request for a given token proceeds;
+        // any repeat is redirected to the order the first request created
+        // instead of creating a second one.
+        $clientToken = $request->input('client_token');
+        if ($clientToken) {
+            $lockKey = 'order_submit_lock:' . $clientToken;
+            if (!\Cache::add($lockKey, 'processing', now()->addMinutes(5))) {
+                $existingOrderId = \Cache::get($lockKey . ':order_id');
+                if ($existingOrderId) {
+                    \App\Models\ActivityLog::record(
+                        'order.duplicate_blocked',
+                        "Duplicate order submission blocked — redirected to order #{$existingOrderId} instead of creating a new one.",
+                        'order',
+                        $existingOrderId
+                    );
+                    return redirect()->route('orders.show', $existingOrderId)
+                        ->with('success', 'This order was already saved a moment ago — showing it below.');
+                }
+                \App\Models\ActivityLog::record(
+                    'order.duplicate_blocked',
+                    'Duplicate order submission blocked while the first one was still being saved (no order id resolved yet).',
+                    'order',
+                    null
+                );
+                return redirect()->route('orders.index')
+                    ->with('error', 'This order is still being saved from a previous click. Please check the order list before submitting again.');
+            }
+        }
 
         // Block new orders if trip is order_closed or beyond
         $trip = Trip::findOrFail($request->trip_id);
@@ -109,6 +144,7 @@ class OrderController extends Controller
                 'notes'            => $request->notes,
                 'ordered_at'       => $request->ordered_at ?: now(),
                 'created_by'       => Auth::id(),
+                'source'           => 'manual',
             ]);
 
             // Merge duplicate product+variant combinations before saving
@@ -183,6 +219,10 @@ class OrderController extends Controller
 
         // Combine shipping across all this customer's orders in the trip (charge once)
         $this->promoService->recalcCustomerShipping($order->customer_id, $order->trip_id);
+
+        if ($clientToken) {
+            \Cache::put('order_submit_lock:' . $clientToken . ':order_id', $order->id, now()->addMinutes(5));
+        }
 
         return redirect()->route('orders.show', $order)->with('success', 'Order created successfully.');
     }

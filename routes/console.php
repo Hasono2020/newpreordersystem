@@ -19,3 +19,11 @@ Schedule::command('backup:database --keep=7')
 Schedule::command('images:cleanup')
     ->weeklyOn(1, '03:30') // Mondays 03:30, after the backup
     ->withoutOverlapping();
+
+// Daily safety-net scan for accidental duplicate orders (e.g. from an
+// unstable connection). --log only records pairs found in the last 24h,
+// so this won't re-report the same old duplicate every day. Findings
+// show up in the Activity Log page like any other audited action.
+Schedule::command('orders:find-duplicates --days=3 --log')
+    ->dailyAt('04:00')
+    ->withoutOverlapping();
