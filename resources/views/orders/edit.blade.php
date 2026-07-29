@@ -63,6 +63,7 @@
                 <div class="card-body border-bottom bg-light">
                     <form method="POST" action="{{ route('orders.items.add', $order) }}" id="addItemForm">
                         @csrf
+                        <input type="hidden" name="client_token" id="addItemClientToken" value="">
                         <div class="row g-2 align-items-end">
                             <div class="col-md-4">
                                 <label class="form-label small fw-semibold">Product</label>
@@ -96,7 +97,7 @@
                                 <div class="form-control form-control-sm bg-white text-muted small" id="aiLineTotal">Rp 0</div>
                             </div>
                             <div class="col-md-1">
-                                <button type="submit" class="btn btn-sm btn-primary w-100 mt-3">Add</button>
+                                <button type="submit" class="btn btn-sm btn-primary w-100 mt-3" id="addItemBtn">Add</button>
                             </div>
                         </div>
                     </form>
@@ -358,6 +359,40 @@ document.getElementById('addItemForm')?.addEventListener('submit', function (e) 
         e.preventDefault();
         alert('This product has color/size variants — please select one before adding.');
         varSel.focus();
+        return;
+    }
+
+    // Validation passed — guard against the same connection-hiccup issue as the
+    // New Order form: without this, a double-click or a slow/unstable
+    // connection can submit twice and silently double the quantity on an
+    // existing line (addItem() merges into a matching product+variant row
+    // instead of creating a visibly duplicate one).
+    const btn = document.getElementById('addItemBtn');
+    if (btn) {
+        if (btn.dataset.submitted === '1') {
+            e.preventDefault();
+            return;
+        }
+        btn.dataset.submitted = '1';
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    }
+});
+
+// Reset the Add button and issue a fresh token on every page view (including
+// back/forward navigation restored from bfcache).
+window.addEventListener('pageshow', function () {
+    const btn = document.getElementById('addItemBtn');
+    if (btn) {
+        btn.disabled = false;
+        btn.dataset.submitted = '';
+        btn.textContent = 'Add';
+    }
+    const tokenInput = document.getElementById('addItemClientToken');
+    if (tokenInput) {
+        tokenInput.value = window.crypto?.randomUUID
+            ? window.crypto.randomUUID()
+            : (Date.now() + '-' + Math.random().toString(36).slice(2));
     }
 });
 </script>

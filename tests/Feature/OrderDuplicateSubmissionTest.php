@@ -214,3 +214,65 @@ test('orders:find-duplicates --log only records Activity Log entries for pairs f
 
     expect(ActivityLog::where('action', 'order.possible_duplicate')->count())->toBe(1);
 });
+
+// ── Add Item duplicate guard (orders/edit.blade.php) ────────────────────
+
+test('submitting the Add Item form twice with the same client_token only adds the quantity once', function () {
+    $admin    = $this->adminUser();
+    $trip     = $this->openTrip();
+    $customer = $this->customer($admin);
+    $order    = Order::factory()->create(['trip_id' => $trip->id, 'customer_id' => $customer->id, 'created_by' => $admin->id, 'source' => 'manual']);
+    $product  = Product::create([
+        'trip_id' => $trip->id, 'product_code' => 'ADDDUP01',
+        'price' => 50000, 'weight_gram' => 100, 'status' => 'active',
+    ]);
+
+    $payload = [
+        'product_id'         => $product->id,
+        'product_variant_id' => null,
+        'quantity'           => 2,
+        'unit_price'         => 50000,
+        'client_token'       => 'add-token-abc',
+    ];
+
+    $first = $this->actingAs($admin)->post(route('orders.items.add', $order), $payload);
+    $first->assertRedirect();
+    expect($order->items()->count())->toBe(1);
+    expect($order->items()->first()->quantity)->toBe(2);
+
+    // Same page, same token — double-click / connection retry.
+    $second = $this->actingAs($admin)->post(route('orders.items.add', $order), $payload);
+    $second->assertSessionHas('error');
+
+    expect($order->items()->count())->toBe(1); // still one line, not two
+    expect($order->items()->first()->quantity)->toBe(2); // NOT doubled to 4
+
+    expect(ActivityLog::where('action', 'order.duplicate_blocked')
+        ->where('description', 'like', "%{$order->order_number}%")
+        ->count())->toBe(1);
+});
+
+test('two different client_tokens on Add Item both go through as separate real submissions', function () {
+    $admin    = $this->adminUser();
+    $trip     = $this->openTrip();
+    $customer = $this->customer($admin);
+    $order    = Order::factory()->create(['trip_id' => $trip->id, 'customer_id' => $customer->id, 'created_by' => $admin->id, 'source' => 'manual']);
+    $product  = Product::create([
+        'trip_id' => $trip->id, 'product_code' => 'ADDDUP02',
+        'price' => 50000, 'weight_gram' => 100, 'status' => 'active',
+    ]);
+
+    $base = [
+        'product_id' => $product->id, 'product_variant_id' => null,
+        'quantity' => 1, 'unit_price' => 50000,
+    ];
+
+    $this->actingAs($admin)->post(route('orders.items.add', $order), $base + ['client_token' => 'add-token-a']);
+    $this->actingAs($admin)->post(route('orders.items.add', $order), $base + ['client_token' => 'add-token-b']);
+
+    // addItem() merges same product+variant into one line by design — the
+    // guard should not interfere with that: two genuinely separate submissions
+    // still both go through, just merged into the same line as intended.
+    expect($order->items()->count())->toBe(1);
+    expect($order->items()->first()->quantity)->toBe(2);
+});

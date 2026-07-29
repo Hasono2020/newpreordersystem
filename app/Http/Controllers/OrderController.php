@@ -474,6 +474,7 @@ class OrderController extends Controller
             'product_variant_id' => 'nullable|exists:product_variants,id',
             'quantity'           => 'required|integer|min:1',
             'unit_price'         => 'required|numeric|min:0',
+            'client_token'       => 'nullable|string|max:100',
         ]);
 
         // Verify variant belongs to the selected product
@@ -492,6 +493,29 @@ class OrderController extends Controller
         $productHasVariants = ProductVariant::where('product_id', $request->product_id)->exists();
         if ($productHasVariants && !$request->product_variant_id) {
             return back()->with('error', 'This product has color/size variants — please select one before adding.');
+        }
+
+        // Duplicate-submission guard — same pattern as the New Order form.
+        // Placed after the checks above so a legitimate retry (e.g. after fixing
+        // a missing variant) never gets wrongly blocked as a "duplicate" — the
+        // lock is only taken once we're actually about to add/merge the item.
+        // Without this guard, a double-click or a slow/unstable connection
+        // resubmitting this form wouldn't create a visibly duplicate row
+        // (addItem merges into a matching product+variant line below); it would
+        // silently double the quantity on the existing line instead, which is
+        // harder to notice.
+        $clientToken = $request->input('client_token');
+        if ($clientToken) {
+            $lockKey = 'add_item_lock:' . $clientToken;
+            if (!\Cache::add($lockKey, 'processing', now()->addMinutes(5))) {
+                \App\Models\ActivityLog::record(
+                    'order.duplicate_blocked',
+                    "Duplicate 'add item' submission blocked on order {$order->order_number} — quantity was not added a second time.",
+                    'order',
+                    $order->id
+                );
+                return back()->with('error', 'This item looks like it was already added a moment ago — check the order before adding it again.');
+            }
         }
 
         // Check if same product+variant already exists in this order
