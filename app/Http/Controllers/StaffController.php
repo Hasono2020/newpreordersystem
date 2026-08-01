@@ -93,7 +93,7 @@ class StaffController extends Controller
             'email'       => $data['email'],
             'role'        => $data['role'],
             'phone'       => $data['phone'] ?? null,
-            'is_active'   => $request->boolean('is_active', true),
+            'is_active'   => $request->boolean('is_active', false),
             'notes'       => $data['notes'] ?? null,
             'permissions' => $customPerms,
         ]);
