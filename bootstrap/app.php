@@ -18,6 +18,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // Remember the last list page (page + filters) per section for smart "Back"
         $middleware->web(append: [
             \App\Http\Middleware\RememberListUrl::class,
+            \App\Http\Middleware\EnsureAccountIsActive::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

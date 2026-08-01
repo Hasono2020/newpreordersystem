@@ -32,7 +32,18 @@ class User extends Authenticatable
     public function isAdmin(): bool     { return $this->role === 'admin'; }
     public function isFinance(): bool   { return in_array($this->role, ['admin', 'finance']); }
     public function isStaff(): bool     { return $this->role === 'staff'; }
-    public function isOwnDataOnly(): bool { return $this->role !== 'admin' && $this->hasPermission('own_data'); }
+    public function isOwnDataOnly(): bool
+    {
+        // A deactivated account must never end up LESS restricted than an
+        // active one. hasPermission() collapses everything to false once
+        // is_active is false — fine for "can they do X" permissions, but
+        // own_data is an inverted flag (true = MORE restricted), so that
+        // collapse would otherwise remove the restriction instead of
+        // tightening it. Fail safe here regardless of what hasPermission()
+        // would say.
+        if (!$this->is_active) return true;
+        return $this->role !== 'admin' && $this->hasPermission('own_data');
+    }
     public function isActive(): bool    { return $this->is_active; }
 
     /**
