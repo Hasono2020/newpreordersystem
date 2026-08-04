@@ -81,6 +81,11 @@ class OrderController extends Controller
             'items.*.quantity'               => 'required|integer|min:1',
             'items.*.unit_price'             => 'required|numeric|min:0',
             'client_token'                   => 'nullable|string|max:100',
+            'payment_amount'                 => 'nullable|numeric|min:0',
+            'payment_type'                   => 'nullable|in:deposit,partial,full',
+            'payment_reference'              => 'nullable|string|max:100',
+            'payment_paid_at'                => 'nullable|date',
+            'payment_notes'                  => 'nullable|string',
         ], [
             'cs_agent_id.required'        => 'Please select which Customer Service handled this order.',
             'items.required'              => 'Please add at least one product before creating the order.',
@@ -224,7 +229,41 @@ class OrderController extends Controller
             \Cache::put('order_submit_lock:' . $clientToken . ':order_id', $order->id, now()->addMinutes(5));
         }
 
-        return redirect()->route('orders.show', $order)->with('success', 'Order created successfully.');
+        // Optional payment captured at creation time — e.g. the customer pays
+        // right there on livechat while the order is being entered, so it's
+        // already on the order once saved instead of needing a separate
+        // "Record Payment" step right after.
+        $paymentMessage = '';
+        if ($request->filled('payment_amount') && (float) $request->payment_amount > 0) {
+            \DB::transaction(function () use ($request, $order) {
+                $order->payments()->create([
+                    'amount'      => $request->payment_amount,
+                    'type'        => $request->payment_type ?: 'deposit',
+                    'method'      => 'Transfer',
+                    'reference'   => $request->payment_reference,
+                    'paid_at'     => $request->payment_paid_at ?: now(),
+                    'notes'       => $request->payment_notes,
+                    'recorded_by' => Auth::id(),
+                ]);
+                $this->recalcOrderPayment($order);
+            });
+            $order->refresh();
+
+            \App\Models\ActivityLog::record(
+                'payment.recorded',
+                'Recorded Rp ' . number_format($request->payment_amount, 0, ',', '.')
+                    . ' (' . ($request->payment_type ?: 'deposit') . ") on {$order->order_number} ({$order->customer->name}) at order creation",
+                'order',
+                $order->id
+            );
+
+            $paymentMessage = ' Payment of Rp ' . number_format($request->payment_amount, 0, ',', '.') . ' recorded.';
+            if ($order->payment_status === 'paid') {
+                $paymentMessage .= ' ✓ Fully paid.';
+            }
+        }
+
+        return redirect()->route('orders.show', $order)->with('success', 'Order created successfully.' . $paymentMessage);
     }
 
     public function show(Order $order)

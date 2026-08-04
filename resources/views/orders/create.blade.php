@@ -249,6 +249,47 @@
         </div>
     </div>
 
+    {{-- ── Payment (optional) ── --}}
+    <div class="card mb-3">
+        <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center" data-bs-toggle="collapse" data-bs-target="#createPaymentPanel" role="button" style="cursor:pointer;">
+            <span class="fw-semibold"><i class="bi bi-cash-coin me-2"></i>Payment (optional)</span>
+            <i class="bi bi-chevron-down small text-muted"></i>
+        </div>
+        <div class="collapse {{ old('payment_amount') ? 'show' : '' }}" id="createPaymentPanel">
+            <div class="card-body">
+                <div class="form-text text-muted mb-2" style="font-size:.75rem;">
+                    <i class="bi bi-info-circle me-1"></i>
+                    If the customer is paying right now on livechat, record it here so it's already on the order once saved — no need for a separate step afterward.
+                </div>
+                <div class="row g-2 align-items-end">
+                    <div class="col-md-3">
+                        <label class="form-label small">Amount (Rp)</label>
+                        <input type="number" name="payment_amount" class="form-control form-control-sm" step="1" min="0" value="{{ old('payment_amount') }}">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small">Type</label>
+                        <select name="payment_type" class="form-select form-select-sm">
+                            <option value="deposit">Deposit</option>
+                            <option value="partial">Partial</option>
+                            <option value="full">Full Payment</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small">Reference</label>
+                        <input type="text" name="payment_reference" class="form-control form-control-sm" placeholder="e.g. TF#123" value="{{ old('payment_reference') }}">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small">Date</label>
+                        <input type="date" name="payment_paid_at" class="form-control form-control-sm" value="{{ old('payment_paid_at', date('Y-m-d')) }}">
+                    </div>
+                </div>
+                <div class="mt-2">
+                    <input type="text" name="payment_notes" class="form-control form-control-sm" placeholder="Payment notes (optional)" value="{{ old('payment_notes') }}">
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- ── Order Items ── --}}
     <div class="card mb-3">
         <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
