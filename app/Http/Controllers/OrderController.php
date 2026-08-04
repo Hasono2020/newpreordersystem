@@ -346,9 +346,21 @@ class OrderController extends Controller
             }
         }
         if ($changes) {
+            // Name which field(s) actually changed directly in the list view —
+            // without this, every edit shows the identical generic sentence and
+            // "view changes" has to be clicked just to tell them apart.
+            $fieldLabels = [
+                'shipping_area_id' => 'shipping area',
+                'cs_agent_id'      => 'CS agent',
+                'notes'            => 'notes',
+                'ordered_at'       => 'order date',
+                'total_amount'     => 'total',
+            ];
+            $changedLabels = array_map(fn ($f) => $fieldLabels[$f] ?? $f, array_keys($changes));
+
             \App\Models\ActivityLog::record(
                 'order.updated',
-                "Edited order {$order->order_number} ({$order->customer->name})",
+                "Edited order {$order->order_number} ({$order->customer->name}) — changed " . implode(', ', $changedLabels),
                 'order',
                 $order->id,
                 $changes
@@ -526,13 +538,28 @@ class OrderController extends Controller
             ->first();
 
         if ($existing) {
-            $newQty = $existing->quantity + $request->quantity;
+            $oldQty = $existing->quantity;
+            $newQty = $oldQty + $request->quantity;
+            $productLabel = $existing->product->product_code
+                . ($existing->variant ? ' (' . implode('/', array_filter([$existing->variant->color, $existing->variant->size])) . ')' : '');
+
             $existing->update([
                 'quantity'   => $newQty,
                 'line_total' => $existing->unit_price * $newQty,
             ]);
+
+            \App\Models\ActivityLog::record(
+                'order.updated',
+                "Edited order {$order->order_number} ({$order->customer->name}) — increased quantity of {$existing->product->product_code}",
+                'order',
+                $order->id,
+                ['item_quantity' => [
+                    'old' => "{$productLabel} x{$oldQty}",
+                    'new' => "{$productLabel} x{$newQty}",
+                ]]
+            );
         } else {
-            $order->items()->create([
+            $newItem = $order->items()->create([
                 'product_id'         => $request->product_id,
                 'product_variant_id' => $request->product_variant_id,
                 'quantity'           => $request->quantity,
@@ -540,6 +567,14 @@ class OrderController extends Controller
                 'line_total'         => $request->unit_price * $request->quantity,
                 'status'             => 'pending',
             ]);
+
+            \App\Models\ActivityLog::record(
+                'order.updated',
+                "Edited order {$order->order_number} ({$order->customer->name}) — added item {$newItem->product->product_code}",
+                'order',
+                $order->id,
+                ['item_added' => ['old' => '—', 'new' => $this->describeItem($newItem)]]
+            );
         }
 
         $this->_recalcAndSave($order);
@@ -562,8 +597,18 @@ class OrderController extends Controller
         $this->adminOnly('remove order items');
         abort_if($item->order_id !== $order->id, 404, 'Item does not belong to this order.');
 
+        $description = $this->describeItem($item);
         $item->delete();
         $this->_recalcAndSave($order);
+
+        \App\Models\ActivityLog::record(
+            'order.updated',
+            "Edited order {$order->order_number} ({$order->customer->name}) — removed item {$item->product->product_code}",
+            'order',
+            $order->id,
+            ['item_removed' => ['old' => $description, 'new' => '— (removed)']]
+        );
+
         return back()->with('success', 'Item removed.');
     }
 
@@ -787,6 +832,19 @@ class OrderController extends Controller
     }
 
     // ── Private helpers ────────────────────────────────────────────
+
+    /**
+     * Human-readable one-line description of an order item, for Activity Log
+     * entries — e.g. "NA_03 (GREY/FZ) x2 @ Rp50.000".
+     */
+    private function describeItem(OrderItem $item): string
+    {
+        $code    = $item->product->product_code ?? "product #{$item->product_id}";
+        $variant = $item->variant
+            ? ' (' . implode('/', array_filter([$item->variant->color, $item->variant->size])) . ')'
+            : '';
+        return "{$code}{$variant} x{$item->quantity} @ Rp" . number_format($item->unit_price, 0, ',', '.');
+    }
 
     private function _recalcAndSave(Order $order): void
     {
