@@ -233,33 +233,43 @@ class OrderController extends Controller
         // right there on livechat while the order is being entered, so it's
         // already on the order once saved instead of needing a separate
         // "Record Payment" step right after.
+        //
+        // The order above is already committed by this point, in its own
+        // transaction. If anything here fails, the order must still redirect
+        // successfully — an exception must never turn an already-created
+        // order into a 500 page with no indication it actually saved.
         $paymentMessage = '';
         if ($request->filled('payment_amount') && (float) $request->payment_amount > 0) {
-            \DB::transaction(function () use ($request, $order) {
-                $order->payments()->create([
-                    'amount'      => $request->payment_amount,
-                    'type'        => $request->payment_type ?: 'deposit',
-                    'method'      => 'Transfer',
-                    'reference'   => $request->payment_reference,
-                    'paid_at'     => $request->payment_paid_at ?: now(),
-                    'notes'       => $request->payment_notes,
-                    'recorded_by' => Auth::id(),
-                ]);
-                $this->recalcOrderPayment($order);
-            });
-            $order->refresh();
+            try {
+                \DB::transaction(function () use ($request, $order) {
+                    $order->payments()->create([
+                        'amount'      => $request->payment_amount,
+                        'type'        => $request->payment_type ?: 'deposit',
+                        'method'      => 'Transfer',
+                        'reference'   => $request->payment_reference,
+                        'paid_at'     => $request->payment_paid_at ?: now(),
+                        'notes'       => $request->payment_notes,
+                        'recorded_by' => Auth::id(),
+                    ]);
+                    $this->recalcOrderPayment($order);
+                });
+                $order->refresh();
 
-            \App\Models\ActivityLog::record(
-                'payment.recorded',
-                'Recorded Rp ' . number_format($request->payment_amount, 0, ',', '.')
-                    . ' (' . ($request->payment_type ?: 'deposit') . ") on {$order->order_number} ({$order->customer->name}) at order creation",
-                'order',
-                $order->id
-            );
+                \App\Models\ActivityLog::record(
+                    'payment.recorded',
+                    'Recorded Rp ' . number_format($request->payment_amount, 0, ',', '.')
+                        . ' (' . ($request->payment_type ?: 'deposit') . ") on {$order->order_number} ({$order->customer->name}) at order creation",
+                    'order',
+                    $order->id
+                );
 
-            $paymentMessage = ' Payment of Rp ' . number_format($request->payment_amount, 0, ',', '.') . ' recorded.';
-            if ($order->payment_status === 'paid') {
-                $paymentMessage .= ' ✓ Fully paid.';
+                $paymentMessage = ' Payment of Rp ' . number_format($request->payment_amount, 0, ',', '.') . ' recorded.';
+                if ($order->payment_status === 'paid') {
+                    $paymentMessage .= ' ✓ Fully paid.';
+                }
+            } catch (\Throwable $e) {
+                report($e);
+                $paymentMessage = ' ⚠ Order saved, but the payment could not be recorded automatically — please add it manually on the order.';
             }
         }
 
