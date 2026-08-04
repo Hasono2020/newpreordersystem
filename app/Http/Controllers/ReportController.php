@@ -152,6 +152,68 @@ class ReportController extends Controller
     }
 
     /**
+     * Sales recap for one trip — one row per order (date, customer, total),
+     * with a grand total row at the bottom. Unlike exportOrders() above,
+     * this is a per-ORDER summary, not a per-item detail sheet.
+     *
+     * Gated by the user re-confirming their own login password, since a
+     * full sales dump is more sensitive than most exports — this is a
+     * re-authentication check, not a separate export permission, so it
+     * only confirms the request came from the person actually at the
+     * keyboard, not a stale/unattended logged-in screen.
+     */
+    public function exportSalesRecap(Request $request)
+    {
+        $request->validate([
+            'trip_id'  => 'required|exists:trips,id',
+            'password' => 'required|string',
+        ]);
+
+        if (!\Illuminate\Support\Facades\Hash::check($request->password, Auth::user()->password)) {
+            return back()
+                ->with('error', 'Incorrect password — the sales recap was not exported.')
+                ->withInput($request->only('trip_id'));
+        }
+
+        $trip = Trip::findOrFail($request->trip_id);
+
+        $query = Order::with('customer')
+            ->where('trip_id', $trip->id)
+            ->where('total_amount', '>', 0) // nothing to recap for a fully-cancelled order
+            ->orderBy('ordered_at');
+        if (Auth::user()->isOwnDataOnly()) {
+            $query->where('created_by', Auth::id());
+        }
+        $orders = $query->get();
+
+        $rows = [['TANGGAL', 'NO ORDER', 'NAMA CUSTOMER', 'TOTAL PENJUALAN']];
+        $grandTotal = 0;
+
+        foreach ($orders as $o) {
+            $rows[] = [
+                ($o->ordered_at ?? $o->created_at)->format('d-m-Y'),
+                $o->order_number,
+                $o->customer->name,
+                (float) $o->total_amount,
+            ];
+            $grandTotal += (float) $o->total_amount;
+        }
+
+        $rows[] = ['', '', '', ''];
+        $rows[] = ['', '', 'GRAND TOTAL', $grandTotal];
+
+        \App\Models\ActivityLog::record(
+            'report.sales_recap_exported',
+            "Exported sales recap for trip \"{$trip->name}\" — {$orders->count()} order(s), Rp " . number_format($grandTotal, 0, ',', '.') . ' total.',
+            'trip',
+            $trip->id
+        );
+
+        $filename = 'sales_recap_' . \Illuminate\Support\Str::slug($trip->name) . '.xlsx';
+        return $this->streamXlsx($filename, $rows);
+    }
+
+    /**
      * Import template — matches LIST ORDERAN CUSTOMER format.
      * Each row = 1 separate order with 1 item.
      *

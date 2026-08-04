@@ -134,6 +134,7 @@ Route::middleware('auth')->group(function () {
     Route::get('reports/export/items', [ReportController::class, 'exportOrderItems'])->name('reports.export.items');
     Route::get('reports/export/customers', [ReportController::class, 'exportCustomers'])->name('reports.export.customers');
     Route::get('reports/export/products', [ReportController::class, 'exportProducts'])->name('reports.export.products');
+    Route::post('reports/export/sales-recap', [ReportController::class, 'exportSalesRecap'])->name('reports.export.sales-recap');
     Route::get('reports/import/orders/template', [ReportController::class, 'orderImportTemplate'])->name('reports.import.orders.template');
     Route::post('reports/import/orders', [ReportController::class, 'importOrders'])->name('reports.import.orders');
     Route::post('reports/import/customers', [ReportController::class, 'importCustomers'])->name('reports.import.customers');

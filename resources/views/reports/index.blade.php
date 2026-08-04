@@ -27,6 +27,72 @@
     @endif
 </form>
 
+{{-- ── Sales Recap Export ── --}}
+<div class="export-card bg-white mb-4">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-3">
+            <div class="icon bg-success bg-opacity-10 text-success">
+                <i class="bi bi-file-earmark-spreadsheet"></i>
+            </div>
+            <div>
+                <div class="fw-semibold">Sales Recap (Excel)</div>
+                <div class="small text-muted">
+                    @if($selectedTrip)
+                        Date, customer, and total sales for &ldquo;{{ $selectedTrip->name }}&rdquo; — with a grand total row.
+                    @else
+                        Select a trip above to export its sales recap.
+                    @endif
+                </div>
+            </div>
+        </div>
+        @if($selectedTrip)
+            <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#salesRecapModal">
+                <i class="bi bi-download me-1"></i>Export
+            </button>
+        @else
+            <button type="button" class="btn btn-sm btn-outline-secondary" disabled>
+                <i class="bi bi-download me-1"></i>Export
+            </button>
+        @endif
+    </div>
+</div>
+
+@if($selectedTrip)
+<div class="modal fade" id="salesRecapModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="POST" action="{{ route('reports.export.sales-recap') }}">
+                @csrf
+                <input type="hidden" name="trip_id" value="{{ $selectedTrip->id }}">
+                <div class="modal-header">
+                    <h5 class="modal-title">Confirm export — {{ $selectedTrip->name }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-2">Re-enter your password to download the sales recap for this trip.</p>
+                    <label class="form-label small fw-semibold">Password</label>
+                    <input type="password" name="password" class="form-control" required autocomplete="current-password" autofocus>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-sm btn-success">
+                        <i class="bi bi-download me-1"></i>Confirm &amp; Download
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+@if(session('error'))
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var el = document.getElementById('salesRecapModal');
+    if (el) new bootstrap.Modal(el).show();
+});
+</script>
+@endif
+@endif
+
 {{-- ── Summary Cards ── --}}
 <div class="row g-3 mb-4">
     <div class="col-sm-6 col-xl-3">

@@ -48,6 +48,7 @@ class ActivityLogController extends Controller
             'order.possible_duplicate' => 'Possible duplicate order (daily audit)',
             'product.price_synced'     => 'Product price synced to orders',
             'shipping.price_synced'    => 'Shipping rate synced to orders',
+            'report.sales_recap_exported' => 'Sales recap exported',
         ];
 
         return view('activity-logs.index', compact('logs', 'staffList', 'actionTypes'));
