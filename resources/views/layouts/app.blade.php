@@ -333,11 +333,11 @@
         <a href="{{ route('trips.index') }}" class="nav-link {{ request()->routeIs('trips.*') ? 'active' : '' }}" onclick="closeSidebar()">
             <i class="bi bi-airplane"></i> Trips
         </a>
-        <a href="{{ route('orders.index') }}" class="nav-link {{ request()->routeIs('orders.*') ? 'active' : '' }}" onclick="closeSidebar()">
+        <a href="{{ \App\Http\Middleware\RememberListUrl::returnUrl('orders') }}" class="nav-link {{ request()->routeIs('orders.*') ? 'active' : '' }}" onclick="closeSidebar()">
             <i class="bi bi-cart3"></i> Orders
         </a>
         @if(auth()->user()->hasPermission('payments.view'))
-        <a href="{{ route('payments.index') }}" class="nav-link {{ request()->routeIs('payments.*') ? 'active' : '' }}" onclick="closeSidebar()">
+        <a href="{{ \App\Http\Middleware\RememberListUrl::returnUrl('payments') }}" class="nav-link {{ request()->routeIs('payments.*') ? 'active' : '' }}" onclick="closeSidebar()">
             <i class="bi bi-cash-coin"></i> Payments
         </a>
         @endif
@@ -346,12 +346,12 @@
         </a>
 
         <div class="nav-section">Catalog</div>
-        <a href="{{ route('products.index') }}" class="nav-link {{ request()->routeIs('products.*') ? 'active' : '' }}" onclick="closeSidebar()">
+        <a href="{{ \App\Http\Middleware\RememberListUrl::returnUrl('products') }}" class="nav-link {{ request()->routeIs('products.*') ? 'active' : '' }}" onclick="closeSidebar()">
             <i class="bi bi-tags"></i> Products
         </a>
 
         <div class="nav-section">Settings</div>
-        <a href="{{ route('customers.index') }}" class="nav-link {{ request()->routeIs('customers.*') ? 'active' : '' }}" onclick="closeSidebar()">
+        <a href="{{ \App\Http\Middleware\RememberListUrl::returnUrl('customers') }}" class="nav-link {{ request()->routeIs('customers.*') ? 'active' : '' }}" onclick="closeSidebar()">
             <i class="bi bi-people"></i> Customers
         </a>
         <a href="{{ route('suppliers.index') }}" class="nav-link {{ request()->routeIs('suppliers.*') ? 'active' : '' }}" onclick="closeSidebar()">
