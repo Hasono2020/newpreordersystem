@@ -66,6 +66,13 @@ test('submitting the same order form twice with the same client_token only creat
     $second->assertSessionHas('success');
 
     expect(ActivityLog::where('action', 'order.duplicate_blocked')->count())->toBe(1);
+
+    $log = ActivityLog::where('action', 'order.duplicate_blocked')->first();
+    $order = Order::first();
+    expect($log->description)->toContain($customer->name)
+        ->and($log->description)->toContain($order->order_number)
+        ->and($log->description)->toContain('DUP01')
+        ->and($log->description)->not->toContain('#' . $firstOrderId); // no more raw numeric ID
 });
 
 test('two different client_tokens create two separate orders as normal', function () {
@@ -123,6 +130,10 @@ test('a submission still being processed (lock held, no resolved order yet) is b
     $response->assertRedirect(route('orders.index'));
     $response->assertSessionHas('error');
     expect(Order::count())->toBe(0);
+
+    $log = ActivityLog::where('action', 'order.duplicate_blocked')->first();
+    expect($log->description)->toContain($customer->name)
+        ->and($log->description)->toContain('DUP04');
 });
 
 // ── orders:find-duplicates command ──────────────────────────────────────
@@ -250,6 +261,10 @@ test('submitting the Add Item form twice with the same client_token only adds th
     expect(ActivityLog::where('action', 'order.duplicate_blocked')
         ->where('description', 'like', "%{$order->order_number}%")
         ->count())->toBe(1);
+
+    $log = ActivityLog::where('action', 'order.duplicate_blocked')->first();
+    expect($log->description)->toContain($customer->name)
+        ->and($log->description)->toContain('ADDDUP01');
 });
 
 test('two different client_tokens on Add Item both go through as separate real submissions', function () {

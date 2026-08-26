@@ -108,18 +108,27 @@ class OrderController extends Controller
             if (!\Cache::add($lockKey, 'processing', now()->addMinutes(5))) {
                 $existingOrderId = \Cache::get($lockKey . ':order_id');
                 if ($existingOrderId) {
+                    $existingOrder = Order::with('customer')->find($existingOrderId);
+                    $customerName  = $existingOrder->customer->name ?? 'unknown customer';
+                    $orderLabel    = $existingOrder->order_number ?? "#{$existingOrderId}";
+                    $itemSummary   = $this->summarizeRequestedItems($request->items ?? []);
+
                     \App\Models\ActivityLog::record(
                         'order.duplicate_blocked',
-                        "Duplicate order submission blocked — redirected to order #{$existingOrderId} instead of creating a new one.",
+                        "Duplicate order submission blocked for {$customerName} ({$itemSummary}) — redirected to order {$orderLabel} instead of creating a new one.",
                         'order',
                         $existingOrderId
                     );
                     return redirect()->route('orders.show', $existingOrderId)
                         ->with('success', 'This order was already saved a moment ago — showing it below.');
                 }
+                $customer     = \App\Models\Customer::find($request->customer_id);
+                $customerName = $customer->name ?? 'unknown customer';
+                $itemSummary  = $this->summarizeRequestedItems($request->items ?? []);
+
                 \App\Models\ActivityLog::record(
                     'order.duplicate_blocked',
-                    'Duplicate order submission blocked while the first one was still being saved (no order id resolved yet).',
+                    "Duplicate order submission blocked for {$customerName} ({$itemSummary}) while the first one was still being saved (no order id resolved yet).",
                     'order',
                     null
                 );
@@ -569,9 +578,14 @@ class OrderController extends Controller
         if ($clientToken) {
             $lockKey = 'add_item_lock:' . $clientToken;
             if (!\Cache::add($lockKey, 'processing', now()->addMinutes(5))) {
+                $itemSummary = $this->summarizeRequestedItems([[
+                    'product_id' => $request->product_id,
+                    'quantity'   => $request->quantity,
+                ]]);
+
                 \App\Models\ActivityLog::record(
                     'order.duplicate_blocked',
-                    "Duplicate 'add item' submission blocked on order {$order->order_number} — quantity was not added a second time.",
+                    "Duplicate 'add item' submission blocked on order {$order->order_number} ({$order->customer->name}) — {$itemSummary} was not added a second time.",
                     'order',
                     $order->id
                 );
@@ -881,6 +895,24 @@ class OrderController extends Controller
     }
 
     // ── Private helpers ────────────────────────────────────────────
+
+    /**
+     * Human-readable summary of item lines from a raw request array (before
+     * persistence) — e.g. "2x NA_03, 1x PA20". Used in duplicate-block log
+     * messages where no OrderItem model exists yet to describe via
+     * describeItem().
+     */
+    private function summarizeRequestedItems(array $items): string
+    {
+        $productIds = collect($items)->pluck('product_id')->filter()->unique()->all();
+        $codes = \App\Models\Product::whereIn('id', $productIds)->pluck('product_code', 'id');
+
+        return collect($items)->map(function ($item) use ($codes) {
+            $code = $codes[$item['product_id'] ?? null] ?? 'unknown product';
+            $qty  = $item['quantity'] ?? '?';
+            return "{$qty}x {$code}";
+        })->implode(', ') ?: 'no items';
+    }
 
     /**
      * Human-readable one-line description of an order item, for Activity Log
