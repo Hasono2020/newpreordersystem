@@ -81,12 +81,11 @@ class ReportController extends Controller
         $orders = $query->get();
 
         $rows = [[
-            'DIBUAT OLEH', 'NO', 'NAMA', 'IG/WA', 'NO HP', 'KOTA',
+            'DIBUAT OLEH', 'NO ORDER', 'NAMA', 'IG/WA', 'NO HP', 'KOTA',
             'KODE', 'WARNA', 'SIZE', 'HARGA SATUAN',
             'DP', 'TGL DP', 'AN', 'KET', 'WAKTU ORDER',
         ]];
 
-        $no = 1;
         foreach ($orders as $o) {
             // DP amount = total paid so far across ALL active (non-voided)
             // payments, not just the first one — an order can have a
@@ -114,7 +113,7 @@ class ReportController extends Controller
                 for ($u = 0; $u < $qty; $u++) {
                     $rows[] = [
                         $o->createdBy?->name ?? '',          // DIBUAT OLEH (created by)
-                        $no,
+                        $o->order_number,                    // NO ORDER — matches the code shown on the website exactly
                         $o->customer->name,                  // NAMA
                         $o->csAgent?->name ?? '',            // IG/WA (CS who handled livechat)
                         $o->customer->phone ?? '',           // NO HP (customer phone)
@@ -129,7 +128,6 @@ class ReportController extends Controller
                         '',                                  // KET
                         $waktuOrder,                         // WAKTU ORDER (order created_at)
                     ];
-                    $no++;
                     // Only show DP / Waktu Order on the very first row of the order
                     $dp    = '';
                     $tglDp = '';
