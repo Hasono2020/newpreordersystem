@@ -49,6 +49,8 @@ class ActivityLogController extends Controller
             'product.price_synced'     => 'Product price synced to orders',
             'shipping.price_synced'    => 'Shipping rate synced to orders',
             'report.sales_recap_exported' => 'Sales recap exported',
+            'purchasing.arrival_confirmed' => 'PO arrival confirmed',
+            'purchasing.arrival_corrected' => 'PO arrival corrected',
         ];
 
         return view('activity-logs.index', compact('logs', 'staffList', 'actionTypes'));

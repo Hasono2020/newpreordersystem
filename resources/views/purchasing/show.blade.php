@@ -117,6 +117,10 @@ body { padding-bottom: 0; }
         <button type="button" class="btn btn-sm btn-confirm-arrival sm" onclick="submitArrival()">
             <i class="bi bi-check-circle me-1"></i>Confirm Arrival
         </button>
+        @elseif($purchasing->status === 'arrived' && auth()->user()->hasPermission('purchasing.edit'))
+        <button type="button" class="btn btn-sm btn-outline-warning" onclick="submitArrival()">
+            <i class="bi bi-arrow-repeat me-1"></i><span class="d-none d-md-inline">Correct Received Qty</span>
+        </button>
         @endif
     </div>
 </div>
@@ -168,6 +172,10 @@ body { padding-bottom: 0; }
             <span class="small text-muted d-none d-md-block">
                 <i class="bi bi-info-circle me-1"></i>Adjust received qty · click <strong>Confirm Arrival</strong>
             </span>
+            @else
+            <span class="small text-muted d-none d-md-block">
+                <i class="bi bi-info-circle me-1"></i>Spot a wrong number? Edit it below and click <strong>Correct Received Qty</strong>
+            </span>
             @endif
         </div>
     </div>
@@ -197,31 +205,35 @@ body { padding-bottom: 0; }
 
         {{-- All received quantities bundled into ONE hidden JSON field --}}
         {{-- Avoids max_input_vars limits for large POs (1000+ items). --}}
-        @if($purchasing->status !== 'arrived')
         <input type="hidden" name="items_json" id="itemsJsonField" value="">
-        @endif
 
-        @if($purchasing->status !== 'arrived')
         <div class="po-actionbar">
+            @if($purchasing->status !== 'arrived')
             <span class="small text-muted">
                 <i class="bi bi-info-circle me-1"></i>
                 Orders not covered by received stock will be marked <strong>Sold Out</strong> (FIFO allocation).
             </span>
+            @else
+            <span class="small text-muted">
+                <i class="bi bi-exclamation-triangle me-1"></i>
+                This PO was already confirmed. Re-confirming reverses the previous stock allocation and re-runs FIFO with the corrected numbers below.
+            </span>
+            @endif
             @if(auth()->user()->hasPermission('purchasing.edit'))
-            <button type="button" class="btn btn-confirm-arrival" onclick="submitArrival()">
-                <i class="bi bi-check-circle me-1"></i>Confirm Arrival
+            <button type="button" class="btn {{ $purchasing->status === 'arrived' ? 'btn-outline-warning' : 'btn-confirm-arrival' }}" onclick="submitArrival()">
+                <i class="bi {{ $purchasing->status === 'arrived' ? 'bi-arrow-repeat' : 'bi-check-circle' }} me-1"></i>{{ $purchasing->status === 'arrived' ? 'Correct Received Qty' : 'Confirm Arrival' }}
             </button>
             @else
             <span class="text-muted small"><i class="bi bi-lock me-1"></i>Only purchasing staff can confirm arrivals.</span>
             @endif
         </div>
-        @endif
     </form>
 </div>
 
 @if($purchasing->status === 'arrived')
 <div class="alert alert-success mt-3">
     <i class="bi bi-check-circle-fill me-2"></i>Stock has been received and allocated via FIFO.
+    <span class="d-block small mt-1">Noticed a wrong number? Edit the Received column above and click <strong>Correct Received Qty</strong> — no need to delete and re-enter the whole PO.</span>
 </div>
 @endif
 
@@ -262,9 +274,7 @@ function renderChunk() {
     const chunk = filtered.slice(rendered, rendered + PAGE_SZ);
     if (!chunk.length) return;
     const html = chunk.map((r, ci) => {
-        const qtyCell = ARRIVED
-            ? `<td>${r.received}</td>`
-            : `<td><input type="number" class="form-control form-control-sm qty-input qty-vis"
+        const qtyCell = `<td><input type="number" class="form-control form-control-sm qty-input qty-vis"
                   data-index="${r.i}" value="${r.received}"
                   min="0" max="${r.ordered}"
                   oninput="syncHidden(${r.i}, this.value)"></td>`;
@@ -301,7 +311,10 @@ function filterItems(q) {
 }
 
 function submitArrival() {
-    if (confirm('Confirm arrival and run FIFO allocation?\n\nThis will update all order item statuses.')) {
+    const confirmMsg = ARRIVED
+        ? 'Correct this PO\'s received quantities?\n\nThis reverses the previous stock allocation and re-runs FIFO from scratch with the corrected numbers — affected order statuses and totals will update accordingly.'
+        : 'Confirm arrival and run FIFO allocation?\n\nThis will update all order item statuses.';
+    if (confirm(confirmMsg)) {
         // Serialize RECEIVED into [{id, quantity_received}] array the controller expects.
         // RECEIVED is keyed by row-index; look up the actual item id from ITEMS.
         const payload = ITEMS.map(r => ({
@@ -310,7 +323,9 @@ function submitArrival() {
         }));
         document.getElementById('itemsJsonField').value = JSON.stringify(payload);
         const ov = document.getElementById('processingOverlay');
-        document.getElementById('processingMsg').textContent = 'Confirming arrival and allocating stock (FIFO). This may take a moment for large orders. Please do not close this page.';
+        document.getElementById('processingMsg').textContent = ARRIVED
+            ? 'Reversing previous allocation and re-confirming arrival with corrected quantities. Please do not close this page.'
+            : 'Confirming arrival and allocating stock (FIFO). This may take a moment for large orders. Please do not close this page.';
         ov.style.display = 'flex';
         document.getElementById('arrivalForm').submit();
     }

@@ -696,124 +696,7 @@ class PurchasingController extends Controller
 
             // If the PO was already arrived, reverse the FIFO allocation first
             if ($wasArrived) {
-                @set_time_limit(600);
-                @ini_set('memory_limit', '1024M');
-                DB::connection()->disableQueryLog();
-
-                // Load this PO's items (product/variant + received qty)
-                $poItems = DB::table('purchase_order_items')
-                    ->where('purchase_order_id', $purchasing->id)
-                    ->get();
-
-                $variantIds        = [];
-                $productNoVariant  = [];
-
-                foreach ($poItems as $pi) {
-                    if ($pi->product_variant_id) {
-                        $variantIds[$pi->product_variant_id] = true;
-                    } else {
-                        $productNoVariant[$pi->product_id] = true;
-                    }
-                }
-
-                $tripId = $purchasing->trip_id;
-
-                // ── 1) Delete the sold_out split rows FIFO created ──────────
-                // These are identified by the "Partial — only" notes marker.
-                $splitQuery = DB::table('order_items')
-                    ->join('orders', 'orders.id', '=', 'order_items.order_id')
-                    ->where('orders.trip_id', $tripId)
-                    ->where('order_items.status', 'sold_out')
-                    ->where('order_items.notes', 'like', 'Partial — only%');
-
-                if ($variantIds) {
-                    $splitQuery->whereIn('order_items.product_variant_id', array_keys($variantIds));
-                }
-                $splitIds = $splitQuery->pluck('order_items.id')->all();
-                if ($splitIds) {
-                    DB::table('order_items')->whereIn('id', $splitIds)->delete();
-                }
-
-                // ── 2) Restore arrived/sold_out items back to confirmed ─────
-                // Collect affected order ids first (for recalculation)
-                $affectedQuery = DB::table('order_items')
-                    ->join('orders', 'orders.id', '=', 'order_items.order_id')
-                    ->where('orders.trip_id', $tripId)
-                    ->whereIn('order_items.status', ['arrived', 'sold_out']);
-
-                if ($variantIds || $productNoVariant) {
-                    $affectedQuery->where(function ($q) use ($variantIds, $productNoVariant) {
-                        if ($variantIds) {
-                            $q->whereIn('order_items.product_variant_id', array_keys($variantIds));
-                        }
-                        if ($productNoVariant) {
-                            $q->orWhere(function ($q2) use ($productNoVariant) {
-                                $q2->whereNull('order_items.product_variant_id')
-                                   ->whereIn('order_items.product_id', array_keys($productNoVariant));
-                            });
-                        }
-                    });
-                }
-
-                $affectedOrderIds = $affectedQuery->pluck('orders.id')->unique()->values()->all();
-
-                // Orders that had sold_out items will change total when restored,
-                // so only those need recalculation (arrived->confirmed doesn't change total).
-                $soldOutOrderIds = (clone $affectedQuery)
-                    ->where('order_items.status', 'sold_out')
-                    ->pluck('orders.id')->unique()->values()->all();
-
-                // Restore items based on their order's payment status:
-                //   fully paid -> confirmed,  unpaid/partial -> pending
-                $paidOrderIds = DB::table('orders')
-                    ->whereIn('id', $affectedOrderIds)
-                    ->where('payment_status', 'paid')
-                    ->pluck('id')->all();
-
-                $confirmIds = $paidOrderIds
-                    ? (clone $affectedQuery)->whereIn('orders.id', $paidOrderIds)->pluck('order_items.id')->all()
-                    : [];
-                $pendingIds = (clone $affectedQuery)
-                    ->when($paidOrderIds, fn($q) => $q->whereNotIn('orders.id', $paidOrderIds))
-                    ->pluck('order_items.id')->all();
-
-                foreach (array_chunk($confirmIds, 1000) as $chunk) {
-                    DB::table('order_items')->whereIn('id', $chunk)
-                        ->update(['status' => 'confirmed', 'updated_at' => now()]);
-                }
-                foreach (array_chunk($pendingIds, 1000) as $chunk) {
-                    DB::table('order_items')->whereIn('id', $chunk)
-                        ->update(['status' => 'pending', 'updated_at' => now()]);
-                }
-
-                // ── 3) Reset supplier_stock + allocated_qty to 0 ───────────
-                // Full clean undo: clear stock for all variants this PO touched,
-                // so the next arrival cycle starts fresh (no accumulation).
-                $resetVariantIds = array_keys($variantIds);
-                foreach (array_chunk($resetVariantIds, 1000) as $chunk) {
-                    DB::table('product_variants')->whereIn('id', $chunk)
-                        ->update(['supplier_stock' => 0, 'allocated_qty' => 0]);
-                }
-
-                // ── 4) Recalculate ONLY orders whose totals changed ─────────
-                // (orders that had sold_out items restored)
-                $promoService = app(\App\Services\PromoService::class);
-                foreach (array_chunk($soldOutOrderIds, 300) as $orderIdChunk) {
-                    $orders = \App\Models\Order::with(['items.product', 'items.variant', 'customer', 'shippingArea'])
-                        ->whereIn('id', $orderIdChunk)->get();
-                    foreach ($orders as $affectedOrder) {
-                        $calc = $promoService->recalculate($affectedOrder);
-                        $affectedOrder->update([
-                            'subtotal'             => $calc['subtotal'],
-                            'discount_amount'      => $calc['discount_amount'],
-                            'shipping_fee'         => $calc['shipping_fee'],
-                            'shipping_discount'    => $calc['shipping_discount'],
-                            'shipping_weight_gram' => $calc['shipping_weight_gram'],
-                            'shipping_kg_charged'  => $calc['shipping_kg_charged'],
-                            'total_amount'         => $calc['total_amount'],
-                        ]);
-                    }
-                }
+                $this->reverseArrival($purchasing);
             }
 
             // Finally delete the PO and its items
@@ -827,6 +710,182 @@ class PurchasingController extends Controller
 
         return redirect()->route('purchasing.index', ['trip_id' => $purchasing->trip_id])
             ->with('success', $msg);
+    }
+
+    /**
+     * Undo a previous confirmArrival() run for this PO: deletes the sold_out
+     * split rows FIFO created, restores arrived/sold_out order items back to
+     * pending/confirmed (based on the order's payment status), resets the
+     * stock FIFO allocated for the variants this PO touched, and recalculates
+     * any order whose total changes as a result.
+     *
+     * Shared by destroy() (deleting an arrived PO) and confirmArrival()
+     * (correcting a wrong received quantity without deleting the whole PO —
+     * reverse the old allocation, then let the normal forward-allocation
+     * logic re-run with the corrected numbers).
+     */
+    private function reverseArrival(PurchaseOrder $purchasing): void
+    {
+        @set_time_limit(600);
+        @ini_set('memory_limit', '1024M');
+        DB::connection()->disableQueryLog();
+
+        // Load this PO's items (product/variant + received qty)
+        $poItems = DB::table('purchase_order_items')
+            ->where('purchase_order_id', $purchasing->id)
+            ->get();
+
+        $variantIds       = [];
+        $productNoVariant = [];
+
+        foreach ($poItems as $pi) {
+            if ($pi->product_variant_id) {
+                $variantIds[$pi->product_variant_id] = true;
+            } else {
+                $productNoVariant[$pi->product_id] = true;
+            }
+        }
+
+        $tripId = $purchasing->trip_id;
+
+        $scopeToThisPo = function ($query) use ($variantIds, $productNoVariant) {
+            if ($variantIds || $productNoVariant) {
+                $query->where(function ($q) use ($variantIds, $productNoVariant) {
+                    if ($variantIds) {
+                        $q->whereIn('order_items.product_variant_id', array_keys($variantIds));
+                    }
+                    if ($productNoVariant) {
+                        $q->orWhere(function ($q2) use ($productNoVariant) {
+                            $q2->whereNull('order_items.product_variant_id')
+                               ->whereIn('order_items.product_id', array_keys($productNoVariant));
+                        });
+                    }
+                });
+            }
+            return $query;
+        };
+
+        $affectedOrderIds = [];
+
+        // ── 1) Undo partial-fill splits FIRST ───────────────────────
+        // A partial fill reduces the ORIGINAL row's quantity down to the
+        // arrived amount and inserts a SEPARATE sold_out row for the
+        // leftover (identified by the "Partial — only" notes marker).
+        // Reversing a status flip alone isn't enough here — the original
+        // row's quantity must be added back too, or the correction silently
+        // keeps the wrong (reduced) quantity. Match split -> original by
+        // order + product + variant (addItem() never leaves two live rows
+        // for the same product+variant on one order, so this is unique),
+        // merge the quantity back onto the original, then delete the split.
+        $splitRows = $scopeToThisPo(
+            DB::table('order_items')
+                ->join('orders', 'orders.id', '=', 'order_items.order_id')
+                ->where('orders.trip_id', $tripId)
+                ->where('order_items.status', 'sold_out')
+                ->where('order_items.notes', 'like', 'Partial — only%')
+        )->select('order_items.*')->get();
+
+        foreach ($splitRows as $split) {
+            $original = DB::table('order_items')
+                ->where('order_id', $split->order_id)
+                ->where('product_id', $split->product_id)
+                ->where(function ($q) use ($split) {
+                    $split->product_variant_id
+                        ? $q->where('product_variant_id', $split->product_variant_id)
+                        : $q->whereNull('product_variant_id');
+                })
+                ->where('status', 'arrived')
+                ->where('id', '!=', $split->id)
+                ->first();
+
+            $affectedOrderIds[] = $split->order_id;
+
+            if (!$original) {
+                // No matching arrived row found (shouldn't normally happen) —
+                // restore the split row on its own rather than losing it.
+                DB::table('order_items')->where('id', $split->id)->update([
+                    'status' => 'pending', 'notes' => null, 'updated_at' => now(),
+                ]);
+                continue;
+            }
+
+            $restoredQty = $original->quantity + $split->quantity;
+            DB::table('order_items')->where('id', $original->id)->update([
+                'quantity'   => $restoredQty,
+                'line_total' => $original->unit_price * $restoredQty,
+                'updated_at' => now(),
+            ]);
+            DB::table('order_items')->where('id', $split->id)->delete();
+        }
+
+        // ── 2) Restore status for remaining arrived/sold_out rows ───
+        // (fully arrived, or fully sold_out — no split, no quantity change
+        // needed for these, just the status flip back)
+        $remainingQuery = $scopeToThisPo(
+            DB::table('order_items')
+                ->join('orders', 'orders.id', '=', 'order_items.order_id')
+                ->where('orders.trip_id', $tripId)
+                ->whereIn('order_items.status', ['arrived', 'sold_out'])
+        );
+
+        $remainingOrderIds = (clone $remainingQuery)->pluck('orders.id')->unique()->values()->all();
+        $affectedOrderIds  = array_values(array_unique(array_merge($affectedOrderIds, $remainingOrderIds)));
+
+        // Restore items based on their order's payment status:
+        //   fully paid -> confirmed,  unpaid/partial -> pending
+        $paidOrderIds = DB::table('orders')
+            ->whereIn('id', $affectedOrderIds)
+            ->where('payment_status', 'paid')
+            ->pluck('id')->all();
+
+        $confirmIds = $paidOrderIds
+            ? (clone $remainingQuery)->whereIn('orders.id', $paidOrderIds)->pluck('order_items.id')->all()
+            : [];
+        $pendingIds = (clone $remainingQuery)
+            ->when($paidOrderIds, fn($q) => $q->whereNotIn('orders.id', $paidOrderIds))
+            ->pluck('order_items.id')->all();
+
+        foreach (array_chunk($confirmIds, 1000) as $chunk) {
+            DB::table('order_items')->whereIn('id', $chunk)
+                ->update(['status' => 'confirmed', 'updated_at' => now()]);
+        }
+        foreach (array_chunk($pendingIds, 1000) as $chunk) {
+            DB::table('order_items')->whereIn('id', $chunk)
+                ->update(['status' => 'pending', 'updated_at' => now()]);
+        }
+
+        // ── 3) Reset supplier_stock + allocated_qty to 0 ───────────
+        // Full clean undo: clear stock for all variants this PO touched,
+        // so the next arrival cycle starts fresh (no accumulation).
+        $resetVariantIds = array_keys($variantIds);
+        foreach (array_chunk($resetVariantIds, 1000) as $chunk) {
+            DB::table('product_variants')->whereIn('id', $chunk)
+                ->update(['supplier_stock' => 0, 'allocated_qty' => 0]);
+        }
+
+        // ── 4) Recalculate every affected order ─────────────────────
+        // Merged splits and restored sold_out rows both change what the
+        // order is charged for, and recalculating a pure arrived->confirmed
+        // transition (no actual total change) is harmless — simpler and
+        // safer to recalc everything touched than to track exactly which
+        // subset changed.
+        $promoService = app(\App\Services\PromoService::class);
+        foreach (array_chunk($affectedOrderIds, 300) as $orderIdChunk) {
+            $orders = \App\Models\Order::with(['items.product', 'items.variant', 'customer', 'shippingArea'])
+                ->whereIn('id', $orderIdChunk)->get();
+            foreach ($orders as $affectedOrder) {
+                $calc = $promoService->recalculate($affectedOrder);
+                $affectedOrder->update([
+                    'subtotal'             => $calc['subtotal'],
+                    'discount_amount'      => $calc['discount_amount'],
+                    'shipping_fee'         => $calc['shipping_fee'],
+                    'shipping_discount'    => $calc['shipping_discount'],
+                    'shipping_weight_gram' => $calc['shipping_weight_gram'],
+                    'shipping_kg_charged'  => $calc['shipping_kg_charged'],
+                    'total_amount'         => $calc['total_amount'],
+                ]);
+            }
+        }
     }
 
     /**
@@ -859,7 +918,19 @@ class PurchasingController extends Controller
         @ini_set('memory_limit', '1024M');
         DB::connection()->disableQueryLog();
 
-        DB::transaction(function () use ($request, $purchasing) {
+        $isCorrection = $purchasing->status === 'arrived';
+
+        DB::transaction(function () use ($request, $purchasing, $isCorrection) {
+
+            // Re-confirming an already-arrived PO (correcting a wrong received
+            // qty): undo the previous allocation first, in the SAME
+            // transaction, so the fresh FIFO pass below sees those order
+            // items back in the pending pool instead of skipping them as
+            // already-arrived/sold-out. Without this, a second confirm
+            // would only allocate whatever's left over, not fix the mistake.
+            if ($isCorrection) {
+                $this->reverseArrival($purchasing);
+            }
 
             // ── Step 1: load ALL PO items in ONE query ──────────────────
             $poItemIds = collect($request->items)->pluck('id')->all();
@@ -1063,6 +1134,18 @@ class PurchasingController extends Controller
             }
         });
 
-        return back()->with('success', 'Arrival confirmed. Stock allocated via FIFO (partial fills split automatically).');
+        \App\Models\ActivityLog::record(
+            $isCorrection ? 'purchasing.arrival_corrected' : 'purchasing.arrival_confirmed',
+            ($isCorrection ? 'Re-confirmed' : 'Confirmed') . " arrival for PO {$purchasing->po_number}"
+                . " ({$purchasing->supplier?->name}) — stock re-allocated via FIFO.",
+            'purchase_order',
+            $purchasing->id
+        );
+
+        $msg = $isCorrection
+            ? 'Arrival corrected. Previous allocation reversed and stock re-allocated via FIFO with the updated quantities.'
+            : 'Arrival confirmed. Stock allocated via FIFO (partial fills split automatically).';
+
+        return back()->with('success', $msg);
     }
 }

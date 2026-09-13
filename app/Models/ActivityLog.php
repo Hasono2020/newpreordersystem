@@ -70,6 +70,8 @@ class ActivityLog extends Model
             'order.updated'         => 'bg-warning text-dark',
             'product.price_synced'  => 'bg-info',
             'shipping.price_synced' => 'bg-info',
+            'purchasing.arrival_confirmed' => 'bg-info',
+            'purchasing.arrival_corrected' => 'bg-warning text-dark',
         ];
         $cls = $map[$this->action] ?? 'bg-secondary';
         $label = ucwords(str_replace(['.', '_'], ' ', $this->action));
