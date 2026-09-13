@@ -341,7 +341,7 @@
             <i class="bi bi-cash-coin"></i> Payments
         </a>
         @endif
-        <a href="{{ route('purchasing.index') }}" class="nav-link {{ request()->routeIs('purchasing.*') ? 'active' : '' }}" onclick="closeSidebar()">
+        <a href="{{ \App\Http\Middleware\RememberListUrl::returnUrl('purchasing') }}" class="nav-link {{ request()->routeIs('purchasing.*') ? 'active' : '' }}" onclick="closeSidebar()">
             <i class="bi bi-box-seam"></i> Purchasing
         </a>
 

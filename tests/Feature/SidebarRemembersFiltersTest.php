@@ -6,7 +6,8 @@
  * sidebar link used a plain route() call instead of the RememberListUrl
  * helper already used elsewhere (e.g. the "Back" link on order show/edit).
  * Fixed by wiring the same helper into the sidebar links for orders,
- * payments, products, and customers.
+ * payments, products, and customers. Purchasing had the identical gap and
+ * got the same fix later.
  */
 
 test('the Orders sidebar link returns to the last filtered trip instead of resetting', function () {
@@ -29,4 +30,23 @@ test('the Orders sidebar link falls back to the plain list when nothing is remem
     $response = $this->actingAs($admin)->get(route('dashboard'));
     $response->assertOk();
     $response->assertSee(route('orders.index'), false);
+});
+
+test('the Purchasing sidebar link returns to the last filtered trip instead of resetting', function () {
+    $admin = $this->adminUser();
+    $trip  = $this->openTrip();
+
+    $this->actingAs($admin)->get(route('purchasing.index', ['trip_id' => $trip->id]));
+
+    $response = $this->actingAs($admin)->get(route('dashboard'));
+    $response->assertOk();
+    $response->assertSee('trip_id=' . $trip->id, false);
+});
+
+test('the Purchasing sidebar link falls back to the plain list when nothing is remembered yet', function () {
+    $admin = $this->adminUser();
+
+    $response = $this->actingAs($admin)->get(route('dashboard'));
+    $response->assertOk();
+    $response->assertSee(route('purchasing.index'), false);
 });

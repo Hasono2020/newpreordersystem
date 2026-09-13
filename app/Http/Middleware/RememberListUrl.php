@@ -4,7 +4,6 @@ namespace App\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 
 /**
  * Remembers the full URL (page number + filters) of the last visited
@@ -18,10 +17,11 @@ class RememberListUrl
 {
     /** Route-name prefix => session key */
     private const SECTIONS = [
-        'orders'    => 'list_url.orders',
-        'products'  => 'list_url.products',
-        'customers' => 'list_url.customers',
-        'payments'  => 'list_url.payments',
+        'orders'     => 'list_url.orders',
+        'products'   => 'list_url.products',
+        'customers'  => 'list_url.customers',
+        'payments'   => 'list_url.payments',
+        'purchasing' => 'list_url.purchasing',
     ];
 
     public function handle(Request $request, Closure $next)
