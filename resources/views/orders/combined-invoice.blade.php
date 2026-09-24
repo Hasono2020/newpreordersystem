@@ -157,7 +157,7 @@ td.r { text-align:right; }
                 {{ $shippingArea->name }}
                 @if($shippingArea->province), {{ $shippingArea->province }}@endif
             </div>
-            <div class="sm">Weight: <strong>{{ number_format($totalWeightGram) }}g</strong> ({{ $chargeableKg }} kg)
+            <div class="sm">Weight: <strong>{{ number_format($totalWeightGram) }}g</strong> (<strong style="font-size:1.15em;">{{ $chargeableKg }} kg</strong>)
                 @if($customer->use_cargo)
                     <span style="color:#0369a1;">(includes cargo +1kg)</span>
                 @endif
