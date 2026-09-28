@@ -332,13 +332,13 @@ class OrderImportService
             $imported++;
 
             if (count($ordersBatch) >= 500) {
-                $this->flushOrderBatch($ordersBatch, $itemsBatch, $paymentsBatch);
+                $this->flushOrderBatch($ordersBatch, $itemsBatch, $paymentsBatch, $trip);
                 $ordersBatch = []; $itemsBatch = []; $paymentsBatch = [];
             }
         }
 
         if (!empty($ordersBatch)) {
-            $this->flushOrderBatch($ordersBatch, $itemsBatch, $paymentsBatch);
+            $this->flushOrderBatch($ordersBatch, $itemsBatch, $paymentsBatch, $trip);
         }
 
         // Every row above computed its shipping fee (and, for all but a
@@ -432,13 +432,21 @@ class OrderImportService
      * Items and payments are still bulk-inserted (they reference the now-known
      * order IDs), so throughput remains high.
      */
-    private function flushOrderBatch(array &$orders, array &$items, array &$payments): void
+    private function flushOrderBatch(array &$orders, array &$items, array &$payments, \App\Models\Trip $trip): void
     {
         if (empty($orders)) return;
 
+        // One atomic reservation for the whole chunk (up to 500 numbers),
+        // in file row order — matches Order::reserveOrderNumbers() used for
+        // manually-created orders, so an import and a manual order under
+        // the same trip draw from the same sequence with no collisions or
+        // gaps. Trips without a batch_number keep getting random codes,
+        // exactly as before.
+        $numbers = \App\Models\Order::reserveOrderNumbers($trip, count($orders));
+
         $insertedIds = [];
         foreach ($orders as $i => $order) {
-            $order['order_number'] = 'ORD-' . strtoupper(bin2hex(random_bytes(5)));
+            $order['order_number'] = $numbers[$i] ?? ('ORD-' . strtoupper(bin2hex(random_bytes(5))));
             $insertedIds[$i] = DB::table('orders')->insertGetId($order);
         }
 

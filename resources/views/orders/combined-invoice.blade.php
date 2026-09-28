@@ -212,7 +212,6 @@ td.r { text-align:right; }
             <th class="r" style="width:28px;">Qty</th>
             <th class="r" style="width:72px;">Price</th>
             <th class="r" style="width:72px;">Total</th>
-            <th style="width:48px;">Status</th>
         </tr>
     </thead>
     <tbody>
@@ -225,7 +224,7 @@ td.r { text-align:right; }
     {{-- Product group header — no price shown here; it's redundant with
          (and can be confusing next to) the per-variant rows below it. --}}
     <tr class="grp-hdr">
-        <td colspan="5">
+        <td colspan="4">
             {{ $productCode ?? '—' }}
         </td>
     </tr>
@@ -237,7 +236,6 @@ td.r { text-align:right; }
         <td class="r">{{ $item->quantity }}</td>
         <td class="r">{{ $so ? 'Rp 0' : 'Rp '.number_format($item->unit_price,0,',','.') }}</td>
         <td class="r" style="font-weight:600;">{{ $so ? 'Rp 0' : 'Rp '.number_format($item->line_total,0,',','.') }}</td>
-        <td><span class="s-pill s-{{ $item->status }}" style="font-size:8px;">{{ ucfirst(str_replace('_',' ',$item->status)) }}</span></td>
     </tr>
     @endforeach
     @endforeach
@@ -269,12 +267,6 @@ td.r { text-align:right; }
             <div class="g-row"><span class="lbl">Discount</span><span class="disc">&ndash; Rp {{ number_format($grandDiscount, 0, ',', '.') }}</span></div>
         @endif
         <div class="g-row"><span class="lbl">Shipping (combined {{ $chargeableKg }}kg)</span><span>Rp {{ number_format($grandShipping, 0, ',', '.') }}</span></div>
-        @if($shippingSaving > 0)
-            <div class="g-row" style="font-size:10px;color:#16a34a;">
-                <span class="lbl">Combined shipping saving</span>
-                <span>&ndash; Rp {{ number_format($shippingSaving, 0, ',', '.') }}</span>
-            </div>
-        @endif
         @if($grandShipDiscount > 0)
             <div class="g-row"><span class="lbl">Ship. Discount</span><span class="disc">&ndash; Rp {{ number_format($grandShipDiscount, 0, ',', '.') }}</span></div>
         @endif

@@ -78,13 +78,62 @@ class Order extends Model
         parent::boot();
         static::creating(function ($order) {
             if (!$order->order_number) {
-                $attempts = 0;
-                do {
-                    $number = 'ORD-' . strtoupper(substr(md5(uniqid(mt_rand(), true)), 0, 10));
-                    $attempts++;
-                } while (static::where('order_number', $number)->exists() && $attempts < 10);
-                $order->order_number = $number;
+                $trip = $order->trip_id ? \App\Models\Trip::find($order->trip_id) : null;
+                $order->order_number = $trip
+                    ? static::reserveOrderNumbers($trip, 1)[0]
+                    : static::randomOrderNumber();
             }
         });
+    }
+
+    /**
+     * Reserve $count sequential order numbers for a trip in one atomic
+     * step — used both for a single order (the creating() hook above) and
+     * for a whole Excel-import batch, which needs a contiguous block
+     * without a separate locked DB round-trip per row.
+     *
+     * Only trips with a batch_number get the new ORD/B{batch}/{month}/{seq}
+     * format — a trip created before this feature (batch_number null) keeps
+     * issuing the old random ORD-xxxxxxxx codes, so existing trips and
+     * their orders are completely unaffected.
+     *
+     * The lock is scoped to this one trip row (not the whole table), so
+     * concurrent order creation on DIFFERENT trips never blocks each other
+     * — only two people creating orders on the SAME trip at the same
+     * instant briefly serialize, which is exactly what "no two orders ever
+     * get the same sequence number" requires.
+     */
+    public static function reserveOrderNumbers(\App\Models\Trip $trip, int $count = 1): array
+    {
+        if (!$trip->batch_number) {
+            return array_map(fn () => static::randomOrderNumber(), range(1, $count));
+        }
+
+        return \DB::transaction(function () use ($trip, $count) {
+            $locked = \DB::table('trips')->where('id', $trip->id)->lockForUpdate()->first();
+            $start  = $locked->next_order_seq + 1;
+
+            \DB::table('trips')->where('id', $trip->id)->update([
+                'next_order_seq' => $locked->next_order_seq + $count,
+            ]);
+
+            $month = now()->format('m');
+            $numbers = [];
+            for ($i = 0; $i < $count; $i++) {
+                $seq = $start + $i;
+                $numbers[] = 'ORD/B' . $locked->batch_number . '/' . $month . '/' . str_pad((string) $seq, 6, '0', STR_PAD_LEFT);
+            }
+            return $numbers;
+        });
+    }
+
+    private static function randomOrderNumber(): string
+    {
+        $attempts = 0;
+        do {
+            $number = 'ORD-' . strtoupper(substr(md5(uniqid(mt_rand(), true)), 0, 10));
+            $attempts++;
+        } while (static::where('order_number', $number)->exists() && $attempts < 10);
+        return $number;
     }
 }

@@ -18,6 +18,20 @@
                 @error('name')<div class="invalid-feedback">{{ $message }}</div>@enderror
             </div>
 
+            <div class="mb-3">
+                <label class="form-label fw-semibold">Batch Number</label>
+                @if(isset($trip) && $trip->next_order_seq > 0)
+                    <input type="text" class="form-control" value="{{ $trip->batch_number }}" disabled>
+                    <input type="hidden" name="batch_number" value="{{ $trip->batch_number }}">
+                    <div class="form-text">Locked — {{ $trip->next_order_seq }} order(s) already use <code>ORD/B{{ $trip->batch_number }}/...</code> numbers.</div>
+                @else
+                    <input type="number" name="batch_number" class="form-control @error('batch_number') is-invalid @enderror"
+                        value="{{ old('batch_number', $trip->batch_number ?? $suggestedBatchNumber ?? '') }}" min="1" placeholder="e.g. 17">
+                    @error('batch_number')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    <div class="form-text">Optional — orders get numbers like <code>ORD/B17/08/000001</code>. Leave blank to keep the current random order-number style.</div>
+                @endif
+            </div>
+
             <div class="row g-3 mb-3">
                 <div class="col">
                     <label class="form-label fw-semibold">Destination</label>

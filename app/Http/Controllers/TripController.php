@@ -22,7 +22,10 @@ class TripController extends Controller
     public function create()
     {
         $this->adminOnly('create trips');
-        return view('trips.create');
+        // Suggested next batch number — editable, not enforced. Leaving it
+        // blank keeps this trip on the old random order-number scheme.
+        $suggestedBatchNumber = (Trip::max('batch_number') ?? 0) + 1;
+        return view('trips.create', compact('suggestedBatchNumber'));
     }
 
     public function store(Request $request)
@@ -34,6 +37,7 @@ class TripController extends Controller
             'trip_date'      => 'nullable|date',
             'order_deadline' => 'nullable|date',
             'notes'          => 'nullable|string',
+            'batch_number'   => 'nullable|integer|min:1|unique:trips,batch_number',
         ]);
 
         $data['created_by'] = Auth::id();
@@ -66,7 +70,8 @@ class TripController extends Controller
     public function edit(Trip $trip)
     {
         $this->adminOnly('edit trips');
-        return view('trips.edit', compact('trip'));
+        $suggestedBatchNumber = (Trip::where('id', '!=', $trip->id)->max('batch_number') ?? 0) + 1;
+        return view('trips.edit', compact('trip', 'suggestedBatchNumber'));
     }
 
     public function update(Request $request, Trip $trip)
@@ -79,7 +84,17 @@ class TripController extends Controller
             'order_deadline' => 'nullable|date',
             'status'         => 'required|in:open,order_closed,purchasing,arrived,closed',
             'notes'          => 'nullable|string',
+            'batch_number'   => 'nullable|integer|min:1|unique:trips,batch_number,' . $trip->id,
         ]);
+
+        // Once orders have already been numbered under this trip's batch,
+        // changing the batch number would leave their existing order
+        // numbers referencing a batch that no longer matches — block it
+        // rather than silently create that mismatch.
+        if ($trip->next_order_seq > 0 && (int) ($data['batch_number'] ?? 0) !== (int) $trip->batch_number) {
+            return back()->withInput()->with('error',
+                "Can't change the batch number — {$trip->next_order_seq} order(s) have already been numbered under Batch {$trip->batch_number}.");
+        }
 
         $trip->update($data);
         return redirect()->route('trips.show', $trip)->with('success', 'Trip updated.');

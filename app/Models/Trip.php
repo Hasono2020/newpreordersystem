@@ -9,7 +9,7 @@ class Trip extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['name', 'destination', 'trip_date', 'order_deadline', 'status', 'notes', 'created_by'];
+    protected $fillable = ['name', 'destination', 'trip_date', 'order_deadline', 'status', 'notes', 'created_by', 'batch_number', 'next_order_seq'];
 
     protected $casts = [
         'trip_date' => 'date',
