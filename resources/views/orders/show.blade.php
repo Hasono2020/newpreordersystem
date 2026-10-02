@@ -228,6 +228,134 @@
                 </table>
             </div>
         </div>
+
+        {{-- Sales Returns / Credit Notes --}}
+        @if(auth()->user()->hasPermission('orders.sales_adjustments'))
+        <div class="card mt-3">
+            <div class="card-header bg-white py-3 d-flex justify-content-between flex-wrap gap-2">
+                <span class="fw-semibold">Sales Returns / Credit Notes</span>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-danger" data-bs-toggle="collapse" data-bs-target="#returnPanel">
+                        <i class="bi bi-arrow-return-left me-1"></i>Sales Return
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" data-bs-toggle="collapse" data-bs-target="#creditNotePanel">
+                        <i class="bi bi-cash-coin me-1"></i>Credit Note
+                    </button>
+                </div>
+            </div>
+
+            {{-- Issue Sales Return --}}
+            <div class="collapse" id="returnPanel">
+                <div class="card-body border-bottom bg-light">
+                    <form method="POST" action="{{ route('orders.sales-adjustments.store', $order) }}">
+                        @csrf
+                        <input type="hidden" name="type" value="return">
+                        <p class="small text-muted mb-2">Select which items are being returned, and how many. The order total updates automatically.</p>
+                        <table class="table table-sm">
+                            <thead><tr><th></th><th>Product / Variant</th><th>On order</th><th style="width:110px;">Qty returned</th></tr></thead>
+                            <tbody>
+                                @foreach($order->items as $item)
+                                    @if($item->quantity > 0)
+                                    <tr>
+                                        <td><input type="checkbox" class="form-check-input return-check" data-idx="{{ $loop->index }}"></td>
+                                        <td>{{ $item->product->product_code }} @if($item->variant) ({{ $item->variant->color }}/{{ $item->variant->size }}) @endif</td>
+                                        <td>{{ $item->quantity }}</td>
+                                        <td>
+                                            <input type="number" class="form-control form-control-sm return-qty" data-idx="{{ $loop->index }}"
+                                                min="1" max="{{ $item->quantity }}" value="{{ $item->quantity }}" disabled
+                                                name="items[{{ $loop->index }}][quantity]">
+                                            <input type="hidden" class="return-item-id" data-idx="{{ $loop->index }}"
+                                                name="items[{{ $loop->index }}][order_item_id]" value="{{ $item->id }}" disabled>
+                                        </td>
+                                    </tr>
+                                    @endif
+                                @endforeach
+                            </tbody>
+                        </table>
+                        <div class="row g-2">
+                            <div class="col-md-4">
+                                <label class="form-label small">Refund amount (Rp) — optional override</label>
+                                <input type="number" name="refund_amount" class="form-control form-control-sm" step="1" min="0" placeholder="Defaults to returned items' value">
+                            </div>
+                            <div class="col-md-8">
+                                <label class="form-label small">Reason</label>
+                                <input type="text" name="reason" class="form-control form-control-sm" placeholder="Why is this being returned?">
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-sm btn-danger mt-2"
+                            onclick="return confirm('Issue this Sales Return? This reduces the order total and refunds the customer.');">
+                            Issue Sales Return
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            {{-- Issue Credit Note --}}
+            <div class="collapse" id="creditNotePanel">
+                <div class="card-body border-bottom bg-light">
+                    <form method="POST" action="{{ route('orders.sales-adjustments.store', $order) }}">
+                        @csrf
+                        <input type="hidden" name="type" value="credit_note">
+                        <p class="small text-muted mb-2">For refunding money without any goods coming back (no items involved).</p>
+                        <div class="row g-2">
+                            <div class="col-md-4">
+                                <label class="form-label small">Amount (Rp)</label>
+                                <input type="number" name="amount" class="form-control form-control-sm" required step="1" min="1">
+                            </div>
+                            <div class="col-md-8">
+                                <label class="form-label small">Reason</label>
+                                <input type="text" name="reason" class="form-control form-control-sm" placeholder="Why is this credit being issued?">
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-sm btn-danger mt-2"
+                            onclick="return confirm('Issue this Credit Note? This reduces the order total and refunds the customer.');">
+                            Issue Credit Note
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            {{-- Transaction history for this order --}}
+            <div class="table-responsive">
+                <table class="table table-sm mb-0 small">
+                    <thead class="table-light">
+                        <tr><th>Number</th><th>Type</th><th>Date</th><th>Amount</th><th>Reason</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        @forelse($order->salesAdjustments as $adj)
+                        <tr class="{{ $adj->isVoided() ? 'text-decoration-line-through text-muted opacity-50' : '' }}">
+                            <td><a href="{{ route('sales-adjustments.show', $adj) }}" class="font-monospace">{{ $adj->adjustment_number }}</a></td>
+                            <td><span class="badge {{ $adj->isReturn() ? 'bg-danger' : 'bg-warning text-dark' }}">{{ $adj->isReturn() ? 'Return' : 'Credit Note' }}</span></td>
+                            <td>{{ $adj->created_at->format('d M Y') }}</td>
+                            <td class="text-danger fw-semibold">- Rp {{ number_format($adj->amount, 0, ',', '.') }}</td>
+                            <td>{{ $adj->reason ?? '—' }}</td>
+                            <td>
+                                @if(!$adj->isVoided())
+                                <form method="POST" action="{{ route('sales-adjustments.void', $adj) }}" onsubmit="return confirm('Void {{ $adj->adjustment_number }}? This reverses its effect on the order.');">
+                                    @csrf
+                                    <button type="submit" class="btn btn-xs btn-outline-secondary py-0 px-1" style="font-size:.75rem;">Void</button>
+                                </form>
+                                @endif
+                            </td>
+                        </tr>
+                        @empty
+                        <tr><td colspan="6" class="text-center text-muted py-3">No returns or credit notes on this order</td></tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <script>
+        document.querySelectorAll('.return-check').forEach(function (cb) {
+            cb.addEventListener('change', function () {
+                var idx = this.dataset.idx;
+                var enabled = this.checked;
+                document.querySelector('.return-qty[data-idx="' + idx + '"]').disabled = !enabled;
+                document.querySelector('.return-item-id[data-idx="' + idx + '"]').disabled = !enabled;
+            });
+        });
+        </script>
+        @endif
     </div>
 
     {{-- Right: Summary --}}

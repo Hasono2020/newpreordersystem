@@ -11,6 +11,7 @@
             'orders.delete'  => 'Delete orders',
             'orders.import'  => 'Import orders',
             'orders.export'  => 'Export orders',
+            'orders.sales_adjustments' => 'Issue Sales Returns / Credit Notes',
         ],
         'Customers'  => [
             'customers.view'    => 'View customers',

@@ -18,6 +18,7 @@ use App\Http\Controllers\StaffController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\CsAgentController;
 use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\SalesAdjustmentController;
 
 // Auth
 Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
@@ -74,6 +75,10 @@ Route::middleware('auth')->group(function () {
     Route::patch('orders/{order}/items/{item}', [OrderController::class, 'updateItem'])->name('orders.items.update');
     Route::patch('orders/{order}/items/{item}/status', [OrderController::class, 'updateItemStatus'])->name('orders.items.status');
     Route::delete('orders/{order}/items/{item}', [OrderController::class, 'removeItem'])->name('orders.items.remove');
+    Route::post('orders/{order}/sales-adjustments', [SalesAdjustmentController::class, 'store'])->name('orders.sales-adjustments.store');
+    Route::get('sales-adjustments', [SalesAdjustmentController::class, 'index'])->name('sales-adjustments.index');
+    Route::get('sales-adjustments/{salesAdjustment}', [SalesAdjustmentController::class, 'show'])->name('sales-adjustments.show');
+    Route::post('sales-adjustments/{salesAdjustment}/void', [SalesAdjustmentController::class, 'void'])->name('sales-adjustments.void');
     Route::post('orders/{order}/payments', [OrderController::class, 'addPayment'])->name('orders.payments.add');
     Route::post('payments/{payment}/void', [OrderController::class, 'voidPayment'])->middleware('perm:payments.void')->name('payments.void');
 

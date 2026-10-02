@@ -24,6 +24,19 @@ class Order extends Model
     public function shippingArea(){ return $this->belongsTo(ShippingArea::class); }
     public function items()       { return $this->hasMany(OrderItem::class); }
     public function payments()    { return $this->hasMany(Payment::class); }
+    public function salesAdjustments() { return $this->hasMany(SalesAdjustment::class); }
+
+    /**
+     * True once every item on this order has been reduced to zero quantity
+     * by one or more Sales Returns — i.e. the whole order was returned, not
+     * just part of it. Requires the items relation to already be loaded
+     * (callers on a list page should eager-load 'items').
+     */
+    public function isFullyReturned(): bool
+    {
+        if ($this->items->isEmpty()) return false;
+        return $this->items->sum('quantity') <= 0;
+    }
     public function createdBy()   { return $this->belongsTo(User::class, 'created_by'); }
     public function csAgent()     { return $this->belongsTo(CsAgent::class); }
     public function invoicePrintedBy() { return $this->belongsTo(User::class, 'invoice_printed_by'); }

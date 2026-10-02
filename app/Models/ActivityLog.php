@@ -70,6 +70,9 @@ class ActivityLog extends Model
             'order.updated'         => 'bg-warning text-dark',
             'product.price_synced'  => 'bg-info',
             'shipping.price_synced' => 'bg-info',
+            'sales_return.issued'     => 'bg-danger',
+            'credit_note.issued'      => 'bg-danger',
+            'sales_adjustment.voided' => 'bg-warning text-dark',
             'purchasing.arrival_confirmed' => 'bg-info',
             'purchasing.arrival_corrected' => 'bg-warning text-dark',
         ];

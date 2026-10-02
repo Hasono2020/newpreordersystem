@@ -76,6 +76,7 @@ namespace App\Models{
  * @property string|null $phone
  * @property string|null $address
  * @property int|null $default_shipping_area_id
+ * @property bool $use_cargo
  * @property string $type
  * @property string|null $notes
  * @property \Illuminate\Support\Carbon|null $created_at
@@ -100,6 +101,7 @@ namespace App\Models{
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Customer wherePhone($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Customer whereType($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Customer whereUpdatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Customer whereUseCargo($value)
  */
 	class Customer extends \Eloquent {}
 }
@@ -115,6 +117,7 @@ namespace App\Models{
  * @property int|null $total_rows
  * @property int|null $imported_count
  * @property int|null $skipped_count
+ * @property int|null $recalculated_count
  * @property string|null $error_message
  * @property array<array-key, mixed>|null $row_errors
  * @property \Illuminate\Support\Carbon|null $started_at
@@ -133,6 +136,7 @@ namespace App\Models{
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ImportJob whereId($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ImportJob whereImportedCount($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ImportJob whereOriginalFilename($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|ImportJob whereRecalculatedCount($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ImportJob whereRowErrors($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ImportJob whereSkippedCount($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|ImportJob whereStartedAt($value)
@@ -152,6 +156,7 @@ namespace App\Models{
  * @property int $trip_id
  * @property int $customer_id
  * @property int $created_by
+ * @property string $source
  * @property int|null $cs_agent_id
  * @property \Illuminate\Support\Carbon|null $ordered_at
  * @property numeric $subtotal
@@ -180,6 +185,8 @@ namespace App\Models{
  * @property-read int|null $items_count
  * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Payment> $payments
  * @property-read int|null $payments_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\SalesAdjustment> $salesAdjustments
+ * @property-read int|null $sales_adjustments_count
  * @property-read \App\Models\ShippingArea|null $shippingArea
  * @property-read \App\Models\Trip $trip
  * @method static \Database\Factories\OrderFactory factory($count = null, $state = [])
@@ -204,6 +211,7 @@ namespace App\Models{
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Order whereShippingFee($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Order whereShippingKgCharged($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Order whereShippingWeightGram($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Order whereSource($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Order whereSubtotal($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Order whereTotalAmount($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Order whereTripId($value)
@@ -271,6 +279,7 @@ namespace App\Models{
  * @property-read float $effective_amount
  * @property-read \App\Models\Order $order
  * @property-read \App\Models\User $recordedBy
+ * @property-read \App\Models\SalesAdjustment|null $salesAdjustment
  * @property-read \App\Models\User|null $verifiedBy
  * @property-read \App\Models\User|null $voidedBy
  * @method static \Database\Factories\PaymentFactory factory($count = null, $state = [])
@@ -486,6 +495,41 @@ namespace App\Models{
 
 namespace App\Models{
 /**
+ * One table, two types — a Sales Return (goods come back, tied to specific
+ * order items) and a Credit Note (money refunded with no goods movement,
+ * no items). Both reduce what the order owes and both create a linked
+ * refund Payment; the only structural difference is whether
+ * sales_adjustment_items rows exist for this record.
+ *
+ * @property-read \App\Models\User|null $createdBy
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\SalesAdjustmentItem> $items
+ * @property-read int|null $items_count
+ * @property-read \App\Models\Order|null $order
+ * @property-read \App\Models\Payment|null $payment
+ * @property-read \App\Models\Trip|null $trip
+ * @property-read \App\Models\User|null $voidedBy
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|SalesAdjustment newModelQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|SalesAdjustment newQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|SalesAdjustment query()
+ */
+	class SalesAdjustment extends \Eloquent {}
+}
+
+namespace App\Models{
+/**
+ * @property-read \App\Models\OrderItem|null $orderItem
+ * @property-read \App\Models\Product|null $product
+ * @property-read \App\Models\SalesAdjustment|null $salesAdjustment
+ * @property-read \App\Models\ProductVariant|null $variant
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|SalesAdjustmentItem newModelQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|SalesAdjustmentItem newQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|SalesAdjustmentItem query()
+ */
+	class SalesAdjustmentItem extends \Eloquent {}
+}
+
+namespace App\Models{
+/**
  * @property string $key
  * @property string|null $value
  * @property \Illuminate\Support\Carbon|null $created_at
@@ -569,6 +613,8 @@ namespace App\Models{
 /**
  * @property int $id
  * @property string $name
+ * @property int|null $batch_number
+ * @property int $next_order_seq
  * @property string|null $destination
  * @property \Illuminate\Support\Carbon|null $trip_date
  * @property \Illuminate\Support\Carbon|null $order_deadline
@@ -591,11 +637,13 @@ namespace App\Models{
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Trip newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Trip newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Trip query()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Trip whereBatchNumber($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Trip whereCreatedAt($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Trip whereCreatedBy($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Trip whereDestination($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Trip whereId($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Trip whereName($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Trip whereNextOrderSeq($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Trip whereNotes($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Trip whereOrderDeadline($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Trip whereStatus($value)

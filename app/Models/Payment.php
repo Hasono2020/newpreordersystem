@@ -14,6 +14,7 @@ class Payment extends Model
         'paid_at', 'notes', 'recorded_by',
         'voided_at', 'voided_by', 'void_reason',
         'verification_status', 'verified_by', 'verified_at', 'dispute_note',
+        'sales_adjustment_id',
     ];
 
     protected $casts = [
@@ -23,6 +24,7 @@ class Payment extends Model
     ];
 
     public function order()        { return $this->belongsTo(Order::class); }
+    public function salesAdjustment() { return $this->belongsTo(SalesAdjustment::class); }
     public function recordedBy()   { return $this->belongsTo(User::class, 'recorded_by'); }
     public function voidedBy()     { return $this->belongsTo(User::class, 'voided_by'); }
     public function verifiedBy()   { return $this->belongsTo(User::class, 'verified_by'); }

@@ -119,7 +119,17 @@ class PromoService
         }
         $shippingDiscount   = min($shippingFee, $maxShippingSubsidy);
 
-        $total = $subtotal - $discount + $shippingFee - $shippingDiscount;
+        // Credit notes have no order items to shrink (unlike Sales Returns,
+        // which reduce order_item quantities directly — already reflected
+        // in $subtotal above via $activeItems). This is the ONE place that
+        // deduction has to live so it survives every future recalculation
+        // of this order, not just the moment the credit note was issued.
+        $creditNoteTotal = \App\Models\SalesAdjustment::where('order_id', $order->id)
+            ->where('type', 'credit_note')
+            ->whereNull('voided_at')
+            ->sum('amount');
+
+        $total = $subtotal - $discount + $shippingFee - $shippingDiscount - $creditNoteTotal;
 
         return [
             'subtotal'             => $subtotal,
@@ -130,6 +140,7 @@ class PromoService
             'shipping_kg_charged'  => $chargeableKg,
             'total_amount'         => max(0, $total),
             'promo_rule'           => $promo ? $promo['rule'] : null,
+            'credit_note_total'    => $creditNoteTotal,
         ];
     }
 
@@ -228,7 +239,18 @@ class PromoService
                 $discount         = $isAnchor ? $combinedDiscount : 0;
                 $shippingDiscount = $isAnchor ? min($shippingFee, $combinedShipSubsidy) : 0;
 
-                $total = max(0, $subtotal - $discount + $shippingFee - $shippingDiscount);
+                // Same deduction as recalculate() — this method has its own
+                // independent total formula (combined-shipping math), so the
+                // fix there does not cover this path. Without it here too,
+                // adding/removing an item on ANY order in this customer+trip
+                // group would silently erase an active credit note on EVERY
+                // order in the group, not just the one being edited.
+                $creditNoteTotal = \App\Models\SalesAdjustment::where('order_id', $order->id)
+                    ->where('type', 'credit_note')
+                    ->whereNull('voided_at')
+                    ->sum('amount');
+
+                $total = max(0, $subtotal - $discount + $shippingFee - $shippingDiscount - $creditNoteTotal);
 
                 $order->update([
                     'subtotal'             => $subtotal,

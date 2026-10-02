@@ -341,6 +341,11 @@
             <i class="bi bi-cash-coin"></i> Payments
         </a>
         @endif
+        @if(auth()->user()->hasPermission('orders.sales_adjustments'))
+        <a href="{{ route('sales-adjustments.index') }}" class="nav-link {{ request()->routeIs('sales-adjustments.*') ? 'active' : '' }}" onclick="closeSidebar()">
+            <i class="bi bi-arrow-return-left"></i> Returns &amp; Credits
+        </a>
+        @endif
         <a href="{{ \App\Http\Middleware\RememberListUrl::returnUrl('purchasing') }}" class="nav-link {{ request()->routeIs('purchasing.*') ? 'active' : '' }}" onclick="closeSidebar()">
             <i class="bi bi-box-seam"></i> Purchasing
         </a>
