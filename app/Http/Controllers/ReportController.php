@@ -72,25 +72,61 @@ class ReportController extends Controller
      */
     public function exportOrders(Request $request)
     {
+        // Rows come out in FIFO order within each trip — oldest "Order Date &
+        // Time" first (the FIFO field on the order), falling back to created_at,
+        // then id. This is the same ordering the rest of the app uses for FIFO
+        // (combined shipping anchor, payment allocation), and it's what the
+        // NO URUT column below is numbered by.
         $query = Order::with('customer', 'trip', 'shippingArea', 'items.product', 'items.variant', 'payments', 'csAgent', 'createdBy', 'salesAdjustments.items.product')
-            ->orderBy('ordered_at');
+            ->orderBy('trip_id')
+            ->orderByRaw('COALESCE(ordered_at, created_at) ASC')
+            ->orderBy('id');
         if (\Illuminate\Support\Facades\Auth::user()->isOwnDataOnly()) {
             $query->where('created_by', \Illuminate\Support\Facades\Auth::id());
         }
         if ($request->trip_id) $query->where('trip_id', $request->trip_id);
 
-        // Multi-CS filter — order_number is a stored value assigned once at
-        // creation (Phase 1's per-trip sequence), never recomputed here, so
-        // filtering to a subset of staff never changes what number an
-        // order already has. CS 2's first order stays "000012" whether
-        // you're looking at everyone's orders or just CS 2's.
-        if ($request->filled('staff_ids')) {
-            $query->whereIn('created_by', (array) $request->staff_ids);
+        // Filter by the CS AGENT who handled the order (the IG/WA column — e.g.
+        // "CS1 Endang"), several at once. Not by the staff account that typed it
+        // in. "none" selects orders with no CS agent assigned.
+        if ($request->filled('cs_agent_ids')) {
+            $picked   = collect((array) $request->cs_agent_ids);
+            $wantNone = $picked->contains('none');
+            $agentIds = $picked->reject(fn ($v) => $v === 'none')->map(fn ($v) => (int) $v)->filter()->values();
+
+            $query->where(function ($q) use ($agentIds, $wantNone) {
+                if ($agentIds->isNotEmpty()) $q->whereIn('cs_agent_id', $agentIds);
+                if ($wantNone)               $q->orWhereNull('cs_agent_id');
+            });
         }
+
+        // NO URUT: each order's position (1, 2, 3 …) in the FIFO list of ALL
+        // orders in its trip. Deliberately computed over every order in the trip,
+        // NOT just the rows being exported — so the number is a stable identifier
+        // and filtering never renumbers anything. If CS 1 handled orders 1, 3, 5
+        // and CS 2 handled 2, 4, 6, exporting only CS 2 still shows 2, 4, 6.
+        // The count restarts at 1 for each trip, like the per-batch order numbers.
+        $fifoNumber = [];
+        $position   = [];
+        Order::query()
+            ->when($request->trip_id, fn ($q) => $q->where('trip_id', $request->trip_id))
+            ->orderBy('trip_id')
+            ->orderByRaw('COALESCE(ordered_at, created_at) ASC')
+            ->orderBy('id')
+            ->get(['id', 'trip_id'])
+            ->each(function ($o) use (&$fifoNumber, &$position) {
+                $position[$o->trip_id] = ($position[$o->trip_id] ?? 0) + 1;
+                $fifoNumber[$o->id]    = $position[$o->trip_id];
+            });
 
         $orders = $query->get();
 
+        // NO URUT leads the file. The order import knows to set a leading NO URUT
+        // column aside (OrderImportService::dropLeadingSequenceColumn), so an
+        // exported file can still be re-imported even though this shifts every
+        // other column one place to the right of the plain import template.
         $rows = [[
+            'NO URUT',
             'DIBUAT OLEH', 'NO ORDER', 'NAMA', 'IG/WA', 'NO HP', 'KOTA',
             'KODE', 'WARNA', 'SIZE', 'HARGA SATUAN',
             'DP', 'TGL DP', 'AN', 'KET', 'WAKTU ORDER',
@@ -158,6 +194,7 @@ class ReportController extends Controller
 
                 for ($u = 0; $u < $qty; $u++) {
                     $rows[] = [
+                        $fifoNumber[$o->id] ?? '',           // NO URUT — FIFO position in the trip, repeated on every row of the order
                         $o->createdBy?->name ?? '',          // DIBUAT OLEH (created by)
                         $o->order_number,                    // NO ORDER — matches the code shown on the website exactly
                         $o->customer->name,                  // NAMA
@@ -337,6 +374,10 @@ class ReportController extends Controller
 
     /**
      * Import orders from Excel.
+     *
+     * A file produced by "Export orders" is also accepted: it begins with an extra
+     * NO URUT column, which is detected from the header and set aside before the
+     * positions below are read (see OrderImportService::dropLeadingSequenceColumn).
      *
      * COLUMNS (14 total — one row per item line):
      *  0  KET          – status/remark (ignored on import)

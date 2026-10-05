@@ -46,6 +46,8 @@ class OrderController extends Controller
         $trips        = Trip::orderByDesc('id')->get();
         $selectedTrip = $request->trip_id ? Trip::find($request->trip_id) : null;
         $staffList = \App\Models\User::where('is_active', true)->orderBy('name')->get(['id','name','role']);
+        // CS agents (e.g. "CS1 Endang") for the export's "Filter by CS" checklist — active ones first.
+        $csAgents  = \App\Models\CsAgent::orderByDesc('is_active')->orderBy('name')->get(['id', 'name', 'is_active']);
 
         // Count of orders with no shipping area (respecting own-data scope + current trip filter)
         $noAreaQuery = Order::whereNull('shipping_area_id');
@@ -53,7 +55,7 @@ class OrderController extends Controller
         if ($request->trip_id) $noAreaQuery->where('trip_id', $request->trip_id);
         $noAreaCount = $noAreaQuery->count();
 
-        return view('orders.index', compact('orders', 'trips', 'selectedTrip', 'perPage', 'staffList', 'noAreaCount'));
+        return view('orders.index', compact('orders', 'trips', 'selectedTrip', 'perPage', 'staffList', 'csAgents', 'noAreaCount'));
     }
 
     public function create(Request $request)

@@ -10,11 +10,8 @@ use App\Models\SalesAdjustmentItem;
 
 /*
  * Phase 3: Final Payment / Sales Return / Credit Note columns added to the
- * existing orders export. Phase 4: multi-CS checklist filter, and
- * confirming order numbers are untouched by it (they're a stored value
- * from Phase 1's per-trip sequence, not something recomputed at export
- * time — filtering which rows appear can't change what number a row
- * already has).
+ * existing orders export. (The CS-agent filter and the NO URUT FIFO numbering
+ * are tested in OrderExportFifoNumberTest, which reads the real file.)
  */
 
 test('the export runs successfully for an order carrying a return, a credit note, and multiple payments', function () {
@@ -59,53 +56,4 @@ test('the export runs successfully for an order with no payments, returns, or cr
 
     $response = $this->actingAs($admin)->get(route('orders.export', ['trip_id' => $trip->id]));
     $response->assertOk();
-});
-
-test('the multi-CS filter only includes orders created by the selected staff', function () {
-    $admin  = $this->adminUser();
-    $trip   = $this->openTrip();
-    $staffA = $this->staffUser();
-    $staffB = $this->staffUser();
-    $customer = $this->customer($admin);
-
-    $orderA = Order::factory()->create(['trip_id' => $trip->id, 'customer_id' => $customer->id, 'created_by' => $staffA->id, 'order_number' => null]);
-    $orderB = Order::factory()->create(['trip_id' => $trip->id, 'customer_id' => $customer->id, 'created_by' => $staffB->id, 'order_number' => null]);
-
-    $response = $this->actingAs($admin)->get(route('orders.export', [
-        'trip_id' => $trip->id, 'staff_ids' => [$staffA->id],
-    ]));
-    $response->assertOk();
-
-    // Mirrors the controller's own filter condition directly — the
-    // simplest reliable way to confirm which orders a given staff_ids
-    // selection resolves to, without parsing the binary file itself.
-    $filtered = Order::where('trip_id', $trip->id)->whereIn('created_by', [$staffA->id])->pluck('id');
-    expect($filtered)->toContain($orderA->id);
-    expect($filtered)->not->toContain($orderB->id);
-});
-
-test('order numbers are identical whether exporting everyone or filtering to one CS', function () {
-    $admin  = $this->adminUser();
-    $trip   = $this->openTrip();
-    $trip->update(['batch_number' => 80]);
-    $staffA = $this->staffUser();
-    $staffB = $this->staffUser();
-    $customer = $this->customer($admin);
-
-    // staffB's order first, so staffA's order is the SECOND one issued
-    // overall — proving the number reflects the real combined sequence,
-    // not a position recalculated within the filtered subset.
-    Order::factory()->create(['trip_id' => $trip->id, 'customer_id' => $customer->id, 'created_by' => $staffB->id, 'order_number' => null]);
-    $orderA = Order::factory()->create(['trip_id' => $trip->id, 'customer_id' => $customer->id, 'created_by' => $staffA->id, 'order_number' => null]);
-
-    $month = now()->format('m');
-    $numberBeforeFilter = $orderA->order_number;
-    expect($numberBeforeFilter)->toBe("ORD/B80/{$month}/000002");
-
-    $this->actingAs($admin)->get(route('orders.export', [
-        'trip_id' => $trip->id, 'staff_ids' => [$staffA->id],
-    ]))->assertOk();
-
-    // Filtering the export never touches the stored value.
-    expect($orderA->fresh()->order_number)->toBe($numberBeforeFilter);
 });

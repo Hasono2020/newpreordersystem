@@ -26,6 +26,13 @@ class OrderImportService
             return ['rows' => [], 'errors' => ['Could not read the file. Make sure it is a valid .xlsx file.']];
         }
 
+        // A file made by "Export orders" starts with a NO URUT (FIFO position)
+        // column the import has no use for. Set it aside here so every column
+        // position below — and importRows() — sees the SAME layout as the import
+        // template, whichever way the file was made. Without this, re-importing an
+        // exported file would read every field one column to the right.
+        $rows = $this->dropLeadingSequenceColumn($rows);
+
         array_shift($rows); // remove header
 
         // Remove completely blank rows
@@ -92,6 +99,29 @@ class OrderImportService
         }
 
         return ['rows' => $rows, 'errors' => $errors];
+    }
+
+    /**
+     * If the header's first cell is "NO URUT", shift every row one column to the
+     * left (header included). Keys are shifted rather than the array sliced,
+     * because readXlsx() places each cell by its column index and a row can have
+     * gaps (empty cells are never written) — re-indexing would collapse those gaps
+     * and move data into the wrong columns.
+     */
+    private function dropLeadingSequenceColumn(array $rows): array
+    {
+        $header = reset($rows);
+        if (strtoupper(trim((string) ($header[0] ?? ''))) !== 'NO URUT') {
+            return $rows;
+        }
+
+        return array_map(function ($row) {
+            $shifted = [];
+            foreach ((array) $row as $i => $value) {
+                if ($i >= 1) $shifted[$i - 1] = $value;
+            }
+            return $shifted;
+        }, $rows);
     }
 
     /**

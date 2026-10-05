@@ -106,11 +106,18 @@ test('orders export header has no QTY/TOTAL columns and matches import template 
     $rows   = readExportedXlsx($response);
     $header = $rows[0];
 
-    expect($header)->toBe([
-        'DIBUAT OLEH', 'NO', 'NAMA', 'IG/WA', 'NO HP', 'KOTA',
+    // The export leads with NO URUT (FIFO position); after it comes the import
+    // template's layout, unchanged. The import detects that leading column and sets
+    // it aside, so an exported file still re-imports (OrderImportAcceptsExportTest).
+    // Anything after WAKTU ORDER (payment/return/credit-note details) is extra
+    // information the import ignores.
+    expect($header[0])->toBe('NO URUT');
+    expect(array_slice($header, 1, 15))->toBe([
+        'DIBUAT OLEH', 'NO ORDER', 'NAMA', 'IG/WA', 'NO HP', 'KOTA',
         'KODE', 'WARNA', 'SIZE', 'HARGA SATUAN',
         'DP', 'TGL DP', 'AN', 'KET', 'WAKTU ORDER',
     ]);
+    expect($header)->not->toContain('QTY')->and($header)->not->toContain('TOTAL');
 });
 
 test('an item with quantity 3 produces 3 repeated rows, not 1', function () {

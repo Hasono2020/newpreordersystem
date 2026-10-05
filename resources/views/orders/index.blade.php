@@ -192,11 +192,12 @@
     </div>
 </div>
 
-{{-- Export filtered by CS — checklist, not a single dropdown, since several
-     CS users can be selected at once. Order numbers in the exported file
-     are untouched by this filter — they're assigned once at order
-     creation, not recalculated here, so a CS's first order keeps showing
-     its real position in the full combined sequence either way. --}}
+{{-- Export filtered by CS agent — a checklist, since several can be picked at
+     once. These are the CS agents shown in the IG/WA column (e.g. "CS1 Endang"),
+     not the staff accounts that typed the orders in. Each order's NO URUT in the
+     file is its position in the full first-in-first-out list of the trip, so
+     filtering never renumbers anything: if CS 2 handled orders 2, 4 and 6, an
+     export of CS 2 alone still shows 2, 4, 6. --}}
 <div class="modal fade" id="exportOrdersModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-scrollable">
         <div class="modal-content">
@@ -208,18 +209,27 @@
                 <div class="modal-body">
                     <input type="hidden" name="trip_id" value="{{ request('trip_id') }}">
                     <label class="form-label fw-semibold">Filter by CS (optional)</label>
-                    <div class="form-text text-muted mb-2">Leave everything unchecked to export all staff's orders.</div>
+                    <div class="form-text text-muted mb-2">
+                        Leave everything unchecked to export all orders. The NO URUT column keeps each order's
+                        place in the full first-in-first-out list, even when you filter.
+                    </div>
                     <div class="mb-2">
-                        <button type="button" class="btn btn-sm btn-link p-0 me-3" onclick="document.querySelectorAll('.export-staff-check').forEach(c=>c.checked=true)">Select all</button>
-                        <button type="button" class="btn btn-sm btn-link p-0" onclick="document.querySelectorAll('.export-staff-check').forEach(c=>c.checked=false)">Clear</button>
+                        <button type="button" class="btn btn-sm btn-link p-0 me-3" onclick="document.querySelectorAll('.export-cs-check').forEach(c=>c.checked=true)">Select all</button>
+                        <button type="button" class="btn btn-sm btn-link p-0" onclick="document.querySelectorAll('.export-cs-check').forEach(c=>c.checked=false)">Clear</button>
                     </div>
                     <div style="max-height:260px;overflow-y:auto;" class="border rounded p-2">
-                        @foreach($staffList as $staff)
+                        @foreach($csAgents as $agent)
                         <div class="form-check">
-                            <input type="checkbox" class="form-check-input export-staff-check" name="staff_ids[]" value="{{ $staff->id }}" id="exportStaff{{ $staff->id }}">
-                            <label class="form-check-label" for="exportStaff{{ $staff->id }}">{{ $staff->name }}</label>
+                            <input type="checkbox" class="form-check-input export-cs-check" name="cs_agent_ids[]" value="{{ $agent->id }}" id="exportCs{{ $agent->id }}">
+                            <label class="form-check-label" for="exportCs{{ $agent->id }}">
+                                {{ $agent->name }}@unless($agent->is_active) <span class="text-muted small">(inactive)</span>@endunless
+                            </label>
                         </div>
                         @endforeach
+                        <div class="form-check border-top mt-2 pt-2">
+                            <input type="checkbox" class="form-check-input export-cs-check" name="cs_agent_ids[]" value="none" id="exportCsNone">
+                            <label class="form-check-label text-muted" for="exportCsNone">No CS agent assigned</label>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
