@@ -2,76 +2,94 @@
 
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\Payment;
 use App\Models\Product;
 
 /*
- * Reported: the combined invoice's Grand Total didn't match the order's
- * own total shown everywhere else (Orders list, Outstanding Balances) once
- * a Credit Note was issued — because this page computes its own Grand
- * Total from scratch (subtotal - discount + shipping - ship discount),
- * independently of the order's stored total_amount, and that formula had
- * no credit-note deduction. Same root bug as two other places already
- * fixed in PromoService; this was the one remaining spot.
+ * Reported: after issuing a Credit Note to refund an overpayment, the
+ * combined invoice's Grand Total DROPPED by the credit note amount while
+ * Total Paid stayed put, so the overpayment doubled instead of clearing.
+ *
+ * Root cause: a Credit Note is a refund of money already paid (the customer
+ * keeps the goods), so it must reduce PAID and leave what's OWED alone.
+ * It had been lowering the order total as well, which moves paid and owed
+ * together and leaves the gap between them exactly where it started.
+ *
+ * Now: Grand Total is untouched by a Credit Note; it appears only in Payment
+ * History as a refund, reducing Total Paid.
  */
 
-test('the combined invoice Grand Total matches the order total_amount once a credit note is active', function () {
+function makeCombinedOrder(object $test, int $tripId, int $customerId, int $adminId, string $code, int $price): Order
+{
+    $product = Product::create(['trip_id' => $tripId, 'product_code' => $code, 'price' => $price, 'weight_gram' => 100, 'status' => 'active']);
+    $order = Order::factory()->create([
+        'trip_id' => $tripId, 'customer_id' => $customerId, 'created_by' => $adminId,
+        'shipping_area_id' => null, 'subtotal' => $price, 'discount_amount' => 0,
+        'shipping_fee' => 0, 'shipping_discount' => 0, 'total_amount' => $price, 'order_number' => null,
+    ]);
+    OrderItem::create(['order_id' => $order->id, 'product_id' => $product->id, 'quantity' => 1, 'unit_price' => $price, 'line_total' => $price, 'status' => 'pending']);
+    return $order;
+}
+
+test('refunding an overpayment with a credit note leaves the Grand Total alone and clears the balance', function () {
     $admin    = $this->adminUser();
     $trip     = $this->openTrip();
     $customer = $this->customer($admin);
-    $customer->update(['default_shipping_area_id' => null]); // isolate credit-note math from shipping entirely
-    $product  = Product::create(['trip_id' => $trip->id, 'product_code' => 'CIBUG01', 'price' => 500000, 'weight_gram' => 100, 'status' => 'active']);
-    $order = Order::factory()->create(['trip_id' => $trip->id, 'customer_id' => $customer->id, 'shipping_area_id' => null, 'order_number' => null]);
-    OrderItem::create(['order_id' => $order->id, 'product_id' => $product->id, 'quantity' => 1, 'unit_price' => 500000, 'line_total' => 500000, 'status' => 'pending']);
+    $customer->update(['default_shipping_area_id' => null]); // keep shipping out of the arithmetic
+
+    $order = makeCombinedOrder($this, $trip->id, $customer->id, $admin->id, 'CIBUG01', 500000);
+    Payment::create(['order_id' => $order->id, 'amount' => 570000, 'type' => 'deposit', 'method' => 'Transfer', 'paid_at' => now(), 'recorded_by' => $admin->id, 'verification_status' => 'verified']);
+    $order->recalcPaymentStatus(); // paid 570,000 vs 500,000 owed: overpaid by 70,000
 
     $this->actingAs($admin)->post(route('orders.sales-adjustments.store', $order), [
-        'type' => 'credit_note', 'amount' => 70000,
+        'type' => 'credit_note', 'amount' => 70000, 'reason' => 'refund overpayment',
     ]);
-
-    $order->refresh();
-    expect((float) $order->total_amount)->toBe(430000.0); // sanity: the order's own total is already correct
 
     $response = $this->actingAs($admin)->get(route('orders.combined-invoice', [
         'customer' => $customer->id, 'trip_id' => $trip->id,
     ]));
 
     $response->assertOk();
-    // The Grand Total shown must equal the order's own total, not the
-    // pre-credit-note figure (500,000) the old formula would have shown.
-    // (Subtotal legitimately still shows Rp 500.000 on the same page —
-    // that's correct and expected, not something to assert against.)
-    $response->assertSeeText('Rp 430.000');
-    $response->assertSeeText('Credit Note');
+    $response->assertSeeText('Rp 500.000');       // Grand Total unchanged
+    $response->assertDontSeeText('Rp 430.000');   // the old, wrong "total minus credit note"
+    $response->assertSeeText('Balance Due');
+    $response->assertSeeText('Rp 0');              // 500,000 owed - 500,000 paid
+    $response->assertSeeText('Credit Note');       // shown in Payment History
 });
 
-test('the combined invoice balance due reflects an overpayment correctly after a credit note', function () {
+test('with the money sitting on a different order, the credit note still reduces the combined Total Paid', function () {
+    // The reported setup: the deposit was recorded on one order while the
+    // credit note landed on another, so the refund had no effect on paid at
+    // all (an order's paid never goes below zero).
     $admin    = $this->adminUser();
     $trip     = $this->openTrip();
     $customer = $this->customer($admin);
-    $customer->update(['default_shipping_area_id' => null]); // isolate credit-note math from shipping entirely
-    $product  = Product::create(['trip_id' => $trip->id, 'product_code' => 'CIBUG02', 'price' => 500000, 'weight_gram' => 100, 'status' => 'active']);
-    $order = Order::factory()->create(['trip_id' => $trip->id, 'customer_id' => $customer->id, 'shipping_area_id' => null, 'order_number' => null]);
-    OrderItem::create(['order_id' => $order->id, 'product_id' => $product->id, 'quantity' => 1, 'unit_price' => 500000, 'line_total' => 500000, 'status' => 'pending']);
+    $customer->update(['default_shipping_area_id' => null]);
 
-    // Pay the full original amount BEFORE the credit note — mirrors the
-    // reported scenario where the customer had already paid in full.
-    \App\Models\Payment::create([
-        'order_id' => $order->id, 'amount' => 500000, 'type' => 'full', 'method' => 'Transfer',
-        'paid_at' => now(), 'recorded_by' => $admin->id, 'verification_status' => 'verified',
-    ]);
-    $order->recalcPaymentStatus();
+    $orderA = makeCombinedOrder($this, $trip->id, $customer->id, $admin->id, 'CIBUG02', 100000);
+    $orderB = makeCombinedOrder($this, $trip->id, $customer->id, $admin->id, 'CIBUG03', 100000);
 
-    $this->actingAs($admin)->post(route('orders.sales-adjustments.store', $order), [
+    Payment::create(['order_id' => $orderB->id, 'amount' => 270000, 'type' => 'deposit', 'method' => 'Transfer', 'paid_at' => now(), 'recorded_by' => $admin->id, 'verification_status' => 'verified']);
+    $orderB->recalcPaymentStatus(); // 270,000 paid vs 200,000 owed across both: overpaid 70,000
+
+    // The order with no payments of its own can't refund anything...
+    $this->actingAs($admin)->post(route('orders.sales-adjustments.store', $orderA), [
+        'type' => 'credit_note', 'amount' => 70000,
+    ])->assertSessionHas('error');
+
+    // ...the one that actually holds the payment can.
+    $this->actingAs($admin)->post(route('orders.sales-adjustments.store', $orderB), [
         'type' => 'credit_note', 'amount' => 70000,
     ]);
-
-    // Credit note issues its own refund payment too, so deposit_paid is
-    // back down to 430,000 — paid matches the new (lower) total exactly,
-    // balance should settle back to 0, not swing negative.
-    expect((float) $order->fresh()->deposit_paid)->toBe(430000.0);
 
     $response = $this->actingAs($admin)->get(route('orders.combined-invoice', [
         'customer' => $customer->id, 'trip_id' => $trip->id,
     ]));
+
+    $response->assertOk();
+    $response->assertSeeText('Rp 200.000');  // Grand Total and Total Paid now agree
     $response->assertSeeText('Balance Due');
-    $response->assertSeeText('Rp 0');
+    $response->assertSeeText('Rp 0');         // owed 200,000, paid 200,000: overpayment cleared
+    // (The original +Rp 270.000 deposit still shows in Payment History, correctly —
+    // it's the Total Paid and Balance Due lines that must reflect the refund.)
 });

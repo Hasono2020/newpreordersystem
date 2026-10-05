@@ -30,14 +30,14 @@ test('reallocates credit from an overpaid order to cover an underpaid order for 
         'shipping_area_id' => $area->id, 'subtotal' => 400000, 'total_amount' => 400000,
         'deposit_paid' => 500000, 'payment_status' => 'paid', 'ordered_at' => now()->subMinutes(10),
     ]);
-    Payment::factory()->create(['order_id' => $overpaid->id, 'amount' => 500000, 'type' => 'deposit', 'paid_at' => now(), 'voided_at' => null]);
+    Payment::factory()->create(['order_id' => $overpaid->id, 'amount' => 500000, 'type' => 'deposit', 'paid_at' => now(), 'voided_at' => null, 'verification_status' => 'verified']);
 
     $underpaid = Order::factory()->create([
         'trip_id' => $trip->id, 'customer_id' => $customer->id, 'created_by' => $admin->id,
         'shipping_area_id' => $area->id, 'subtotal' => 1045000, 'total_amount' => 1045000,
         'deposit_paid' => 1015000, 'payment_status' => 'partial', 'ordered_at' => now(),
     ]);
-    Payment::factory()->create(['order_id' => $underpaid->id, 'amount' => 1015000, 'type' => 'deposit', 'paid_at' => now(), 'voided_at' => null]);
+    Payment::factory()->create(['order_id' => $underpaid->id, 'amount' => 1015000, 'type' => 'deposit', 'paid_at' => now(), 'voided_at' => null, 'verification_status' => 'verified']);
 
     app(CreditReallocationService::class)->reallocate($customer->id, $trip->id);
 
@@ -63,14 +63,14 @@ test('the reallocation leaves a visible, cross-referenced trail in Payment Histo
         'shipping_area_id' => $area->id, 'subtotal' => 400000, 'total_amount' => 400000,
         'deposit_paid' => 500000, 'payment_status' => 'paid',
     ]);
-    Payment::factory()->create(['order_id' => $overpaid->id, 'amount' => 500000, 'type' => 'deposit', 'paid_at' => now(), 'voided_at' => null]);
+    Payment::factory()->create(['order_id' => $overpaid->id, 'amount' => 500000, 'type' => 'deposit', 'paid_at' => now(), 'voided_at' => null, 'verification_status' => 'verified']);
 
     $underpaid = Order::factory()->create([
         'trip_id' => $trip->id, 'customer_id' => $customer->id, 'created_by' => $admin->id,
         'shipping_area_id' => $area->id, 'subtotal' => 500000, 'total_amount' => 500000,
         'deposit_paid' => 400000, 'payment_status' => 'partial',
     ]);
-    Payment::factory()->create(['order_id' => $underpaid->id, 'amount' => 400000, 'type' => 'deposit', 'paid_at' => now(), 'voided_at' => null]);
+    Payment::factory()->create(['order_id' => $underpaid->id, 'amount' => 400000, 'type' => 'deposit', 'paid_at' => now(), 'voided_at' => null, 'verification_status' => 'verified']);
 
     app(CreditReallocationService::class)->reallocate($customer->id, $trip->id);
 
@@ -101,7 +101,7 @@ test('does nothing when there is no overpaid order to draw from', function () {
         'shipping_area_id' => $area->id, 'subtotal' => 500000, 'total_amount' => 500000,
         'deposit_paid' => 300000, 'payment_status' => 'partial',
     ]);
-    Payment::factory()->create(['order_id' => $underpaid->id, 'amount' => 300000, 'type' => 'deposit', 'paid_at' => now(), 'voided_at' => null]);
+    Payment::factory()->create(['order_id' => $underpaid->id, 'amount' => 300000, 'type' => 'deposit', 'paid_at' => now(), 'voided_at' => null, 'verification_status' => 'verified']);
 
     $paymentCountBefore = Payment::count();
 
@@ -122,7 +122,7 @@ test('multiple underpaid orders are covered oldest-first (FIFO)', function () {
         'shipping_area_id' => $area->id, 'subtotal' => 100000, 'total_amount' => 100000,
         'deposit_paid' => 150000, 'payment_status' => 'paid',
     ]);
-    Payment::factory()->create(['order_id' => $overpaid->id, 'amount' => 150000, 'type' => 'deposit', 'paid_at' => now(), 'voided_at' => null]);
+    Payment::factory()->create(['order_id' => $overpaid->id, 'amount' => 150000, 'type' => 'deposit', 'paid_at' => now(), 'voided_at' => null, 'verification_status' => 'verified']);
 
     // Older shortfall: needs 30,000
     $older = Order::factory()->create([
@@ -130,7 +130,7 @@ test('multiple underpaid orders are covered oldest-first (FIFO)', function () {
         'shipping_area_id' => $area->id, 'subtotal' => 100000, 'total_amount' => 100000,
         'deposit_paid' => 70000, 'payment_status' => 'partial', 'ordered_at' => now()->subMinutes(20),
     ]);
-    Payment::factory()->create(['order_id' => $older->id, 'amount' => 70000, 'type' => 'deposit', 'paid_at' => now(), 'voided_at' => null]);
+    Payment::factory()->create(['order_id' => $older->id, 'amount' => 70000, 'type' => 'deposit', 'paid_at' => now(), 'voided_at' => null, 'verification_status' => 'verified']);
 
     // Newer shortfall: needs 40,000 (only 20,000 of credit will remain)
     $newer = Order::factory()->create([
@@ -138,7 +138,7 @@ test('multiple underpaid orders are covered oldest-first (FIFO)', function () {
         'shipping_area_id' => $area->id, 'subtotal' => 100000, 'total_amount' => 100000,
         'deposit_paid' => 60000, 'payment_status' => 'partial', 'ordered_at' => now(),
     ]);
-    Payment::factory()->create(['order_id' => $newer->id, 'amount' => 60000, 'type' => 'deposit', 'paid_at' => now(), 'voided_at' => null]);
+    Payment::factory()->create(['order_id' => $newer->id, 'amount' => 60000, 'type' => 'deposit', 'paid_at' => now(), 'voided_at' => null, 'verification_status' => 'verified']);
 
     app(CreditReallocationService::class)->reallocate($customer->id, $trip->id);
 
@@ -161,14 +161,14 @@ test('writes an activity log entry when a reallocation happens', function () {
         'shipping_area_id' => $area->id, 'subtotal' => 400000, 'total_amount' => 400000,
         'deposit_paid' => 500000, 'payment_status' => 'paid',
     ]);
-    Payment::factory()->create(['order_id' => $overpaid->id, 'amount' => 500000, 'type' => 'deposit', 'paid_at' => now(), 'voided_at' => null]);
+    Payment::factory()->create(['order_id' => $overpaid->id, 'amount' => 500000, 'type' => 'deposit', 'paid_at' => now(), 'voided_at' => null, 'verification_status' => 'verified']);
 
     $underpaid = Order::factory()->create([
         'trip_id' => $trip->id, 'customer_id' => $customer->id, 'created_by' => $admin->id,
         'shipping_area_id' => $area->id, 'subtotal' => 450000, 'total_amount' => 450000,
         'deposit_paid' => 400000, 'payment_status' => 'partial',
     ]);
-    Payment::factory()->create(['order_id' => $underpaid->id, 'amount' => 400000, 'type' => 'deposit', 'paid_at' => now(), 'voided_at' => null]);
+    Payment::factory()->create(['order_id' => $underpaid->id, 'amount' => 400000, 'type' => 'deposit', 'paid_at' => now(), 'voided_at' => null, 'verification_status' => 'verified']);
 
     app(CreditReallocationService::class)->reallocate($customer->id, $trip->id);
 
@@ -193,7 +193,7 @@ test('shipping price sync automatically triggers reallocation end-to-end', funct
         'ordered_at' => now()->subMinutes(10),
     ]);
     OrderItem::create(['order_id' => $order1->id, 'product_id' => $product1->id, 'quantity' => 1, 'unit_price' => 100000, 'line_total' => 100000, 'status' => 'pending']);
-    Payment::factory()->create(['order_id' => $order1->id, 'amount' => 125000, 'type' => 'deposit', 'paid_at' => now(), 'voided_at' => null]);
+    Payment::factory()->create(['order_id' => $order1->id, 'amount' => 125000, 'type' => 'deposit', 'paid_at' => now(), 'voided_at' => null, 'verification_status' => 'verified']);
 
     // Order 2: separate order, no shipping charge on it (anchor is order1),
     // but genuinely short by 20,000
@@ -205,7 +205,7 @@ test('shipping price sync automatically triggers reallocation end-to-end', funct
         'ordered_at' => now(),
     ]);
     OrderItem::create(['order_id' => $order2->id, 'product_id' => $product2->id, 'quantity' => 1, 'unit_price' => 100000, 'line_total' => 100000, 'status' => 'pending']);
-    Payment::factory()->create(['order_id' => $order2->id, 'amount' => 80000, 'type' => 'deposit', 'paid_at' => now(), 'voided_at' => null]);
+    Payment::factory()->create(['order_id' => $order2->id, 'amount' => 80000, 'type' => 'deposit', 'paid_at' => now(), 'voided_at' => null, 'verification_status' => 'verified']);
 
     // Drop the rate — order1's shipping_fee recalculates down, making it
     // overpaid; that credit should automatically flow to order2.

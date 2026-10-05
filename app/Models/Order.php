@@ -77,6 +77,25 @@ class Order extends Model
         $this->update(['deposit_paid' => max(0, $paid), 'payment_status' => $status]);
     }
 
+    /**
+     * Money on this order that has been VERIFIED as received, net of refunds.
+     *
+     * deposit_paid counts every recorded payment — including ones where a
+     * customer has merely said they transferred and staff typed it in. That's
+     * right for showing a status, but it must never be the limit for money
+     * going back OUT: a refund has to be backed by a payment someone has
+     * actually confirmed arrived. Verified internal transfer entries count
+     * (they are only ever created from verified money — see
+     * CreditReallocationService), and every refund row reduces it.
+     */
+    public function verifiedPaid(): float
+    {
+        $payments = $this->payments()->whereNull('voided_at')->get();
+
+        return (float) $payments->where('type', '!=', 'refund')->where('verification_status', 'verified')->sum('amount')
+             - (float) $payments->where('type', 'refund')->sum('amount');
+    }
+
     public function getPaymentStatusBadgeAttribute(): string
     {
         return match($this->payment_status) {

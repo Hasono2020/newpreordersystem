@@ -5,11 +5,14 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * One table, two types — a Sales Return (goods come back, tied to specific
- * order items) and a Credit Note (money refunded with no goods movement,
- * no items). Both reduce what the order owes and both create a linked
- * refund Payment; the only structural difference is whether
- * sales_adjustment_items rows exist for this record.
+ * One table, two types:
+ *  - Sales Return: goods come back, tied to specific order items. Shrinks
+ *    those items (so the order total drops) and refunds money.
+ *  - Credit Note: money refunded with NO goods movement and no items. It
+ *    only reduces what the customer has PAID; the order total is untouched
+ *    because they still keep everything. (Lowering the total too would move
+ *    paid and owed together and never clear an overpayment.)
+ * Both create a linked, auto-verified refund Payment.
  */
 class SalesAdjustment extends Model
 {

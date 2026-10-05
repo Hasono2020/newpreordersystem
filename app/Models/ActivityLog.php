@@ -65,6 +65,7 @@ class ActivityLog extends Model
             'payment.voided'        => 'bg-danger',
             'payment.batch_voided'  => 'bg-danger',
             'payment.auto_reallocated' => 'bg-info text-dark',
+            'payment.reallocation_reversed' => 'bg-warning text-dark',
             'order.deleted'         => 'bg-danger',
             'order.bulk_deleted'    => 'bg-danger',
             'order.updated'         => 'bg-warning text-dark',

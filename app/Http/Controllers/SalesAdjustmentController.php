@@ -7,7 +7,9 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\SalesAdjustment;
 use App\Models\SalesAdjustmentItem;
+use App\Services\CreditReallocationService;
 use App\Services\PromoService;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -59,7 +61,8 @@ class SalesAdjustmentController extends Controller
         if ($request->type === 'return') {
             $this->storeReturn($request, $order);
         } else {
-            $this->storeCreditNote($request, $order);
+            $error = $this->storeCreditNote($request, $order);
+            if ($error) return back()->withInput()->with('error', $error);
         }
 
         return back()->with('success', ucfirst(str_replace('_', ' ', $request->type)) . ' issued.');
@@ -116,7 +119,10 @@ class SalesAdjustmentController extends Controller
                 ]);
             }
 
-            $this->applyRefundAndRecalc($order, $adjustment, (float) ($request->refund_amount ?? $amount));
+            $this->applyRefundAndRecalc(
+                $order, $adjustment, (float) $amount,
+                $request->filled('refund_amount') ? (float) $request->refund_amount : null
+            );
 
             ActivityLog::record('sales_return.issued',
                 "Sales Return {$number} issued on {$order->order_number} ({$order->customer->name}) — Rp " . number_format($amount, 0, ',', '.'),
@@ -124,53 +130,129 @@ class SalesAdjustmentController extends Controller
         });
     }
 
-    private function storeCreditNote(Request $request, Order $order): void
+    /**
+     * A Credit Note is a REFUND of money already paid, with no goods coming
+     * back — so it reduces what the customer has PAID, and leaves what they
+     * OWE (the order total) alone: they still keep every item. That is what
+     * actually clears an overpayment. (An earlier version also lowered the
+     * order total, which left the paid-vs-owed gap exactly where it started —
+     * refunding an overpayment of X just produced an overpayment of X again.)
+     *
+     * Capped at what this order has actually been paid: the refund is a
+     * real money-out, and refunding more than the order holds would be
+     * floored away by the paid figure (it never goes below zero), silently
+     * doing nothing. Better to refuse clearly and say where the money is.
+     *
+     * @return string|null  error message if refused, null on success
+     */
+    private function storeCreditNote(Request $request, Order $order): ?string
     {
         $request->validate(['amount' => 'required|numeric|min:0.01']);
 
-        DB::transaction(function () use ($request, $order) {
+        $amount   = (float) $request->amount;
+        $fresh    = $order->fresh();
+        $verified = $fresh->verifiedPaid();
+
+        // A refund sends real money out, so it can only draw on payments
+        // someone has actually confirmed arrived. A payment that is merely
+        // recorded (e.g. a customer says they transferred and it was typed in)
+        // is not enough — otherwise "I've transferred 20 million" plus a Credit
+        // Note would pay out money that never came in.
+        if ($amount > $verified + 0.001) {
+            $unverified = max(0, (float) $fresh->deposit_paid - $verified);
+            return 'Only Rp ' . number_format(max(0, $verified), 0, ',', '.')
+                . ' of the payments on this order is verified, so it cannot refund Rp ' . number_format($amount, 0, ',', '.') . '.'
+                . ($unverified > 0.001
+                    ? ' Rp ' . number_format($unverified, 0, ',', '.') . ' is still unverified — verify it in the Payment Log first.'
+                    : ' Issue the Credit Note on the order that actually holds the verified payment.');
+        }
+
+        DB::transaction(function () use ($request, $order, $amount) {
             $number = SalesAdjustment::reserveNumber($order->trip, 'credit_note');
             $adjustment = SalesAdjustment::create([
                 'type' => 'credit_note', 'adjustment_number' => $number,
                 'order_id' => $order->id, 'trip_id' => $order->trip_id,
-                'amount' => $request->amount, 'reason' => $request->reason, 'created_by' => Auth::id(),
+                'amount' => $amount, 'reason' => $request->reason, 'created_by' => Auth::id(),
             ]);
 
-            $this->applyRefundAndRecalc($order, $adjustment, (float) $request->amount);
+            $this->recordRefundPayment($order, $adjustment, $amount);
+            $order->recalcPaymentStatus();
+            $this->rebalanceCustomerCredit($order);
 
             ActivityLog::record('credit_note.issued',
-                "Credit Note {$number} issued on {$order->order_number} ({$order->customer->name}) — Rp " . number_format($request->amount, 0, ',', '.'),
+                "Credit Note {$number} issued on {$order->order_number} ({$order->customer->name}) — Rp " . number_format($amount, 0, ',', '.') . ' refunded',
                 'sales_adjustment', $adjustment->id);
         });
+
+        return null;
+    }
+
+    private function recordRefundPayment(Order $order, SalesAdjustment $adjustment, float $refundAmount): void
+    {
+        if ($refundAmount <= 0) return;
+
+        \App\Models\Payment::create([
+            'order_id' => $order->id, 'sales_adjustment_id' => $adjustment->id,
+            'amount' => $refundAmount, 'type' => 'refund', 'method' => 'Refund',
+            'reference' => $adjustment->adjustment_number,
+            'paid_at' => now(), 'notes' => $adjustment->reason,
+            'recorded_by' => Auth::id(),
+            // Staff-issued, not a customer claim — doesn't need the
+            // usual verification step, and leaving it unverified would
+            // wrongly block Ready to Pack on an otherwise-settled order.
+            'verification_status' => 'verified', 'verified_by' => Auth::id(), 'verified_at' => now(),
+        ]);
     }
 
     /**
-     * Shared by both types: recalculate the order (now reflecting either
-     * the shrunk items or the credit-note deduction), then record the
-     * actual cash refund as a normal type='refund' Payment — reusing
+     * Sales Return only: recalculate after the items shrank, then record the
+     * cash refund as a normal type='refund' Payment — reusing
      * Order::recalcPaymentStatus()'s existing refund-aware math rather than
-     * a second, parallel balance calculation.
+     * a second, parallel balance calculation. (Credit Notes don't come
+     * through here: they change nothing about what's owed, only what's paid.)
      */
-    private function applyRefundAndRecalc(Order $order, SalesAdjustment $adjustment, float $refundAmount): void
+    private function applyRefundAndRecalc(Order $order, SalesAdjustment $adjustment, float $returnedValue, ?float $refundOverride): void
     {
+        // Returns shrink order items, so totals (and combined shipping/promo
+        // eligibility across the customer's orders) genuinely change.
         $this->promoService->recalcCustomerShipping($order->customer_id, $order->trip_id);
         $order->refresh();
 
-        if ($refundAmount > 0) {
-            \App\Models\Payment::create([
-                'order_id' => $order->id, 'sales_adjustment_id' => $adjustment->id,
-                'amount' => $refundAmount, 'type' => 'refund', 'method' => 'Refund',
-                'reference' => $adjustment->adjustment_number,
-                'paid_at' => now(), 'notes' => $adjustment->reason,
-                'recorded_by' => Auth::id(),
-                // Staff-issued, not a customer claim — doesn't need the
-                // usual verification step, and leaving it unverified would
-                // wrongly block Ready to Pack on an otherwise-settled order.
-                'verification_status' => 'verified', 'verified_by' => Auth::id(), 'verified_at' => now(),
-            ]);
+        $paid = $order->verifiedPaid(); // verified money only — see storeCreditNote()
+
+        // What actually needs to go back: only the part of what this order
+        // has VERIFIED as paid that now exceeds its (reduced) total, never more than the
+        // value of the goods returned. Defaulting to the full returned value
+        // regardless made a "refund" of money that was never received on an
+        // order with nothing paid — silently swallowed by the paid figure
+        // never going below zero, then resurfacing as a phantom shortfall
+        // the moment any credit was moved onto that order.
+        $refund = $refundOverride
+            ?? min($returnedValue, max(0, $paid - (float) $order->total_amount));
+
+        if ($refund > $paid + 0.001) {
+            // Thrown inside the transaction, so the return itself rolls back.
+            throw new HttpResponseException(back()->withInput()->with('error',
+                'Only Rp ' . number_format(max(0, $paid), 0, ',', '.')
+                . ' of the payments on this order is verified, so it cannot refund Rp ' . number_format($refund, 0, ',', '.')
+                . '. Leave the refund blank to refund only what is verified and owed back.'));
         }
 
+        $this->recordRefundPayment($order, $adjustment, $refund);
         $order->recalcPaymentStatus();
+        $this->rebalanceCustomerCredit($order);
+    }
+
+    /**
+     * Totals or paid amounts on one of this customer's orders just changed,
+     * which can leave one order holding spare credit while another is short
+     * (e.g. the deposit sits on the first order and a later one is unpaid).
+     * Move that credit across, oldest shortfall first — the same service the
+     * price-sync flows already use; it's a no-op when there's nothing to move.
+     */
+    private function rebalanceCustomerCredit(Order $order): void
+    {
+        app(CreditReallocationService::class)->reconcile($order->customer_id, $order->trip_id);
     }
 
     /**
@@ -212,6 +294,7 @@ class SalesAdjustmentController extends Controller
             $this->promoService->recalcCustomerShipping($order->customer_id, $order->trip_id);
             $order->refresh();
             $order->recalcPaymentStatus();
+            $this->rebalanceCustomerCredit($order);
 
             ActivityLog::record('sales_adjustment.voided',
                 "Voided {$salesAdjustment->adjustment_number} on {$order->order_number} ({$order->customer->name})",

@@ -249,7 +249,7 @@
                     <form method="POST" action="{{ route('orders.sales-adjustments.store', $order) }}">
                         @csrf
                         <input type="hidden" name="type" value="return">
-                        <p class="small text-muted mb-2">Select which items are being returned, and how many. The order total updates automatically.</p>
+                        <p class="small text-muted mb-2">Select which items are being returned, and how many. The order total updates automatically, and only the part of what this order has paid that now exceeds its new total is refunded — and only from verified payments (Rp {{ number_format(max(0, $order->verifiedPaid()), 0, ',', '.') }} verified on this order).</p>
                         <table class="table table-sm">
                             <thead><tr><th></th><th>Product / Variant</th><th>On order</th><th style="width:110px;">Qty returned</th></tr></thead>
                             <tbody>
@@ -273,8 +273,8 @@
                         </table>
                         <div class="row g-2">
                             <div class="col-md-4">
-                                <label class="form-label small">Refund amount (Rp) — optional override</label>
-                                <input type="number" name="refund_amount" class="form-control form-control-sm" step="1" min="0" placeholder="Defaults to returned items' value">
+                                <label class="form-label small">Refund amount (Rp) — leave blank for automatic</label>
+                                <input type="number" name="refund_amount" class="form-control form-control-sm" step="1" min="0" placeholder="Automatic: what is actually owed back">
                             </div>
                             <div class="col-md-8">
                                 <label class="form-label small">Reason</label>
@@ -295,7 +295,7 @@
                     <form method="POST" action="{{ route('orders.sales-adjustments.store', $order) }}">
                         @csrf
                         <input type="hidden" name="type" value="credit_note">
-                        <p class="small text-muted mb-2">For refunding money without any goods coming back (no items involved).</p>
+                        <p class="small text-muted mb-2">Refunds money already paid, with no goods coming back. The order total stays the same — only the amount paid goes down. Limited to payments that have been VERIFIED (currently Rp {{ number_format(max(0, $order->verifiedPaid()), 0, ',', '.') }} of the Rp {{ number_format($order->deposit_paid, 0, ',', '.') }} recorded on this order).</p>
                         <div class="row g-2">
                             <div class="col-md-4">
                                 <label class="form-label small">Amount (Rp)</label>
@@ -307,7 +307,7 @@
                             </div>
                         </div>
                         <button type="submit" class="btn btn-sm btn-danger mt-2"
-                            onclick="return confirm('Issue this Credit Note? This reduces the order total and refunds the customer.');">
+                            onclick="return confirm('Issue this Credit Note? This refunds the customer and reduces the amount paid. The order total does not change.');">
                             Issue Credit Note
                         </button>
                     </form>

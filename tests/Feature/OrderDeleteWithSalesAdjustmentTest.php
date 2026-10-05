@@ -42,6 +42,9 @@ test('an order with an active Credit Note can be deleted', function () {
     $order = Order::factory()->create(['trip_id' => $trip->id, 'customer_id' => $customer->id, 'order_number' => null]);
     OrderItem::create(['order_id' => $order->id, 'product_id' => $product->id, 'quantity' => 1, 'unit_price' => 50000, 'line_total' => 50000, 'status' => 'pending']);
 
+    \App\Models\Payment::create(['order_id' => $order->id, 'amount' => 100000, 'type' => 'deposit', 'method' => 'Transfer', 'paid_at' => now(), 'recorded_by' => $admin->id, 'verification_status' => 'verified']);
+    $order->recalcPaymentStatus();
+
     $this->actingAs($admin)->post(route('orders.sales-adjustments.store', $order), [
         'type' => 'credit_note', 'amount' => 10000,
     ]);

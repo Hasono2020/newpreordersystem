@@ -40,6 +40,8 @@ class ActivityLogController extends Controller
         $actionTypes = [
             'payment.recorded'         => 'Payment recorded',
             'payment.voided'           => 'Payment voided',
+            'payment.auto_reallocated' => 'Credit moved between orders',
+            'payment.reallocation_reversed' => 'Moved credit reversed',
             'payment.batch_voided'     => 'Payment batch voided',
             'order.updated'            => 'Order edited',
             'order.deleted'            => 'Order deleted',

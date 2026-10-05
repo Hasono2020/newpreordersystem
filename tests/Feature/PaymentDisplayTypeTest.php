@@ -23,6 +23,9 @@ test('a refund tied to a Sales Return displays as "Sales Return"', function () {
     $order = Order::factory()->create(['trip_id' => $trip->id, 'customer_id' => $customer->id, 'order_number' => null]);
     $item  = OrderItem::create(['order_id' => $order->id, 'product_id' => $product->id, 'quantity' => 2, 'unit_price' => 50000, 'line_total' => 100000, 'status' => 'pending']);
 
+    \App\Models\Payment::create(['order_id' => $order->id, 'amount' => 100000, 'type' => 'deposit', 'method' => 'Transfer', 'paid_at' => now(), 'recorded_by' => $admin->id, 'verification_status' => 'verified']);
+    $order->recalcPaymentStatus(); // paid in full, so returning one item leaves a real refund due
+
     $this->actingAs($admin)->post(route('orders.sales-adjustments.store', $order), [
         'type' => 'return', 'items' => [['order_item_id' => $item->id, 'quantity' => 1]],
     ]);
@@ -38,6 +41,9 @@ test('a refund tied to a Credit Note displays as "Credit Note"', function () {
     $product  = Product::create(['trip_id' => $trip->id, 'product_code' => 'DISP02', 'price' => 50000, 'weight_gram' => 100, 'status' => 'active']);
     $order = Order::factory()->create(['trip_id' => $trip->id, 'customer_id' => $customer->id, 'order_number' => null]);
     OrderItem::create(['order_id' => $order->id, 'product_id' => $product->id, 'quantity' => 1, 'unit_price' => 50000, 'line_total' => 50000, 'status' => 'pending']);
+
+    \App\Models\Payment::create(['order_id' => $order->id, 'amount' => 100000, 'type' => 'deposit', 'method' => 'Transfer', 'paid_at' => now(), 'recorded_by' => $admin->id, 'verification_status' => 'verified']);
+    $order->recalcPaymentStatus();
 
     $this->actingAs($admin)->post(route('orders.sales-adjustments.store', $order), [
         'type' => 'credit_note', 'amount' => 10000,
@@ -82,6 +88,9 @@ test('the invoice, order detail, and combined invoice pages all render successfu
     $product  = Product::create(['trip_id' => $trip->id, 'product_code' => 'DISP03', 'price' => 50000, 'weight_gram' => 100, 'status' => 'active']);
     $order = Order::factory()->create(['trip_id' => $trip->id, 'customer_id' => $customer->id, 'order_number' => null]);
     $item  = OrderItem::create(['order_id' => $order->id, 'product_id' => $product->id, 'quantity' => 2, 'unit_price' => 50000, 'line_total' => 100000, 'status' => 'pending']);
+
+    \App\Models\Payment::create(['order_id' => $order->id, 'amount' => 100000, 'type' => 'deposit', 'method' => 'Transfer', 'paid_at' => now(), 'recorded_by' => $admin->id, 'verification_status' => 'verified']);
+    $order->recalcPaymentStatus(); // paid in full, so returning one item leaves a real refund due
 
     $this->actingAs($admin)->post(route('orders.sales-adjustments.store', $order), [
         'type' => 'return', 'items' => [['order_item_id' => $item->id, 'quantity' => 1]],

@@ -10,7 +10,11 @@
     // *other* adjustment landed on this order after this one, which is the
     // normal case; a note below covers the rarer stacked-adjustment case.
     $adjustedTotal = (float) $order->total_amount;
-    $originalTotal = $adjustedTotal + (float) $salesAdjustment->amount;
+    // A Sales Return shrank the order's items, so the total was higher before
+    // it. A Credit Note is a refund only — the total never changed, just paid.
+    $originalTotal = $salesAdjustment->isReturn()
+        ? $adjustedTotal + (float) $salesAdjustment->amount
+        : $adjustedTotal;
     $adjustedPaid  = (float) $order->deposit_paid;
     $refundPaid    = $salesAdjustment->payment && !$salesAdjustment->payment->isVoided() ? (float) $salesAdjustment->payment->amount : 0;
     $originalPaid  = $adjustedPaid + $refundPaid;

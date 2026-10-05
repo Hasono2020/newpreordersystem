@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\ActivityLog;
 use App\Models\Order;
+use App\Models\Payment;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -13,6 +14,9 @@ use Illuminate\Support\Str;
  * updates order totals, a customer can end up with one order overpaid
  * and another underpaid within the same trip — the money was recorded
  * per-order, but the totals shifted per-order too.
+ *
+ * Only VERIFIED money is ever moved — an unverified deposit (a customer
+ * saying they transferred) stays where it is until someone confirms it.
  *
  * This service automatically reallocates the overpaid amount to cover
  * the underpaid order(s), oldest shortfall first (matching the FIFO
@@ -26,6 +30,99 @@ use Illuminate\Support\Str;
 class CreditReallocationService
 {
     /**
+     * Keep a customer's cross-order transfers in line with the money they
+     * actually hold RIGHT NOW. Call this after anything that changes what an
+     * order has paid or owes: a payment recorded or voided, an item added or
+     * removed, a Sales Return or Credit Note, a price sync.
+     *
+     * Two steps, in this order:
+     *  1. Undo any earlier transfer that is no longer backed by real money
+     *     (e.g. the deposit it was drawn from has since been voided) — otherwise
+     *     the receiving order would keep showing "paid" with nothing behind it.
+     *  2. Move spare credit onto any order that is short (reallocate()).
+     *
+     * Idempotent: once everything is consistent, calling it again changes
+     * nothing, so it is safe to call from several places in one request.
+     */
+    public function reconcile(int $customerId, int $tripId): void
+    {
+        $this->unwindUnsupportedTransfers($customerId, $tripId);
+        $this->reallocate($customerId, $tripId);
+    }
+
+    /**
+     * An order can only have sent out as much credit as its OWN money exceeds
+     * its own total by. "Own money" = every non-voided payment on it except
+     * the transfer entries themselves (deposits, partials, and refunds from
+     * Credit Notes / Sales Returns). If more has been sent out than that, the
+     * newest transfers are reversed — both sides, voided with a reason, never
+     * deleted — and reallocate() then re-moves whatever is still supportable.
+     */
+    private function unwindUnsupportedTransfers(int $customerId, int $tripId): void
+    {
+        $orders = Order::with('payments')
+            ->where('customer_id', $customerId)
+            ->where('trip_id', $tripId)
+            ->get();
+
+        $isTransfer = fn ($p) => $p->method === 'reallocation';
+        $reversed   = [];
+
+        DB::transaction(function () use ($orders, $isTransfer, &$reversed) {
+            foreach ($orders as $order) {
+                $active   = $order->payments->filter(fn ($p) => $p->voided_at === null);
+                $outgoing = $active->filter(fn ($p) => $isTransfer($p) && $p->type === 'refund')
+                    ->sortByDesc('id')->values();
+                if ($outgoing->isEmpty()) continue;
+
+                // Only VERIFIED own money supports a transfer: if the deposit it
+                // came from is disputed or still unverified, the move is undone.
+                $ownMoney = $active->reject($isTransfer)->sum(function ($p) {
+                    if ($p->type === 'refund') return -(float) $p->amount;
+                    return $p->verification_status === 'verified' ? (float) $p->amount : 0.0;
+                });
+                $supported = max(0.0, $ownMoney - (float) $order->total_amount);
+                $outTotal  = (float) $outgoing->sum(fn ($p) => (float) $p->amount);
+
+                foreach ($outgoing as $out) {
+                    if ($outTotal <= $supported + 0.001) break;
+
+                    $in = Payment::where('batch_id', $out->batch_id)
+                        ->where('method', 'reallocation')
+                        ->where('type', 'partial')
+                        ->whereNull('voided_at')
+                        ->first();
+
+                    foreach (array_filter([$out, $in]) as $row) {
+                        $row->update([
+                            'voided_at'   => now(),
+                            'voided_by'   => Auth::id(),
+                            'void_reason' => 'Reversed — the money backing this transfer was changed or removed',
+                        ]);
+                    }
+
+                    $outTotal -= (float) $out->amount;
+                    $reversed[] = [
+                        'from_id' => $order->id, 'to_id' => $in?->order_id,
+                        'from'    => $order->order_number, 'to' => $in?->order?->order_number,
+                        'amount'  => (float) $out->amount,
+                    ];
+                }
+            }
+        });
+
+        if (empty($reversed)) return;
+
+        Order::whereIn('id', collect($reversed)->flatMap(fn ($r) => [$r['from_id'], $r['to_id']])->filter()->unique())
+            ->get()->each(fn ($o) => $o->recalcPaymentStatus());
+
+        $summary = collect($reversed)
+            ->map(fn ($r) => 'Rp' . number_format($r['amount'], 0, ',', '.') . " from {$r['from']} to " . ($r['to'] ?? 'another order'))
+            ->implode('; ');
+        ActivityLog::record('payment.reallocation_reversed', "Reversed auto-reallocation no longer backed by a payment: {$summary}", 'customer', $customerId);
+    }
+
+    /**
      * Reallocates credit for one customer within one trip. Call this
      * after any bulk price sync that could create an overpay/underpay
      * split for that customer. Safe to call even when there's nothing
@@ -37,7 +134,10 @@ class CreditReallocationService
             ->where('trip_id', $tripId)
             ->get();
 
-        $overpaid  = $orders->filter(fn($o) => (float) $o->deposit_paid > (float) $o->total_amount)->values();
+        // Only VERIFIED surplus can be moved. Every transfer this creates is
+        // marked verified, so drawing on money nobody has confirmed arrived
+        // would turn it into "verified" credit that can then be refunded.
+        $overpaid  = $orders->filter(fn($o) => $this->spare($o) > 0.001)->values();
         $underpaid = $orders->filter(fn($o) => (float) $o->deposit_paid < (float) $o->total_amount)
             ->sortBy('ordered_at')->values(); // FIFO — oldest shortfall covered first
 
@@ -54,7 +154,7 @@ class CreditReallocationService
 
                 foreach ($overpaid as $creditOrder) {
                     $creditOrder->refresh();
-                    $available = (float) $creditOrder->deposit_paid - (float) $creditOrder->total_amount;
+                    $available = $this->spare($creditOrder);
                     if ($available <= 0) continue;
 
                     $amount = min($needed, $available);
@@ -121,6 +221,16 @@ class CreditReallocationService
                 $customerId
             );
         }
+    }
+
+    /**
+     * How much this order holds above its own total that is safe to move:
+     * the smaller of what it has recorded and what has been verified, minus
+     * what it owes.
+     */
+    private function spare(Order $order): float
+    {
+        return min((float) $order->deposit_paid, $order->verifiedPaid()) - (float) $order->total_amount;
     }
 
     // Fix #1: delegate to Order::recalcPaymentStatus() — single source of truth.

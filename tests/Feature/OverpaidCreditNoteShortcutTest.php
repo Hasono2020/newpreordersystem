@@ -1,85 +1,70 @@
 <?php
 
 use App\Models\Order;
-use App\Models\OrderItem;
-use App\Models\Product;
+use App\Models\Payment;
 
 /*
- * Design: Credit Note stays anchored to the order page, but the Overpaid
- * row on Payment Log auto-picks a sensible default order — the one
- * already carrying this customer's combined shipping fee/discount for
- * this trip, the same "anchor" concept recalcCustomerShipping() already
- * uses — instead of making staff guess from a bare list of order numbers.
- * An override is still available, but shows each order's own total/
- * balance so it's an informed choice, not a second guess.
+ * Design: Credit Note stays anchored to the order page, but the Overpaid row
+ * on Payment Log jumps straight to a sensible default order instead of making
+ * staff guess from a bare list of order numbers.
+ *
+ * A Credit Note refunds money, so it can only come from VERIFIED payments, and
+ * from the order that holds the customer's spare verified credit (verified
+ * above its own total; oldest wins a tie). Credit that is still unverified is
+ * flagged instead of offered for refund. An override stays available and shows
+ * each order's paid / total.
  */
+
+function overpaidOrder(object $test, $trip, $customer, int $total, int $paid, bool $verified = true, array $extra = []): Order
+{
+    $order = Order::factory()->create(array_merge([
+        'trip_id' => $trip->id, 'customer_id' => $customer->id,
+        'total_amount' => $total, 'order_number' => null,
+    ], $extra));
+
+    if ($paid > 0) {
+        Payment::factory()->create([
+            'order_id' => $order->id, 'amount' => $paid, 'type' => 'deposit', 'paid_at' => now(),
+            'voided_at' => null, 'verification_status' => $verified ? 'verified' : 'unverified',
+        ]);
+        $order->recalcPaymentStatus();
+    }
+    return $order->fresh();
+}
 
 test('a customer with exactly one order gets a direct Credit Note link to it, pre-filled', function () {
     $admin    = $this->adminUser();
     $trip     = $this->openTrip();
     $customer = $this->customer($admin);
-    $order = Order::factory()->create([
-        'trip_id' => $trip->id, 'customer_id' => $customer->id,
-        'total_amount' => 100000, 'deposit_paid' => 170000, // overpaid by 70,000
-        'order_number' => null,
-    ]);
+    $order = overpaidOrder($this, $trip, $customer, 100000, 170000); // overpaid by 70,000, verified
 
     $response = $this->actingAs($admin)->get(route('payments.index', ['trip_id' => $trip->id]));
 
     $response->assertOk();
-    $response->assertSee(
-        route('orders.show', $order->id) . '?open_credit_note=1&credit_amount=70000',
-        false
-    );
-    // Only one order — no override dropdown needed.
-    $response->assertDontSee('Use a different order');
+    $response->assertSee(route('orders.show', $order->id) . '?open_credit_note=1&credit_amount=70000', false);
+    $response->assertDontSee('Use a different order'); // only one order — no override needed
 });
 
-test('with multiple orders, the default Credit Note link points at the one carrying combined shipping — not just the first one found', function () {
+test('with multiple orders, the default is the order holding the payment — not just the oldest one', function () {
     $admin    = $this->adminUser();
     $trip     = $this->openTrip();
     $customer = $this->customer($admin);
-    $product  = Product::create(['trip_id' => $trip->id, 'product_code' => 'ANCHOR01', 'price' => 50000, 'weight_gram' => 100, 'status' => 'active']);
 
-    // Order A is chronologically first, but every item on it has been
-    // returned (status stays 'pending', quantity drops to 0) — it should
-    // NOT be the default, even though it was created first.
-    $orderA = Order::factory()->create([
-        'trip_id' => $trip->id, 'customer_id' => $customer->id,
-        'total_amount' => 0, 'deposit_paid' => 0, 'order_number' => null,
-        'created_at' => now()->subHour(),
-    ]);
-    OrderItem::create(['order_id' => $orderA->id, 'product_id' => $product->id, 'quantity' => 0, 'unit_price' => 50000, 'line_total' => 0, 'status' => 'pending']);
-
-    // Order B is created after A, still has its item — this is the real anchor.
-    $orderB = Order::factory()->create([
-        'trip_id' => $trip->id, 'customer_id' => $customer->id,
-        'total_amount' => 50000, 'deposit_paid' => 120000, // overpaid by 70,000
-        'order_number' => null,
-    ]);
-    OrderItem::create(['order_id' => $orderB->id, 'product_id' => $product->id, 'quantity' => 1, 'unit_price' => 50000, 'line_total' => 50000, 'status' => 'pending']);
+    overpaidOrder($this, $trip, $customer, 50000, 0, true, ['created_at' => now()->subHour()]);   // older, nothing paid
+    $orderB = overpaidOrder($this, $trip, $customer, 50000, 120000);                              // the money sits here
 
     $response = $this->actingAs($admin)->get(route('payments.index', ['trip_id' => $trip->id]));
 
     $response->assertOk();
-    $response->assertSee(
-        route('orders.show', $orderB->id) . '?open_credit_note=1&credit_amount=70000',
-        false
-    );
+    $response->assertSee(route('orders.show', $orderB->id) . '?open_credit_note=1&credit_amount=20000', false);
 });
 
-test('the override list shows each order\'s own total and balance, not just a bare order number', function () {
+test('the override list shows each order\'s own paid and total, not just a bare order number', function () {
     $admin    = $this->adminUser();
     $trip     = $this->openTrip();
     $customer = $this->customer($admin);
-    $orderA = Order::factory()->create([
-        'trip_id' => $trip->id, 'customer_id' => $customer->id,
-        'total_amount' => 50000, 'deposit_paid' => 50000, 'order_number' => null,
-    ]);
-    $orderB = Order::factory()->create([
-        'trip_id' => $trip->id, 'customer_id' => $customer->id,
-        'total_amount' => 50000, 'deposit_paid' => 100000, 'order_number' => null,
-    ]);
+    $orderA = overpaidOrder($this, $trip, $customer, 50000, 50000);
+    $orderB = overpaidOrder($this, $trip, $customer, 50000, 100000);
 
     $response = $this->actingAs($admin)->get(route('payments.index', ['trip_id' => $trip->id]));
 
@@ -87,18 +72,66 @@ test('the override list shows each order\'s own total and balance, not just a ba
     $response->assertSee('Use a different order');
     $response->assertSee($orderA->order_number);
     $response->assertSee($orderB->order_number);
-    $response->assertSee('settled'); // orderA: paid == total
-    $response->assertSee('overpaid'); // orderB: paid > total
+    $response->assertSee('paid of');
+    $response->assertSee('overpaid');
+});
+
+test('the default is the order with the largest SURPLUS, not simply the one that has paid the most', function () {
+    // After credit is moved between orders, one order can hold a lot of money
+    // that is all needed for its own total. Refunding from there would just
+    // trigger more shuffling — the refund should come from where the spare is.
+    $admin    = $this->adminUser();
+    $trip     = $this->openTrip();
+    $customer = $this->customer($admin);
+
+    overpaidOrder($this, $trip, $customer, 15325000, 15325000, true, ['created_at' => now()->subHour()]); // paid the most, owes all of it
+    $hasSpare = overpaidOrder($this, $trip, $customer, 3000000, 4675000);                                  // 1,675,000 genuinely spare
+
+    $response = $this->actingAs($admin)->get(route('payments.index', ['trip_id' => $trip->id]));
+
+    $response->assertOk();
+    $response->assertSee(route('orders.show', $hasSpare->id) . '?open_credit_note=1&credit_amount=1675000', false);
+});
+
+test('credit that is only UNVERIFIED is not offered for refund — staff are told to verify first', function () {
+    // The reported hole: a customer says they transferred, staff record it, and
+    // the system would happily offer a refund of money that never arrived.
+    $admin    = $this->adminUser();
+    $trip     = $this->openTrip();
+    $customer = $this->customer($admin);
+    $order = overpaidOrder($this, $trip, $customer, 100000, 170000, verified: false);
+
+    $response = $this->actingAs($admin)->get(route('payments.index', ['trip_id' => $trip->id]));
+
+    $response->assertOk();
+    $response->assertSee('Verify payment first');
+    $response->assertSee('unverified');
+    $response->assertDontSee(route('orders.show', $order->id) . '?open_credit_note=1', false);
+});
+
+test('when only part of the credit is verified, only that part is offered', function () {
+    $admin    = $this->adminUser();
+    $trip     = $this->openTrip();
+    $customer = $this->customer($admin);
+    $order = overpaidOrder($this, $trip, $customer, 100000, 130000);                 // 130,000 verified
+    Payment::factory()->create([                                                      // plus 40,000 nobody has confirmed
+        'order_id' => $order->id, 'amount' => 40000, 'type' => 'partial', 'paid_at' => now(),
+        'voided_at' => null, 'verification_status' => 'unverified',
+    ]);
+    $order->recalcPaymentStatus(); // recorded: 170,000 vs 100,000 owed = 70,000 over, but only 30,000 verified
+
+    $response = $this->actingAs($admin)->get(route('payments.index', ['trip_id' => $trip->id]));
+
+    $response->assertOk();
+    $response->assertSee(route('orders.show', $order->id) . '?open_credit_note=1&credit_amount=30000', false);
+    $response->assertSee('40.000 unverified');
 });
 
 test('a customer with no overpayment does not appear on the Overpaid panel at all', function () {
     $admin    = $this->adminUser();
     $trip     = $this->openTrip();
     $customer = $this->customer($admin);
-    Order::factory()->create([
-        'trip_id' => $trip->id, 'customer_id' => $customer->id,
-        'total_amount' => 100000, 'deposit_paid' => 100000, 'order_number' => null,
-    ]);
+    overpaidOrder($this, $trip, $customer, 100000, 100000);
 
     $response = $this->actingAs($admin)->get(route('payments.index', ['trip_id' => $trip->id]));
     $response->assertDontSee('Overpaid — these customers');

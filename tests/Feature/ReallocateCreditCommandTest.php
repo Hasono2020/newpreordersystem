@@ -22,14 +22,14 @@ test('reallocates historical credit for a specific trip', function () {
         'shipping_area_id' => $area->id, 'subtotal' => 400000, 'total_amount' => 400000,
         'deposit_paid' => 500000, 'payment_status' => 'paid',
     ]);
-    Payment::factory()->create(['order_id' => $overpaid->id, 'amount' => 500000, 'type' => 'deposit', 'paid_at' => now(), 'voided_at' => null]);
+    Payment::factory()->create(['order_id' => $overpaid->id, 'amount' => 500000, 'type' => 'deposit', 'paid_at' => now(), 'voided_at' => null, 'verification_status' => 'verified']);
 
     $underpaid = Order::factory()->create([
         'trip_id' => $trip->id, 'customer_id' => $customer->id, 'created_by' => $admin->id,
         'shipping_area_id' => $area->id, 'subtotal' => 1045000, 'total_amount' => 1045000,
         'deposit_paid' => 1015000, 'payment_status' => 'partial',
     ]);
-    Payment::factory()->create(['order_id' => $underpaid->id, 'amount' => 1015000, 'type' => 'deposit', 'paid_at' => now(), 'voided_at' => null]);
+    Payment::factory()->create(['order_id' => $underpaid->id, 'amount' => 1015000, 'type' => 'deposit', 'paid_at' => now(), 'voided_at' => null, 'verification_status' => 'verified']);
 
     $this->artisan('payments:reallocate-credit', ['--trip' => $trip->id])
         ->assertSuccessful();
@@ -52,14 +52,14 @@ test('is safe to run twice with no duplicate reallocation', function () {
         'shipping_area_id' => $area->id, 'subtotal' => 400000, 'total_amount' => 400000,
         'deposit_paid' => 500000, 'payment_status' => 'paid',
     ]);
-    Payment::factory()->create(['order_id' => $overpaid->id, 'amount' => 500000, 'type' => 'deposit', 'paid_at' => now(), 'voided_at' => null]);
+    Payment::factory()->create(['order_id' => $overpaid->id, 'amount' => 500000, 'type' => 'deposit', 'paid_at' => now(), 'voided_at' => null, 'verification_status' => 'verified']);
 
     $underpaid = Order::factory()->create([
         'trip_id' => $trip->id, 'customer_id' => $customer->id, 'created_by' => $admin->id,
         'shipping_area_id' => $area->id, 'subtotal' => 500000, 'total_amount' => 500000,
         'deposit_paid' => 400000, 'payment_status' => 'partial',
     ]);
-    Payment::factory()->create(['order_id' => $underpaid->id, 'amount' => 400000, 'type' => 'deposit', 'paid_at' => now(), 'voided_at' => null]);
+    Payment::factory()->create(['order_id' => $underpaid->id, 'amount' => 400000, 'type' => 'deposit', 'paid_at' => now(), 'voided_at' => null, 'verification_status' => 'verified']);
 
     $this->artisan('payments:reallocate-credit', ['--trip' => $trip->id]);
     $countAfterFirst = Payment::count();

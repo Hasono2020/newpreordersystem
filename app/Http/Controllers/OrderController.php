@@ -752,6 +752,10 @@ class OrderController extends Controller
     private function recalcOrderPayment(Order $order): void
     {
         $order->recalcPaymentStatus();
+        // A payment was recorded or voided: if the customer has another order
+        // in this trip, spare credit on one may now cover a shortfall on the
+        // other (or a transfer that depended on a voided payment must be undone).
+        app(\App\Services\CreditReallocationService::class)->reconcile($order->customer_id, $order->trip_id);
     }
 
     public function invoice(Order $order)

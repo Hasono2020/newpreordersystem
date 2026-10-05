@@ -127,18 +127,34 @@
                         </td>
                         <td class="text-end">Rp {{ number_format($oc->total_ordered, 0, ',', '.') }}</td>
                         <td class="text-end">Rp {{ number_format($oc->total_paid, 0, ',', '.') }}</td>
-                        <td class="text-end fw-semibold text-warning">Rp {{ number_format($oc->credit, 0, ',', '.') }}</td>
+                        <td class="text-end fw-semibold text-warning">
+                            Rp {{ number_format($oc->credit, 0, ',', '.') }}
+                            @if($oc->unverified_credit > 0.5)
+                                <div class="small fw-normal text-muted">
+                                    Rp {{ number_format($oc->verified_credit, 0, ',', '.') }} verified ·
+                                    <span class="text-danger">Rp {{ number_format($oc->unverified_credit, 0, ',', '.') }} unverified</span>
+                                </div>
+                            @endif
+                        </td>
                         <td class="text-end">
                             <div class="btn-group">
                                 <a href="{{ route('customers.show', $oc->customer_id) }}" class="btn btn-sm btn-outline-secondary">View orders</a>
-                                @if($oc->defaultOrder)
-                                    <a href="{{ route('orders.show', $oc->defaultOrder->id) }}?open_credit_note=1&credit_amount={{ (int) $oc->credit }}"
+                                @if($oc->defaultOrder && $oc->verified_credit > 0.5)
+                                    <a href="{{ route('orders.show', $oc->defaultOrder->id) }}?open_credit_note=1&credit_amount={{ (int) $oc->verified_credit }}"
                                        class="btn btn-sm btn-outline-danger"
-                                       title="Defaults to {{ $oc->defaultOrder->order_number }} — the order carrying this customer's combined shipping for this trip">
+                                       title="Defaults to {{ $oc->defaultOrder->order_number }} — the order holding this customer's spare verified credit, since that's where a refund has to come from">
                                         <i class="bi bi-cash-coin me-1"></i>Credit Note
                                     </a>
+                                @else
+                                    {{-- Nothing verified to refund yet: a payment someone only SAYS was
+                                         made must be confirmed against the bank first. --}}
+                                    <a href="{{ route('payments.index', ['trip_id' => $tripId, 'tab' => 'log', 'verification_status' => 'unverified', 'search' => $oc->customer_name]) }}"
+                                       class="btn btn-sm btn-warning"
+                                       title="This credit comes from payments that haven't been verified. A refund can only be issued against verified money.">
+                                        <i class="bi bi-shield-check me-1"></i>Verify payment first
+                                    </a>
                                 @endif
-                                @if($oc->orders->count() > 1)
+                                @if($oc->orders->count() > 1 && $oc->verified_credit > 0.5)
                                     <button type="button" class="btn btn-sm btn-outline-danger dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" title="Use a different order instead">
                                         <span class="visually-hidden">Choose a different order</span>
                                     </button>
@@ -148,16 +164,17 @@
                                         @php $balance = (float) $o->total_amount - (float) $o->deposit_paid; @endphp
                                         <li>
                                             <a class="dropdown-item small @if($oc->defaultOrder && $o->id === $oc->defaultOrder->id) fw-semibold @endif"
-                                               href="{{ route('orders.show', $o->id) }}?open_credit_note=1&credit_amount={{ (int) $oc->credit }}">
+                                               href="{{ route('orders.show', $o->id) }}?open_credit_note=1&credit_amount={{ (int) $oc->verified_credit }}">
                                                 <span class="font-monospace">{{ $o->order_number }}</span>
                                                 <span class="text-muted">
-                                                    — Rp {{ number_format($o->total_amount, 0, ',', '.') }} total,
-                                                    @if($balance > 0)
-                                                        Rp {{ number_format($balance, 0, ',', '.') }} still owed
-                                                    @elseif($balance < 0)
-                                                        Rp {{ number_format(abs($balance), 0, ',', '.') }} overpaid
-                                                    @else
-                                                        settled
+                                                    — Rp {{ number_format($o->deposit_paid, 0, ',', '.') }} paid of Rp {{ number_format($o->total_amount, 0, ',', '.') }}
+                                                    @if($balance < 0)
+                                                        (overpaid Rp {{ number_format(abs($balance), 0, ',', '.') }})
+                                                    @elseif($balance > 0)
+                                                        (owes Rp {{ number_format($balance, 0, ',', '.') }})
+                                                    @endif
+                                                    @if((float) $o->verified_paid < (float) $o->deposit_paid - 0.5)
+                                                        · <span class="text-danger">Rp {{ number_format((float) $o->deposit_paid - (float) $o->verified_paid, 0, ',', '.') }} unverified</span>
                                                     @endif
                                                 </span>
                                                 @if($oc->defaultOrder && $o->id === $oc->defaultOrder->id)

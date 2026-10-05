@@ -49,7 +49,7 @@ function creditGapOrder($test, Trip $trip, ShippingArea $area, Customer $custome
         'quantity' => 1, 'unit_price' => $total, 'line_total' => $total, 'status' => 'pending',
     ]);
     if ($paid > 0) {
-        Payment::factory()->create(['order_id' => $order->id, 'amount' => $paid, 'type' => 'deposit', 'paid_at' => now(), 'voided_at' => null]);
+        Payment::factory()->create(['order_id' => $order->id, 'amount' => $paid, 'type' => 'deposit', 'paid_at' => now(), 'voided_at' => null, 'verification_status' => 'verified']);
     }
     return $order;
 }

@@ -15,8 +15,6 @@ class PaymentController extends Controller
 {
     use \App\Traits\HandlesXlsx;
 
-    public function __construct(protected \App\Services\PromoService $promoService) {}
-
     /**
      * Payments home: outstanding balances + payment log.
      */
@@ -159,11 +157,15 @@ class PaymentController extends Controller
         if (Auth::user()->isOwnDataOnly()) {
             $vcBase->whereHas('order', fn($q) => $q->where('created_by', Auth::id()));
         }
+        // Refunds are money going OUT, so they're subtracted — summing every
+        // row's amount as-is made a refund look like extra money received.
+        $verifiedBase = (clone $vcBase)->where('verification_status', 'verified');
         $verificationCounts = [
             'unverified'      => (clone $vcBase)->where('verification_status', 'unverified')->count(),
             'verified'        => (clone $vcBase)->where('verification_status', 'verified')->count(),
             'disputed'        => (clone $vcBase)->where('verification_status', 'disputed')->count(),
-            'verified_amount' => (clone $vcBase)->where('verification_status', 'verified')->sum('amount'),
+            'verified_amount' => (clone $verifiedBase)->where('type', '!=', 'refund')->sum('amount')
+                               - (clone $verifiedBase)->where('type', 'refund')->sum('amount'),
         ];
 
         // ── Ready to Pack: customers whose orders in this trip are ALL paid + verified ──
@@ -221,6 +223,12 @@ class PaymentController extends Controller
                     DB::raw('SUM(orders.total_amount) as total_ordered'),
                     DB::raw('SUM(orders.deposit_paid) as total_paid'),
                     DB::raw('(SUM(orders.deposit_paid) - SUM(orders.total_amount)) as credit'),
+                    // The part of what this customer has paid that someone has
+                    // actually CONFIRMED arrived (net of refunds). Only this part
+                    // can be refunded — see Order::verifiedPaid().
+                    DB::raw("(SELECT COALESCE(SUM(CASE WHEN p.type = 'refund' THEN -p.amount WHEN p.verification_status = 'verified' THEN p.amount ELSE 0 END), 0)
+                              FROM payments p JOIN orders po ON po.id = p.order_id
+                              WHERE po.customer_id = orders.customer_id AND po.trip_id = {$tidC} AND p.voided_at IS NULL) as verified_paid"),
                 ])
                 ->having('credit', '>', 0)
                 ->orderByDesc('credit')
@@ -231,18 +239,30 @@ class PaymentController extends Controller
                     ->where('trip_id', $tidC)
                     ->whereIn('customer_id', $overpaid->pluck('customer_id'))
                     ->orderBy('id')
-                    ->get(['id', 'customer_id', 'order_number', 'total_amount', 'deposit_paid'])
+                    ->select('id', 'customer_id', 'order_number', 'total_amount', 'deposit_paid')
+                    ->selectRaw("(SELECT COALESCE(SUM(CASE WHEN p.type = 'refund' THEN -p.amount WHEN p.verification_status = 'verified' THEN p.amount ELSE 0 END), 0)
+                                  FROM payments p WHERE p.order_id = orders.id AND p.voided_at IS NULL) as verified_paid")
+                    ->get()
                     ->groupBy('customer_id');
 
-                $overpaid = $overpaid->map(function ($oc) use ($ordersByCustomer, $tidC) {
+                $overpaid = $overpaid->map(function ($oc) use ($ordersByCustomer) {
                     $oc->orders = $ordersByCustomer->get($oc->customer_id, collect())->values();
-                    // Default to the order that actually carries this
-                    // customer's combined shipping + promo for this trip —
-                    // the one other order-level numbers (shipping fee,
-                    // discount) are already anchored to — rather than
-                    // leaving staff to guess which of several orders makes
-                    // sense for a Credit Note.
-                    $oc->defaultOrder = $this->promoService->determineAnchorOrder($oc->customer_id, $tidC);
+                    // How much of the credit is safe to refund now (verified),
+                    // and how much is still waiting for someone to confirm the
+                    // transfer actually arrived.
+                    $oc->verified_credit   = max(0.0, (float) $oc->verified_paid - (float) $oc->total_ordered);
+                    $oc->unverified_credit = max(0.0, (float) $oc->credit - $oc->verified_credit);
+
+                    // A Credit Note refunds money, so it has to come out of the
+                    // order that holds the customer's spare VERIFIED credit —
+                    // verified above its own total. Not simply "paid the most":
+                    // after credit is moved between orders, one can hold lots of
+                    // money that is all needed for its own total. Oldest wins a tie.
+                    $oc->defaultOrder = $oc->orders->sort(function ($a, $b) {
+                        $surplusA = (float) $a->verified_paid - (float) $a->total_amount;
+                        $surplusB = (float) $b->verified_paid - (float) $b->total_amount;
+                        return [$surplusB, (float) $b->verified_paid] <=> [$surplusA, (float) $a->verified_paid];
+                    })->first();
                     return $oc;
                 });
             }
@@ -376,8 +396,10 @@ class PaymentController extends Controller
             }
 
             foreach (array_unique($affectedOrderIds) as $oid) {
-                $this->recalcOrderPayment(Order::find($oid));
+                $this->recalcOrderPayment(Order::find($oid), false);
             }
+            app(\App\Services\CreditReallocationService::class)
+                ->reconcile((int) $data['customer_id'], (int) $data['trip_id']);
         });
 
         $total = $allocations->sum(fn($a) => (float) $a['amount']);
@@ -426,8 +448,11 @@ class PaymentController extends Controller
                 $affectedOrderIds[] = $payment->order_id;
             }
             foreach (array_unique($affectedOrderIds) as $oid) {
-                $this->recalcOrderPayment(Order::find($oid));
+                $this->recalcOrderPayment(Order::find($oid), false);
             }
+            Order::whereIn('id', array_unique($affectedOrderIds))->get(['id', 'customer_id', 'trip_id'])
+                ->unique(fn ($o) => $o->customer_id . '-' . $o->trip_id)
+                ->each(fn ($o) => app(\App\Services\CreditReallocationService::class)->reconcile($o->customer_id, $o->trip_id));
         });
 
         \App\Models\ActivityLog::record(
@@ -656,6 +681,7 @@ class PaymentController extends Controller
             'verified_at'         => now(),
             'dispute_note'        => null,
         ]);
+        $this->rebalanceAfterVerification($payment->order);
         return back()->with('success', 'Payment of Rp ' . number_format($payment->amount, 0, ',', '.') . ' verified.');
     }
 
@@ -711,6 +737,9 @@ class PaymentController extends Controller
                 ]);
                 $total += $payment->amount;
             }
+            Order::whereIn('id', $payments->pluck('order_id')->unique())->get(['id', 'customer_id', 'trip_id'])
+                ->unique(fn ($o) => $o->customer_id . '-' . $o->trip_id)
+                ->each(fn ($o) => $this->rebalanceAfterVerification($o));
         });
 
         return back()->with('success', $payments->count() . ' payment(s) totaling Rp ' . number_format($total, 0, ',', '.') . ' verified.');
@@ -727,13 +756,33 @@ class PaymentController extends Controller
             'verified_at'         => now(),
             'dispute_note'        => $request->dispute_note,
         ]);
+        $this->rebalanceAfterVerification($payment->order);
         return back()->with('success', 'Payment marked as disputed.');
     }
 
+    /**
+     * Verifying or disputing a payment doesn't change an order's paid figure,
+     * but it does change which money may be moved to another order or
+     * refunded — so credit that was waiting on a verification can now move,
+     * and credit moved on the strength of a payment that is now disputed is
+     * pulled back.
+     */
+    private function rebalanceAfterVerification(?Order $order): void
+    {
+        if (!$order) return;
+        app(\App\Services\CreditReallocationService::class)->reconcile($order->customer_id, $order->trip_id);
+    }
+
     // Fix #1: delegate to Order::recalcPaymentStatus() — single source of truth.
-    private function recalcOrderPayment(?Order $order): void
+    private function recalcOrderPayment(?Order $order, bool $reconcile = true): void
     {
         if (!$order) return;
         $order->recalcPaymentStatus();
+        // Batch flows pass false and rebalance once AFTER every order in the
+        // batch has been recalculated — rebalancing mid-loop would read the
+        // stored paid figures of orders not yet recalculated.
+        if ($reconcile) {
+            app(\App\Services\CreditReallocationService::class)->reconcile($order->customer_id, $order->trip_id);
+        }
     }
 }

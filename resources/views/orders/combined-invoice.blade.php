@@ -9,15 +9,7 @@
     $grandDiscount     = $combinedDiscount;
     $grandShipping     = $combinedShipping;
     $grandShipDiscount = $combinedShipDiscount;
-    // Credit notes have no items to reduce (unlike Sales Returns, already
-    // reflected in $grandSubtotal via each order's current item
-    // quantities) — this is the one place that deduction has to be added
-    // explicitly, same as the two places already fixed in PromoService.
-    $grandCreditNoteTotal = $orders->flatMap->salesAdjustments
-        ->where('type', 'credit_note')
-        ->whereNull('voided_at')
-        ->sum('amount');
-    $grandTotal        = max(0, $grandSubtotal - $grandDiscount + $grandShipping - $grandShipDiscount - $grandCreditNoteTotal);
+    $grandTotal        = max(0, $grandSubtotal - $grandDiscount + $grandShipping - $grandShipDiscount);
     $grandBalance      = $grandTotal - $grandPaid;
     // Sum of per-order shipping (what was charged separately) vs combined shipping — shows the saving
     $sumPerOrderShipping = $orders->sum('shipping_fee');
@@ -277,9 +269,6 @@ td.r { text-align:right; }
         <div class="g-row"><span class="lbl">Shipping (combined {{ $chargeableKg }}kg)</span><span>Rp {{ number_format($grandShipping, 0, ',', '.') }}</span></div>
         @if($grandShipDiscount > 0)
             <div class="g-row"><span class="lbl">Ship. Discount</span><span class="disc">&ndash; Rp {{ number_format($grandShipDiscount, 0, ',', '.') }}</span></div>
-        @endif
-        @if($grandCreditNoteTotal > 0)
-            <div class="g-row"><span class="lbl">Credit Note</span><span class="disc">&ndash; Rp {{ number_format($grandCreditNoteTotal, 0, ',', '.') }}</span></div>
         @endif
         <div class="g-row total"><span>Grand Total</span><span>Rp {{ number_format($grandTotal, 0, ',', '.') }}</span></div>
         <div class="g-row" style="margin-top:6px;font-size:11px;">
