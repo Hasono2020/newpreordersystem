@@ -157,7 +157,6 @@
                                     <option value="deposit">Deposit</option>
                                     <option value="partial">Partial</option>
                                     <option value="full">Full Payment</option>
-                                    <option value="refund">Refund</option>
                                 </select>
                             </div>
                             <div class="col-md-3">
@@ -178,7 +177,7 @@
                         </div>
                         <div class="mt-2 small text-muted">
                             <i class="bi bi-info-circle me-1"></i>
-                            Use <strong>Refund</strong> when giving money back to the customer (e.g. partial refund of an overpayment). It subtracts from the paid total. For a full duplicate payment, use <strong>Void</strong> on that payment row instead.
+                            Giving money back to the customer? Use <strong>Credit Note</strong> below instead — it gets a proper tracked number and updates the balance automatically. For a full duplicate payment, use <strong>Void</strong> on that payment row instead.
                         </div>
                     </form>
                 </div>
@@ -195,7 +194,7 @@
                             <td>{{ $payment->paid_at->format('d M Y') }}</td>
                             <td>
                                 <span class="badge {{ $payment->isVoided() ? 'bg-danger' : 'bg-secondary' }}">
-                                    {{ $payment->isVoided() ? 'VOIDED' : ucfirst($payment->type) }}
+                                    {{ $payment->isVoided() ? 'VOIDED' : $payment->displayType() }}
                                 </span>
                             </td>
                             <td class="font-monospace">{{ $payment->reference ?? '—' }}</td>
@@ -300,7 +299,7 @@
                         <div class="row g-2">
                             <div class="col-md-4">
                                 <label class="form-label small">Amount (Rp)</label>
-                                <input type="number" name="amount" class="form-control form-control-sm" required step="1" min="1">
+                                <input type="number" name="amount" id="creditNoteAmount" class="form-control form-control-sm" required step="1" min="1">
                             </div>
                             <div class="col-md-8">
                                 <label class="form-label small">Reason</label>
@@ -314,6 +313,19 @@
                     </form>
                 </div>
             </div>
+            @if(request('open_credit_note'))
+            <script>
+            document.addEventListener('DOMContentLoaded', function () {
+                var panel = document.getElementById('creditNotePanel');
+                if (panel) new bootstrap.Collapse(panel, { show: true });
+                var amountField = document.getElementById('creditNoteAmount');
+                @if(request('credit_amount'))
+                if (amountField) amountField.value = {{ (int) request('credit_amount') }};
+                @endif
+                panel?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            });
+            </script>
+            @endif
 
             {{-- Transaction history for this order --}}
             <div class="table-responsive">

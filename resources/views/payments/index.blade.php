@@ -129,7 +129,46 @@
                         <td class="text-end">Rp {{ number_format($oc->total_paid, 0, ',', '.') }}</td>
                         <td class="text-end fw-semibold text-warning">Rp {{ number_format($oc->credit, 0, ',', '.') }}</td>
                         <td class="text-end">
-                            <a href="{{ route('customers.show', $oc->customer_id) }}" class="btn btn-sm btn-outline-secondary">View orders</a>
+                            <div class="btn-group">
+                                <a href="{{ route('customers.show', $oc->customer_id) }}" class="btn btn-sm btn-outline-secondary">View orders</a>
+                                @if($oc->defaultOrder)
+                                    <a href="{{ route('orders.show', $oc->defaultOrder->id) }}?open_credit_note=1&credit_amount={{ (int) $oc->credit }}"
+                                       class="btn btn-sm btn-outline-danger"
+                                       title="Defaults to {{ $oc->defaultOrder->order_number }} — the order carrying this customer's combined shipping for this trip">
+                                        <i class="bi bi-cash-coin me-1"></i>Credit Note
+                                    </a>
+                                @endif
+                                @if($oc->orders->count() > 1)
+                                    <button type="button" class="btn btn-sm btn-outline-danger dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" title="Use a different order instead">
+                                        <span class="visually-hidden">Choose a different order</span>
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end">
+                                        <li><h6 class="dropdown-header">Use a different order</h6></li>
+                                        @foreach($oc->orders as $o)
+                                        @php $balance = (float) $o->total_amount - (float) $o->deposit_paid; @endphp
+                                        <li>
+                                            <a class="dropdown-item small @if($oc->defaultOrder && $o->id === $oc->defaultOrder->id) fw-semibold @endif"
+                                               href="{{ route('orders.show', $o->id) }}?open_credit_note=1&credit_amount={{ (int) $oc->credit }}">
+                                                <span class="font-monospace">{{ $o->order_number }}</span>
+                                                <span class="text-muted">
+                                                    — Rp {{ number_format($o->total_amount, 0, ',', '.') }} total,
+                                                    @if($balance > 0)
+                                                        Rp {{ number_format($balance, 0, ',', '.') }} still owed
+                                                    @elseif($balance < 0)
+                                                        Rp {{ number_format(abs($balance), 0, ',', '.') }} overpaid
+                                                    @else
+                                                        settled
+                                                    @endif
+                                                </span>
+                                                @if($oc->defaultOrder && $o->id === $oc->defaultOrder->id)
+                                                    <span class="badge bg-light text-dark border ms-1">default</span>
+                                                @endif
+                                            </a>
+                                        </li>
+                                        @endforeach
+                                    </ul>
+                                @endif
+                            </div>
                         </td>
                     </tr>
                     @endforeach
@@ -137,7 +176,7 @@
             </table>
         </div>
         <div class="card-footer small text-muted">
-            To resolve: open the customer's order and <strong>Void the duplicate payment</strong>, or record a <strong>refund</strong>. Credit can also be left for their next order.
+            To resolve: open the customer's order and <strong>Void the duplicate payment</strong>, or use <strong>Credit Note</strong> above. Credit can also be left for their next order.
         </div>
     </div>
     @endif

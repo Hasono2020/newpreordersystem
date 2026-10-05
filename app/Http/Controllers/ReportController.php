@@ -72,18 +72,31 @@ class ReportController extends Controller
      */
     public function exportOrders(Request $request)
     {
-        $query = Order::with('customer', 'trip', 'shippingArea', 'items.product', 'items.variant', 'payments', 'csAgent', 'createdBy')
+        $query = Order::with('customer', 'trip', 'shippingArea', 'items.product', 'items.variant', 'payments', 'csAgent', 'createdBy', 'salesAdjustments.items.product')
             ->orderBy('ordered_at');
         if (\Illuminate\Support\Facades\Auth::user()->isOwnDataOnly()) {
             $query->where('created_by', \Illuminate\Support\Facades\Auth::id());
         }
         if ($request->trip_id) $query->where('trip_id', $request->trip_id);
+
+        // Multi-CS filter — order_number is a stored value assigned once at
+        // creation (Phase 1's per-trip sequence), never recomputed here, so
+        // filtering to a subset of staff never changes what number an
+        // order already has. CS 2's first order stays "000012" whether
+        // you're looking at everyone's orders or just CS 2's.
+        if ($request->filled('staff_ids')) {
+            $query->whereIn('created_by', (array) $request->staff_ids);
+        }
+
         $orders = $query->get();
 
         $rows = [[
             'DIBUAT OLEH', 'NO ORDER', 'NAMA', 'IG/WA', 'NO HP', 'KOTA',
             'KODE', 'WARNA', 'SIZE', 'HARGA SATUAN',
             'DP', 'TGL DP', 'AN', 'KET', 'WAKTU ORDER',
+            'FINAL PAYMENT STATUS', 'FINAL PAYMENT DATE', 'FINAL PAYMENT AMOUNT',
+            'SALES RETURN DATE', 'SALES RETURN ITEM', 'SALES RETURN AMOUNT',
+            'CREDIT NOTE DATE', 'CREDIT NOTE AMOUNT',
         ]];
 
         foreach ($orders as $o) {
@@ -98,6 +111,39 @@ class ReportController extends Controller
             $tglDp = $firstPayment ? \Carbon\Carbon::parse($firstPayment->paid_at)->format('d-M-y') : '';
             $an    = $o->notes ?? '';
             $waktuOrder = $o->created_at?->format('d-m-Y H:i') ?? '';
+
+            // Final Payment — status is just the order's current payment
+            // status; date/amount describe the MOST RECENT active payment
+            // (not the running total, which TGL DP/DP already cover) —
+            // the two brackets, first and last, of the payment history.
+            $activePayments = $o->payments->reject(fn ($p) => $p->isVoided())->sortBy('paid_at');
+            $lastPayment    = $activePayments->last();
+            $finalPaymentStatus = match ($o->payment_status) {
+                'paid'    => 'Fully Paid',
+                'partial' => 'Partial',
+                default   => 'Unpaid',
+            };
+            $finalPaymentDate   = $lastPayment ? \Carbon\Carbon::parse($lastPayment->paid_at)->format('d-M-y') : '';
+            $finalPaymentAmount = $lastPayment ? $lastPayment->amount : '';
+
+            // Sales Return / Credit Note — an order can have more than one
+            // of each, so this aggregates across every active (non-voided)
+            // one: latest date, every returned item summarized into one
+            // cell, and the combined amount.
+            $activeReturns     = $o->salesAdjustments->where('type', 'return')->reject(fn ($a) => $a->isVoided());
+            $activeCreditNotes = $o->salesAdjustments->where('type', 'credit_note')->reject(fn ($a) => $a->isVoided());
+
+            $returnDate = $activeReturns->isNotEmpty()
+                ? $activeReturns->sortByDesc('created_at')->first()->created_at->format('d-M-y') : '';
+            $returnItem = $activeReturns->flatMap->items->map(function ($line) {
+                $code = $line->product?->product_code ?? '';
+                return "{$line->quantity}x {$code}";
+            })->implode(', ');
+            $returnAmount = $activeReturns->isNotEmpty() ? $activeReturns->sum('amount') : '';
+
+            $creditNoteDate   = $activeCreditNotes->isNotEmpty()
+                ? $activeCreditNotes->sortByDesc('created_at')->first()->created_at->format('d-M-y') : '';
+            $creditNoteAmount = $activeCreditNotes->isNotEmpty() ? $activeCreditNotes->sum('amount') : '';
 
             // Cancelled/sold-out items didn't ship and shouldn't appear in
             // the export at all — matches the same treatment they already
@@ -127,11 +173,17 @@ class ReportController extends Controller
                         $an,                                 // AN
                         '',                                  // KET
                         $waktuOrder,                         // WAKTU ORDER (order created_at)
+                        $finalPaymentStatus, $finalPaymentDate, $finalPaymentAmount,
+                        $returnDate, $returnItem, $returnAmount,
+                        $creditNoteDate, $creditNoteAmount,
                     ];
-                    // Only show DP / Waktu Order on the very first row of the order
+                    // Only show these order-level columns on the very first row of the order
                     $dp    = '';
                     $tglDp = '';
                     $waktuOrder = '';
+                    $finalPaymentStatus = ''; $finalPaymentDate = ''; $finalPaymentAmount = '';
+                    $returnDate = ''; $returnItem = ''; $returnAmount = '';
+                    $creditNoteDate = ''; $creditNoteAmount = '';
                 }
             }
 

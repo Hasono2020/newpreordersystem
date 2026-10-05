@@ -30,6 +30,19 @@ class Payment extends Model
     public function verifiedBy()   { return $this->belongsTo(User::class, 'verified_by'); }
 
     public function isVoided(): bool      { return $this->voided_at !== null; }
+
+    /**
+     * "Sales Return" / "Credit Note" for a refund issued through that flow,
+     * falling back to the plain type name (e.g. "Deposit") for everything
+     * else, including a manually-recorded refund with no linked adjustment.
+     */
+    public function displayType(): string
+    {
+        if ($this->type === 'refund' && $this->salesAdjustment) {
+            return $this->salesAdjustment->isReturn() ? 'Sales Return' : 'Credit Note';
+        }
+        return ucfirst($this->type);
+    }
     public function isVerified(): bool    { return $this->verification_status === 'verified'; }
     public function isDisputed(): bool    { return $this->verification_status === 'disputed'; }
     public function isUnverified(): bool  { return $this->verification_status === 'unverified'; }

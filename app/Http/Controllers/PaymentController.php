@@ -15,6 +15,8 @@ class PaymentController extends Controller
 {
     use \App\Traits\HandlesXlsx;
 
+    public function __construct(protected \App\Services\PromoService $promoService) {}
+
     /**
      * Payments home: outstanding balances + payment log.
      */
@@ -223,6 +225,27 @@ class PaymentController extends Controller
                 ->having('credit', '>', 0)
                 ->orderByDesc('credit')
                 ->get();
+
+            if ($overpaid->isNotEmpty()) {
+                $ordersByCustomer = DB::table('orders')
+                    ->where('trip_id', $tidC)
+                    ->whereIn('customer_id', $overpaid->pluck('customer_id'))
+                    ->orderBy('id')
+                    ->get(['id', 'customer_id', 'order_number', 'total_amount', 'deposit_paid'])
+                    ->groupBy('customer_id');
+
+                $overpaid = $overpaid->map(function ($oc) use ($ordersByCustomer, $tidC) {
+                    $oc->orders = $ordersByCustomer->get($oc->customer_id, collect())->values();
+                    // Default to the order that actually carries this
+                    // customer's combined shipping + promo for this trip —
+                    // the one other order-level numbers (shipping fee,
+                    // discount) are already anchored to — rather than
+                    // leaving staff to guess which of several orders makes
+                    // sense for a Credit Note.
+                    $oc->defaultOrder = $this->promoService->determineAnchorOrder($oc->customer_id, $tidC);
+                    return $oc;
+                });
+            }
         }
 
         return view('payments.index', compact('trips', 'tripId', 'tab', 'outstanding', 'log', 'search', 'verificationFilter', 'verificationCounts', 'createdByFilter', 'staffList', 'readyToPack', 'readyCount', 'batchMeta', 'overpaid'));

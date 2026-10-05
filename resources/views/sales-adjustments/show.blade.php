@@ -90,7 +90,7 @@
             <tbody>
                 @foreach($salesAdjustment->items as $line)
                 <tr>
-                    <td>{{ $line->product->product_code }} @if($line->variant) ({{ $line->variant->color }}/{{ $line->variant->size }}) @endif</td>
+                    <td>{{ $line->product?->product_code ?? 'Product deleted' }} @if($line->variant) ({{ $line->variant->color }}/{{ $line->variant->size }}) @endif</td>
                     <td>{{ $line->quantity }}</td>
                     <td>Rp {{ number_format($line->unit_price, 0, ',', '.') }}</td>
                     <td>Rp {{ number_format($line->line_total, 0, ',', '.') }}</td>

@@ -109,6 +109,17 @@ class TripController extends Controller
             return back()->with('error', "Cannot delete trip \"{$trip->name}\" — it has {$orderCount} order(s). Close the trip instead.");
         }
 
+        // Same idea for purchase orders — a trip with zero sales orders can
+        // still have POs (procurement from supplier). products.trip_id
+        // cascades to product_variants, but purchase_order_items.product_id
+        // / product_variant_id has no cascade or null-on-delete, so letting
+        // this proceed fails partway through with a raw SQL error instead
+        // of a clear message up front.
+        $poCount = $trip->purchaseOrders()->count();
+        if ($poCount > 0) {
+            return back()->with('error', "Cannot delete trip \"{$trip->name}\" — it has {$poCount} purchase order(s). Delete those first.");
+        }
+
         // The products.trip_id FK is ON DELETE CASCADE, so deleting the trip
         // wipes its products at the DB level — collect image files first so
         // they don't become orphans in storage.

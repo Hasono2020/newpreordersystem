@@ -679,7 +679,7 @@ class OrderController extends Controller
     {
         $request->validate([
             'amount'    => 'required|numeric|min:0',
-            'type'      => 'required|in:deposit,partial,full,refund',
+            'type'      => 'required|in:deposit,partial,full',
             'method'    => 'nullable|string|max:50',
             'reference' => 'nullable|string|max:100',
             'paid_at'   => 'required|date',

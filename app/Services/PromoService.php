@@ -178,6 +178,33 @@ class PromoService
         );
     }
 
+    /**
+     * The order that carries combined shipping + promo for a customer's
+     * orders in one trip — the oldest order that still has active
+     * (non-cancelled, non-sold-out) items, falling back to the plain
+     * oldest order if none currently qualify (e.g. everything on it was
+     * fully returned). This is the single source of truth for "anchor" —
+     * recalcCustomerShipping() uses it for the real calculation, and
+     * anything that needs to know which order is the sensible default for
+     * a customer (e.g. the Credit Note shortcut on Payment Log) should
+     * call this rather than approximating its own version.
+     */
+    public function determineAnchorOrder(int $customerId, int $tripId, ?\Illuminate\Support\Collection $orders = null): ?\App\Models\Order
+    {
+        $orders ??= \App\Models\Order::with('items')
+            ->where('customer_id', $customerId)
+            ->where('trip_id', $tripId)
+            ->orderByRaw('COALESCE(ordered_at, created_at) ASC')
+            ->orderBy('id')
+            ->get();
+
+        if ($orders->isEmpty()) return null;
+
+        return $orders->first(fn ($o) =>
+            $o->items->whereNotIn('status', ['cancelled', 'sold_out'])->where('quantity', '>', 0)->isNotEmpty()
+        ) ?? $orders->first();
+    }
+
     public function recalcCustomerShipping(int $customerId, int $tripId): void
     {
         $orders = \App\Models\Order::with('items.product', 'items.variant', 'customer', 'shippingArea')
@@ -218,9 +245,7 @@ class PromoService
         }
 
         // The anchor = first order that still has active items (oldest). It carries shipping + promo.
-        $anchor = $orders->first(fn($o) =>
-            $o->items->whereNotIn('status', ['cancelled', 'sold_out'])->isNotEmpty()
-        ) ?? $orders->first();
+        $anchor = $this->determineAnchorOrder($customerId, $tripId, $orders);
 
         // All-or-nothing: every order in this customer+trip group is recalculated together.
         // Without this, a failure halfway through could leave the customer's orders with

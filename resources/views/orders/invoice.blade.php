@@ -270,7 +270,7 @@ td.right { text-align:right; }
         <div class="payment-row">
             <span>
                 {{ $payment->paid_at->format('d M Y') }} —
-                <strong>{{ ucfirst($payment->type) }}</strong>
+                <strong>{{ $payment->displayType() }}</strong>
                 @if($payment->method) · {{ $payment->method }} @endif
                 @if($payment->reference) · Ref: {{ $payment->reference }} @endif
             </span>

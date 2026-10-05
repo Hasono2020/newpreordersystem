@@ -9,7 +9,15 @@
     $grandDiscount     = $combinedDiscount;
     $grandShipping     = $combinedShipping;
     $grandShipDiscount = $combinedShipDiscount;
-    $grandTotal        = max(0, $grandSubtotal - $grandDiscount + $grandShipping - $grandShipDiscount);
+    // Credit notes have no items to reduce (unlike Sales Returns, already
+    // reflected in $grandSubtotal via each order's current item
+    // quantities) — this is the one place that deduction has to be added
+    // explicitly, same as the two places already fixed in PromoService.
+    $grandCreditNoteTotal = $orders->flatMap->salesAdjustments
+        ->where('type', 'credit_note')
+        ->whereNull('voided_at')
+        ->sum('amount');
+    $grandTotal        = max(0, $grandSubtotal - $grandDiscount + $grandShipping - $grandShipDiscount - $grandCreditNoteTotal);
     $grandBalance      = $grandTotal - $grandPaid;
     // Sum of per-order shipping (what was charged separately) vs combined shipping — shows the saving
     $sumPerOrderShipping = $orders->sum('shipping_fee');
@@ -270,6 +278,9 @@ td.r { text-align:right; }
         @if($grandShipDiscount > 0)
             <div class="g-row"><span class="lbl">Ship. Discount</span><span class="disc">&ndash; Rp {{ number_format($grandShipDiscount, 0, ',', '.') }}</span></div>
         @endif
+        @if($grandCreditNoteTotal > 0)
+            <div class="g-row"><span class="lbl">Credit Note</span><span class="disc">&ndash; Rp {{ number_format($grandCreditNoteTotal, 0, ',', '.') }}</span></div>
+        @endif
         <div class="g-row total"><span>Grand Total</span><span>Rp {{ number_format($grandTotal, 0, ',', '.') }}</span></div>
         <div class="g-row" style="margin-top:6px;font-size:11px;">
             <span class="lbl">Total Paid</span>
@@ -284,8 +295,10 @@ td.r { text-align:right; }
             <h4>Payment History</h4>
             @foreach($allPayments as $pay)
                 <div class="pay-row">
-                    <span>{{ \Carbon\Carbon::parse($pay->paid_at)->format('d M Y') }} &mdash; {{ ucfirst($pay->type) }}</span>
-                    <span style="color:#16a34a;font-weight:600;">+ Rp {{ number_format($pay->amount, 0, ',', '.') }}</span>
+                    <span>{{ \Carbon\Carbon::parse($pay->paid_at)->format('d M Y') }} &mdash; {{ $pay->displayType() }}</span>
+                    <span style="color:{{ $pay->type === 'refund' ? '#dc2626' : '#16a34a' }};font-weight:600;">
+                        {{ $pay->type === 'refund' ? '−' : '+' }} Rp {{ number_format($pay->amount, 0, ',', '.') }}
+                    </span>
                 </div>
             @endforeach
         </div>
