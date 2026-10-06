@@ -194,16 +194,23 @@ class PromoService
         ) ?? $orders->first();
     }
 
-    public function recalcCustomerShipping(int $customerId, int $tripId): void
+    /**
+     * Work out — WITHOUT saving anything — what promo, shipping and totals each of one
+     * customer's orders in one trip should carry: the combined weight, shipping fee and
+     * best promo are worked out once across all the orders, and the discount and shipping
+     * go to the anchor order only.
+     *
+     * recalcCustomerShipping() saves this; the "original invoice" view (what the invoice
+     * looked like before a Sales Return or Credit Note) runs it on orders whose returned
+     * items have been put back, so both always use the identical maths.
+     *
+     * @param  \Illuminate\Support\Collection<int, \App\Models\Order> $orders  the customer's orders in the trip,
+     *         oldest first, with items.product, items.variant, customer and shippingArea loaded
+     * @return array<int, array<string, mixed>> order id => the columns to store on that order
+     */
+    public function allocateCustomerTotals(\Illuminate\Support\Collection $orders, int $tripId): array
     {
-        $orders = \App\Models\Order::with('items.product', 'items.variant', 'customer', 'shippingArea')
-            ->where('customer_id', $customerId)
-            ->where('trip_id', $tripId)
-            ->orderByRaw('COALESCE(ordered_at, created_at) ASC')
-            ->orderBy('id')
-            ->get();
-
-        if ($orders->isEmpty()) return;
+        $customerId = $orders->first()->customer_id;
 
         // Combined weight + items across ALL the customer's orders
         $allActiveItems = $orders->flatMap(fn($o) =>
@@ -236,34 +243,55 @@ class PromoService
         // The anchor = first order that still has active items (oldest). It carries shipping + promo.
         $anchor = $this->determineAnchorOrder($customerId, $tripId, $orders);
 
+        $allocation = [];
+        foreach ($orders as $order) {
+            $activeItems = $order->items->whereNotIn('status', ['cancelled', 'sold_out']);
+            $subtotal    = $activeItems->sum('line_total');
+
+            $isAnchor    = $order->id === $anchor->id;
+            $shippingFee = $isAnchor ? $combinedShippingFee : 0;
+            $weightGram  = $isAnchor ? $combinedGrams : 0;
+            $kgCharged   = $isAnchor ? $combinedKg : 0;
+
+            // Combined promo applies to the anchor only (discount + shipping subsidy charged once)
+            $discount         = $isAnchor ? $combinedDiscount : 0;
+            $shippingDiscount = $isAnchor ? min($shippingFee, $combinedShipSubsidy) : 0;
+
+            $total = max(0, $subtotal - $discount + $shippingFee - $shippingDiscount);
+
+            $allocation[$order->id] = [
+                'subtotal'             => $subtotal,
+                'discount_amount'      => $discount,
+                'shipping_fee'         => $shippingFee,
+                'shipping_discount'    => $shippingDiscount,
+                'shipping_weight_gram' => $weightGram,
+                'shipping_kg_charged'  => $kgCharged,
+                'total_amount'         => $total,
+            ];
+        }
+
+        return $allocation;
+    }
+
+    public function recalcCustomerShipping(int $customerId, int $tripId): void
+    {
+        $orders = \App\Models\Order::with('items.product', 'items.variant', 'customer', 'shippingArea')
+            ->where('customer_id', $customerId)
+            ->where('trip_id', $tripId)
+            ->orderByRaw('COALESCE(ordered_at, created_at) ASC')
+            ->orderBy('id')
+            ->get();
+
+        if ($orders->isEmpty()) return;
+
+        $allocation = $this->allocateCustomerTotals($orders, $tripId);
+
         // All-or-nothing: every order in this customer+trip group is recalculated together.
         // Without this, a failure halfway through could leave the customer's orders with
         // mismatched totals (e.g. one order charged shipping, another not).
-        \DB::transaction(function () use ($orders, $anchor, $combinedShippingFee, $combinedGrams, $combinedKg, $combinedDiscount, $combinedShipSubsidy) {
+        \DB::transaction(function () use ($orders, $allocation) {
             foreach ($orders as $order) {
-                $activeItems = $order->items->whereNotIn('status', ['cancelled', 'sold_out']);
-                $subtotal    = $activeItems->sum('line_total');
-
-                $isAnchor    = $order->id === $anchor->id;
-                $shippingFee = $isAnchor ? $combinedShippingFee : 0;
-                $weightGram  = $isAnchor ? $combinedGrams : 0;
-                $kgCharged   = $isAnchor ? $combinedKg : 0;
-
-                // Combined promo applies to the anchor only (discount + shipping subsidy charged once)
-                $discount         = $isAnchor ? $combinedDiscount : 0;
-                $shippingDiscount = $isAnchor ? min($shippingFee, $combinedShipSubsidy) : 0;
-
-                $total = max(0, $subtotal - $discount + $shippingFee - $shippingDiscount);
-
-                $order->update([
-                    'subtotal'             => $subtotal,
-                    'discount_amount'      => $discount,
-                    'shipping_fee'         => $shippingFee,
-                    'shipping_discount'    => $shippingDiscount,
-                    'shipping_weight_gram' => $weightGram,
-                    'shipping_kg_charged'  => $kgCharged,
-                    'total_amount'         => $total,
-                ]);
+                $order->update($allocation[$order->id]);
 
                 // recalcPaymentStatus() reads $this->total_amount, so it MUST run
                 // after the update above, not before. Without this, changing a

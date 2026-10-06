@@ -349,7 +349,7 @@ class PaymentController extends Controller
         $data = $request->validate([
             'customer_id'          => 'required|exists:customers,id',
             'trip_id'              => 'required|exists:trips,id',
-            'method'               => 'nullable|string|max:50',
+            'method'               => 'nullable|string|max:50|not_in:reallocation',
             'reference'            => 'nullable|string|max:100',
             'paid_at'              => 'required|date',
             'notes'                => 'nullable|string',

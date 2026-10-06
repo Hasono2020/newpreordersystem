@@ -140,7 +140,14 @@ test('a refund reduces the paid amount', function () {
     $order = paymentOrder($this, 1000000, $admin);
 
     $this->actingAs($admin)->post("/orders/{$order->id}/payments", ['amount' => 600000, 'type' => 'partial', 'paid_at' => now()->toDateString()]);
-    $this->actingAs($admin)->post("/orders/{$order->id}/payments", ['amount' => 100000, 'type' => 'refund', 'paid_at' => now()->toDateString()]);
+    // Refunds are no longer typed in through Record Payment (a Credit Note or Sales
+    // Return creates them — see RemoveManualRefundTypeTest). So create one the way
+    // those do; what's being tested here is the sign logic, which they rely on.
+    \App\Models\Payment::create([
+        'order_id' => $order->id, 'amount' => 100000, 'type' => 'refund', 'method' => 'Refund',
+        'paid_at' => now(), 'recorded_by' => $admin->id, 'verification_status' => 'verified',
+    ]);
+    $order->recalcPaymentStatus();
 
     $order->refresh();
     // 600000 paid - 100000 refund = 500000
@@ -153,7 +160,14 @@ test('voiding a refund adds the refunded amount back', function () {
     $order = paymentOrder($this, 1000000, $admin);
 
     $this->actingAs($admin)->post("/orders/{$order->id}/payments", ['amount' => 600000, 'type' => 'partial', 'paid_at' => now()->toDateString()]);
-    $this->actingAs($admin)->post("/orders/{$order->id}/payments", ['amount' => 100000, 'type' => 'refund', 'paid_at' => now()->toDateString()]);
+    // Refunds are no longer typed in through Record Payment (a Credit Note or Sales
+    // Return creates them — see RemoveManualRefundTypeTest). So create one the way
+    // those do; what's being tested here is the sign logic, which they rely on.
+    \App\Models\Payment::create([
+        'order_id' => $order->id, 'amount' => 100000, 'type' => 'refund', 'method' => 'Refund',
+        'paid_at' => now(), 'recorded_by' => $admin->id, 'verification_status' => 'verified',
+    ]);
+    $order->recalcPaymentStatus();
 
     $refund = $order->payments()->where('type', 'refund')->first();
     $this->actingAs($admin)->post("/payments/{$refund->id}/void", ['void_reason' => 'refund reversed']);

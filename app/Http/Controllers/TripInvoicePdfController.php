@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\ActivityLog;
+use App\Models\Order;
 use App\Models\Trip;
 use App\Services\CombinedInvoiceService;
 use App\Services\InvoicePdfRenderer;
@@ -36,24 +37,32 @@ class TripInvoicePdfController extends Controller
 
         // Generous limits for a big trip; many hosts honour these, none are harmed by asking.
         @set_time_limit(600);
-        @ini_set('memory_limit', '512M');
+        $this->raiseMemoryLimitTo(512 * 1024 * 1024);
 
-        // Staff who can only see their own orders get invoices for just those.
         $perFile      = max(1, (int) config('invoices.pdf_customers_per_file', self::DEFAULT_CUSTOMERS_PER_FILE));
         $maxCustomers = max($perFile, (int) config('invoices.pdf_max_customers', self::DEFAULT_MAX_CUSTOMERS));
 
-        $all = $invoices->forTrip($trip, Auth::user()->isOwnDataOnly() ? Auth::id() : null);
+        $ownerId = Auth::user()->isOwnDataOnly() ? Auth::id() : null; // staff who only see their own orders get just those
 
-        if ($all->isEmpty()) {
+        // Count customers with one cheap query BEFORE building anything. Checking the size
+        // after forTrip() would build every invoice in memory first — exactly the cost the
+        // limit exists to avoid — and only then refuse.
+        $customerCount = Order::where('trip_id', $trip->id)
+            ->when($ownerId !== null, fn ($q) => $q->where('created_by', $ownerId))
+            ->distinct()->count('customer_id');
+
+        if ($customerCount === 0) {
             return back()->with('error', "There are no orders in \"{$trip->name}\" to make invoices from.");
         }
 
-        if ($all->count() > $maxCustomers) {
+        if ($customerCount > $maxCustomers) {
             return back()->with('error',
-                "\"{$trip->name}\" has {$all->count()} customers — more than the {$maxCustomers}"
+                "\"{$trip->name}\" has {$customerCount} customers — more than the {$maxCustomers}"
                 . ' that can be built in one download without risking a timeout. '
                 . 'Use the individual combined invoices for now, or ask for the background-generation version.');
         }
+
+        $all = $invoices->forTrip($trip, $ownerId);
 
         $slug  = Str::slug($trip->name) ?: 'trip-' . $trip->id;
         $parts = $all->chunk($perFile)->values();
@@ -101,5 +110,31 @@ class TripInvoicePdfController extends Controller
 
         return response()->download($zipPath, "invoices_{$slug}.zip", ['Content-Type' => 'application/zip'])
             ->deleteFileAfterSend(true);
+    }
+
+    /** Raise PHP's memory limit to at least $bytes — never lower one that's already higher (or unlimited). */
+    private function raiseMemoryLimitTo(int $bytes): void
+    {
+        $current = self::iniBytes((string) ini_get('memory_limit'));
+        if ($current === -1 || $current >= $bytes) {
+            return;
+        }
+        @ini_set('memory_limit', (string) $bytes);
+    }
+
+    /** "512M" / "1G" / "256K" / "-1" / plain bytes, as PHP writes memory_limit, to a number of bytes (-1 = unlimited). */
+    public static function iniBytes(string $value): int
+    {
+        $value = trim($value);
+        if ($value === '' ) return 0;
+        if ($value === '-1') return -1;
+
+        $number = (int) $value;
+        return match (strtolower(substr($value, -1))) {
+            'g'     => $number * 1024 ** 3,
+            'm'     => $number * 1024 ** 2,
+            'k'     => $number * 1024,
+            default => $number,
+        };
     }
 }

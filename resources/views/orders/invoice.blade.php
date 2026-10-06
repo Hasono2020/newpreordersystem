@@ -90,6 +90,12 @@ td.right { text-align:right; }
     <a href="{{ route('orders.show', $order) }}" style="color:#94a3b8;text-decoration:none;font-size:13px;">
         ← Back to Order
     </a>
+    @if($adjustments->isNotEmpty())
+        <span class="no-print" style="margin-left:16px;display:inline-flex;border:1px solid #475569;border-radius:6px;overflow:hidden;">
+            <a href="{{ request()->fullUrlWithQuery(['view' => null]) }}" style="{{ $viewMode === 'current' ? 'padding:6px 12px;font-size:12px;font-weight:700;text-decoration:none;background:#3b82f6;color:#fff;' : 'padding:6px 12px;font-size:12px;text-decoration:none;background:transparent;color:#cbd5e1;' }}">After returns &amp; credits</a>
+            <a href="{{ request()->fullUrlWithQuery(['view' => 'original']) }}" style="{{ $viewMode === 'original' ? 'padding:6px 12px;font-size:12px;font-weight:700;text-decoration:none;background:#3b82f6;color:#fff;' : 'padding:6px 12px;font-size:12px;text-decoration:none;background:transparent;color:#cbd5e1;' }}">Before (original)</a>
+        </span>
+    @endif
     <button id="downloadImageBtn" style="margin-left:auto;background:#16a34a;color:#fff;border:none;padding:7px 20px;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600;">
         🖼 Download as Image
     </button>
@@ -127,6 +133,21 @@ td.right { text-align:right; }
             <div><span class="status-badge {{ $badgeClass }}">{{ $badgeLabel }}</span></div>
         </div>
     </div>
+
+@if($adjustments->isNotEmpty())
+    @php
+        $adjLabels = $adjustments->map(fn ($a) => ($a->isReturn() ? 'Sales Return ' : 'Credit Note ') . $a->adjustment_number)->implode(', ');
+    @endphp
+    @if($viewMode === 'original')
+        <div style="margin:0 0 10px;padding:7px 11px;border-radius:5px;background:#fef3c7;border:1px solid #f59e0b;color:#78350f;font-size:12px;line-height:1.45;">
+            <strong>ORIGINAL</strong> &mdash; as this invoice stood <strong>before</strong> {{ $adjLabels }}. This is not the amount currently owed; the adjusted invoice is the current one.
+        </div>
+    @else
+        <div style="margin:0 0 10px;padding:7px 11px;border-radius:5px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a8a;font-size:12px;line-height:1.45;">
+            <strong>ADJUSTED</strong> &mdash; includes {{ $adjLabels }}.
+        </div>
+    @endif
+@endif
 
     {{-- Customer + Shipping --}}
     <div class="info-grid">
@@ -242,10 +263,18 @@ td.right { text-align:right; }
                 <td style="color:#16a34a;">Paid</td>
                 <td style="color:#16a34a;">Rp {{ number_format($order->deposit_paid, 0, ',', '.') }}</td>
             </tr>
+            @if($order->remaining_balance < 0)
+            {{-- Paid more than this order costs: credit in the customer's favour, not a debt. --}}
+            <tr class="balance-row" style="color:#16a34a;">
+                <td>Overpaid (credit)</td>
+                <td>Rp {{ number_format(abs($order->remaining_balance), 0, ',', '.') }}</td>
+            </tr>
+            @else
             <tr class="balance-row">
                 <td>Balance Due</td>
                 <td>Rp {{ number_format($order->remaining_balance, 0, ',', '.') }}</td>
             </tr>
+            @endif
         </table>
     </div>
 

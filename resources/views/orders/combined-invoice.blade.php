@@ -106,6 +106,12 @@ td.r { text-align:right; }
     <button onclick="window.print()" style="padding:7px 18px;background:#1e2a3a;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:12px;">&#128424; Print / Save PDF</button>
     <button id="downloadImageBtn" style="padding:7px 18px;background:#16a34a;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:12px;">&#128444; Download as Image</button>
     <button onclick="window.history.length > 1 ? window.history.back() : window.location.href='/customers'" style="padding:7px 18px;background:#f1f5f9;color:#1e2a3a;border:1px solid #e2e8f0;border-radius:5px;cursor:pointer;font-size:12px;">&#8592; Back</button>
+    @if($adjustments->isNotEmpty())
+        <span class="no-print" style="display:inline-flex;align-self:center;border:1px solid #cbd5e1;border-radius:5px;overflow:hidden;">
+            <a href="{{ request()->fullUrlWithQuery(['view' => null]) }}" style="{{ $viewMode === 'current' ? 'padding:6px 12px;font-size:11px;font-weight:700;text-decoration:none;background:#1e2a3a;color:#fff;' : 'padding:6px 12px;font-size:11px;text-decoration:none;background:#fff;color:#334155;' }}">After returns &amp; credits</a>
+            <a href="{{ request()->fullUrlWithQuery(['view' => 'original']) }}" style="{{ $viewMode === 'original' ? 'padding:6px 12px;font-size:11px;font-weight:700;text-decoration:none;background:#1e2a3a;color:#fff;' : 'padding:6px 12px;font-size:11px;text-decoration:none;background:#fff;color:#334155;' }}">Before (original)</a>
+        </span>
+    @endif
     <span style="font-size:10px;color:#94a3b8;align-self:center;">Tip: in the print dialog, choose <strong>"Save as PDF"</strong> as the destination to save. Paper size is set to A5.</span>
 </div>
 
@@ -121,11 +127,26 @@ td.r { text-align:right; }
         @endif
     </div>
     <div class="inv-title">
-        <div class="t">COMBINED INVOICE</div>
+        <div class="t">{{ $viewMode === 'original' ? 'ORIGINAL INVOICE' : 'COMBINED INVOICE' }}</div>
         <div class="s">{{ $orders->count() }} Orders &middot; {{ $trip->name }}<br>Printed: {{ now()->format('d M Y H:i') }}</div>
         <span class="badge">{{ $orders->count() }} orders merged</span>
     </div>
 </div>
+
+@if($adjustments->isNotEmpty())
+    @php
+        $adjLabels = $adjustments->map(fn ($a) => ($a->isReturn() ? 'Sales Return ' : 'Credit Note ') . $a->adjustment_number)->implode(', ');
+    @endphp
+    @if($viewMode === 'original')
+        <div style="margin:0 0 10px;padding:7px 11px;border-radius:5px;background:#fef3c7;border:1px solid #f59e0b;color:#78350f;font-size:10px;line-height:1.45;">
+            <strong>ORIGINAL</strong> &mdash; as this invoice stood <strong>before</strong> {{ $adjLabels }}. This is not the amount currently owed; the adjusted invoice is the current one.
+        </div>
+    @else
+        <div style="margin:0 0 10px;padding:7px 11px;border-radius:5px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a8a;font-size:10px;line-height:1.45;">
+            <strong>ADJUSTED</strong> &mdash; includes {{ $adjLabels }}.
+        </div>
+    @endif
+@endif
 
 {{-- Customer + Delivery + Stats --}}
 <div class="info-row">
@@ -275,7 +296,12 @@ td.r { text-align:right; }
             <span class="lbl">Total Paid</span>
             <span style="color:#16a34a;font-weight:600;">Rp {{ number_format($grandPaid, 0, ',', '.') }}</span>
         </div>
-        <div class="g-row bal"><span>Balance Due</span><span>Rp {{ number_format($grandBalance, 0, ',', '.') }}</span></div>
+        @if($grandBalance < 0)
+            {{-- Paid more than they owe: that's credit in the customer's favour, not a debt. --}}
+            <div class="g-row" style="font-weight:700;font-size:12px;color:#16a34a;"><span>Overpaid (credit)</span><span>Rp {{ number_format(abs($grandBalance), 0, ',', '.') }}</span></div>
+        @else
+            <div class="g-row bal"><span>Balance Due</span><span>Rp {{ number_format($grandBalance, 0, ',', '.') }}</span></div>
+        @endif
     </div>
 
     {{-- Payment History --}}

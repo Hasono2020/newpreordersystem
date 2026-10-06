@@ -16,7 +16,9 @@ class ActivityLogController extends Controller
             abort(403, 'Only admins can view the activity log.');
         }
 
-        $query = ActivityLog::with('user')->latest();
+        // created_at only has 1-second precision, so two actions in the same second tie;
+        // id breaks the tie so they always show in the order they actually happened.
+        $query = ActivityLog::with('user')->latest()->latest('id');
 
         if ($request->filled('user_id')) {
             $query->where('user_id', $request->user_id);
@@ -43,6 +45,7 @@ class ActivityLogController extends Controller
             'payment.auto_reallocated' => 'Credit moved between orders',
             'payment.reallocation_reversed' => 'Moved credit reversed',
             'invoice.trip_pdf_downloaded' => 'Trip invoices PDF downloaded',
+            'sales_adjustment.duplicate_blocked' => 'Duplicate refund submission blocked',
             'payment.batch_voided'     => 'Payment batch voided',
             'order.updated'            => 'Order edited',
             'order.deleted'            => 'Order deleted',

@@ -232,7 +232,17 @@
         @if(auth()->user()->hasPermission('orders.sales_adjustments'))
         <div class="card mt-3">
             <div class="card-header bg-white py-3 d-flex justify-content-between flex-wrap gap-2">
-                <span class="fw-semibold">Sales Returns / Credit Notes</span>
+                <div>
+                    <span class="fw-semibold">Sales Returns / Credit Notes</span>
+                    @if($order->salesAdjustments->whereNull('voided_at')->isNotEmpty())
+                    <span class="small ms-2">
+                        Invoice:
+                        <a href="{{ route('orders.invoice', [$order, 'view' => 'original']) }}" target="_blank">before</a>
+                        &middot;
+                        <a href="{{ route('orders.invoice', $order) }}" target="_blank">after</a>
+                    </span>
+                    @endif
+                </div>
                 <div class="d-flex gap-2">
                     <button class="btn btn-sm btn-outline-danger" data-bs-toggle="collapse" data-bs-target="#returnPanel">
                         <i class="bi bi-arrow-return-left me-1"></i>Sales Return
@@ -246,9 +256,10 @@
             {{-- Issue Sales Return --}}
             <div class="collapse" id="returnPanel">
                 <div class="card-body border-bottom bg-light">
-                    <form method="POST" action="{{ route('orders.sales-adjustments.store', $order) }}">
+                    <form method="POST" action="{{ route('orders.sales-adjustments.store', $order) }}" onsubmit="this.querySelector('[type=submit]').disabled = true;">
                         @csrf
                         <input type="hidden" name="type" value="return">
+                        <input type="hidden" name="client_token" value="{{ \Illuminate\Support\Str::uuid() }}">
                         <p class="small text-muted mb-2">Select which items are being returned, and how many. The order total updates automatically, and only the part of what this order has paid that now exceeds its new total is refunded — and only from verified payments (Rp {{ number_format(max(0, $order->verifiedPaid()), 0, ',', '.') }} verified on this order).</p>
                         <table class="table table-sm">
                             <thead><tr><th></th><th>Product / Variant</th><th>On order</th><th style="width:110px;">Qty returned</th></tr></thead>
@@ -292,9 +303,10 @@
             {{-- Issue Credit Note --}}
             <div class="collapse" id="creditNotePanel">
                 <div class="card-body border-bottom bg-light">
-                    <form method="POST" action="{{ route('orders.sales-adjustments.store', $order) }}">
+                    <form method="POST" action="{{ route('orders.sales-adjustments.store', $order) }}" onsubmit="this.querySelector('[type=submit]').disabled = true;">
                         @csrf
                         <input type="hidden" name="type" value="credit_note">
+                        <input type="hidden" name="client_token" value="{{ \Illuminate\Support\Str::uuid() }}">
                         <p class="small text-muted mb-2">Refunds money already paid, with no goods coming back. The order total stays the same — only the amount paid goes down. Limited to payments that have been VERIFIED (currently Rp {{ number_format(max(0, $order->verifiedPaid()), 0, ',', '.') }} of the Rp {{ number_format($order->deposit_paid, 0, ',', '.') }} recorded on this order).</p>
                         <div class="row g-2">
                             <div class="col-md-4">

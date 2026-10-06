@@ -142,18 +142,26 @@ class ReportController extends Controller
             // deposit_paid is already the correct running total (it's
             // recalculated whenever a payment is added/voided), so use it
             // directly rather than re-deriving it from the payments list.
-            $firstPayment = $o->payments->reject(fn($p) => $p->isVoided())->sortBy('paid_at')->first();
+            // A real payment from the customer: not voided, not a refund (Credit Note /
+            // Sales Return), and not one of the internal credit moves between a
+            // customer's own orders. Taking "the last payment of any kind" would let a
+            // refund or an internal transfer pose as the customer's final payment.
+            // Ordered by date, then id, so two payments on one day have a stable order.
+            $realPayments = $o->payments
+                ->reject(fn ($p) => $p->isVoided() || $p->type === 'refund' || $p->method === 'reallocation')
+                ->sortBy([['paid_at', 'asc'], ['id', 'asc']])
+                ->values();
+            $firstPayment = $realPayments->first();
             $dp    = $o->deposit_paid ?: '';
             $tglDp = $firstPayment ? \Carbon\Carbon::parse($firstPayment->paid_at)->format('d-M-y') : '';
             $an    = $o->notes ?? '';
             $waktuOrder = $o->created_at?->format('d-m-Y H:i') ?? '';
 
             // Final Payment — status is just the order's current payment
-            // status; date/amount describe the MOST RECENT active payment
+            // status; date/amount describe the MOST RECENT real payment
             // (not the running total, which TGL DP/DP already cover) —
             // the two brackets, first and last, of the payment history.
-            $activePayments = $o->payments->reject(fn ($p) => $p->isVoided())->sortBy('paid_at');
-            $lastPayment    = $activePayments->last();
+            $lastPayment    = $realPayments->last();
             $finalPaymentStatus = match ($o->payment_status) {
                 'paid'    => 'Fully Paid',
                 'partial' => 'Partial',

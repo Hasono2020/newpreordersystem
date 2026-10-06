@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Models\Customer;
 use App\Models\Order;
+use App\Models\SalesAdjustment;
+use App\Models\SalesAdjustmentItem;
 use App\Models\ShippingArea;
 use App\Models\Trip;
 use Illuminate\Support\Collection;
@@ -25,6 +27,116 @@ use Illuminate\Support\Collection;
 class CombinedInvoiceService
 {
     public function __construct(protected PromoService $promoService) {}
+
+    /**
+     * The Sales Returns and Credit Notes still in force on these orders (voided ones are
+     * gone as far as an invoice is concerned), oldest first. Empty means there is no
+     * "before and after" to show.
+     *
+     * @param  Collection<int, Order> $orders
+     * @return Collection<int, SalesAdjustment>
+     */
+    public function activeAdjustments(Collection $orders): Collection
+    {
+        if ($orders->isEmpty()) {
+            return collect();
+        }
+
+        return SalesAdjustment::whereIn('order_id', $orders->pluck('id'))
+            ->whereNull('voided_at')
+            ->orderBy('id')
+            ->get();
+    }
+
+    /**
+     * These orders as they stood BEFORE the active Sales Returns and Credit Notes: every
+     * returned quantity put back, every refund taken off what was paid, and the promo,
+     * shipping and totals worked out again on those restored items — which matters, because
+     * the original quantity may have earned a promo or free shipping the reduced order
+     * no longer does, and the order that carried the shipping may be a different one.
+     *
+     * It is a reconstruction from today's data, not a saved copy of what was printed: a
+     * price or item edit made since is not undone, only the returns and credit notes are.
+     *
+     * DISPLAY ONLY. This loads its own fresh copies and changes them in memory; nothing
+     * here is ever saved, and nothing the caller already holds is touched.
+     *
+     * @param  Collection<int, Order> $orders  ONE customer's orders in ONE trip (the shipping and
+     *         promo are combined across them, so a partial set gives different answers)
+     * @return Collection<int, Order> fresh models, oldest first, adjusted in memory
+     */
+    public function restoreOriginal(Collection $orders, int $tripId): Collection
+    {
+        if ($orders->isEmpty()) {
+            return collect();
+        }
+
+        $fresh = Order::with([
+                'customer.defaultShippingArea', 'trip', 'shippingArea', 'items.product', 'items.variant',
+                'payments.recordedBy', 'payments.voidedBy', 'payments.salesAdjustment', 'createdBy',
+            ])
+            ->whereIn('id', $orders->pluck('id'))
+            ->orderByRaw('COALESCE(ordered_at, created_at) ASC')
+            ->orderBy('id')
+            ->get();
+
+        // Units that were returned (by Sales Returns still in force), per order line.
+        $returned = SalesAdjustmentItem::whereIn('order_item_id', $fresh->flatMap(fn ($o) => $o->items->pluck('id')))
+            ->whereHas('salesAdjustment', fn ($q) => $q->whereNull('voided_at'))
+            ->selectRaw('order_item_id, SUM(quantity) as qty')
+            ->groupBy('order_item_id')
+            ->pluck('qty', 'order_item_id');
+
+        foreach ($fresh as $order) {
+            // 1) Put the returned quantities back.
+            foreach ($order->items as $item) {
+                $back = (int) ($returned[$item->id] ?? 0);
+                if ($back > 0) {
+                    $item->quantity   = $item->quantity + $back;
+                    $item->line_total = $item->unit_price * $item->quantity;
+                }
+            }
+
+            // 2) Take the refunds that came from those documents off the payments, and add
+            //    them back to what was paid. (Other payments — including the system's own
+            //    internal credit moves — are left exactly as they are.)
+            $refunds = $order->payments->filter(
+                fn ($p) => $p->sales_adjustment_id && $p->type === 'refund' && ! $p->isVoided()
+            );
+            $order->setRelation('payments', $order->payments->reject(fn ($p) => $refunds->contains('id', $p->id))->values());
+            $order->deposit_paid = (float) $order->deposit_paid + (float) $refunds->sum('amount');
+        }
+
+        // 3) Same maths as the real recalculation, on the restored items.
+        $allocation = $this->promoService->allocateCustomerTotals($fresh, $tripId);
+
+        foreach ($fresh as $order) {
+            $order->forceFill($allocation[$order->id]);
+
+            $paid  = (float) $order->deposit_paid;
+            $total = (float) $order->total_amount;
+            $order->payment_status = $paid <= 0 ? 'unpaid' : ($paid >= $total ? 'paid' : 'partial');
+        }
+
+        return $fresh;
+    }
+
+    /**
+     * restoreOriginal() for a page that may span several trips (the combined invoice with
+     * no trip chosen): promo and shipping are per trip, so each trip's orders are rebuilt
+     * on their own, and the result comes back in the same order the caller passed.
+     *
+     * @param  Collection<int, Order> $orders  one customer's orders
+     * @return Collection<int, Order>
+     */
+    public function restoreOriginalForDisplay(Collection $orders): Collection
+    {
+        $restored = $orders->groupBy('trip_id')
+            ->flatMap(fn ($group, $tripId) => $this->restoreOriginal($group, (int) $tripId))
+            ->keyBy('id');
+
+        return $orders->map(fn ($o) => $restored[$o->id])->values();
+    }
 
     /**
      * Promo + shipping for one customer's orders: combined weight, the shipping

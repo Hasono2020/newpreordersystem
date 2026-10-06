@@ -49,7 +49,7 @@ test('adding a brand new item to an order logs the specific product, not a gener
         'quantity' => 3, 'unit_price' => 75000,
     ]);
 
-    $log = ActivityLog::where('action', 'order.updated')->where('subject_id', $order->id)->latest()->first();
+    $log = ActivityLog::where('action', 'order.updated')->where('subject_id', $order->id)->latest()->latest('id')->first();
     expect($log->description)->toContain('added item')
         ->and($log->description)->toContain('LOGADD01');
     expect($log->changes['item_added']['new'])->toContain('LOGADD01')
@@ -70,7 +70,7 @@ test('adding the same product again merges quantity and logs an increase, not a 
     $this->actingAs($admin)->post(route('orders.items.add', $order), $payload);
     $this->actingAs($admin)->post(route('orders.items.add', $order), $payload);
 
-    $log = ActivityLog::where('action', 'order.updated')->where('subject_id', $order->id)->latest()->first();
+    $log = ActivityLog::where('action', 'order.updated')->where('subject_id', $order->id)->latest()->latest('id')->first();
     expect($log->description)->toContain('increased quantity')
         ->and($log->description)->not->toContain('added item');
     expect($log->changes['item_quantity']['old'])->toContain('x2')
@@ -94,7 +94,7 @@ test('removing an item logs which specific item was removed, captured before the
 
     $this->actingAs($admin)->delete(route('orders.items.remove', [$order, $item]));
 
-    $log = ActivityLog::where('action', 'order.updated')->where('subject_id', $order->id)->latest()->first();
+    $log = ActivityLog::where('action', 'order.updated')->where('subject_id', $order->id)->latest()->latest('id')->first();
     expect($log->description)->toContain('removed item')
         ->and($log->description)->toContain('LOGDEL01');
     expect($log->changes['item_removed']['old'])->toContain('LOGDEL01')

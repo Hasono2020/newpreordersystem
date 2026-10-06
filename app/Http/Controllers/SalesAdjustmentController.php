@@ -12,6 +12,7 @@ use App\Services\PromoService;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class SalesAdjustmentController extends Controller
@@ -58,11 +59,53 @@ class SalesAdjustmentController extends Controller
             'reason' => 'nullable|string|max:1000',
         ]);
 
-        if ($request->type === 'return') {
-            $this->storeReturn($request, $order);
-        } else {
-            $error = $this->storeCreditNote($request, $order);
-            if ($error) return back()->withInput()->with('error', $error);
+        // Same guard orders have: each form carries a client_token made when the page was
+        // drawn, and Cache::add() is atomic, so only the FIRST request for a token goes
+        // ahead. A double-click or a browser retry would otherwise issue the refund twice
+        // — and unlike a duplicate order, a duplicate refund is money out of the business.
+        $lockKey = null;
+        if ($token = $request->input('client_token')) {
+            $lockKey = 'adjustment_submit_lock:' . $token;
+
+            if (! Cache::add($lockKey, 'processing', now()->addMinutes(5))) {
+                $already = Cache::get($lockKey . ':number');
+                $label   = $request->type === 'return' ? 'Sales Return' : 'Credit Note';
+
+                ActivityLog::record(
+                    'sales_adjustment.duplicate_blocked',
+                    "Duplicate {$label} submission blocked on {$order->order_number}"
+                        . ($already ? " — already issued as {$already}." : ' while the first was still being processed.'),
+                    'order',
+                    $order->id
+                );
+
+                return back()->with('error', $already
+                    ? "That {$label} was already issued a moment ago as {$already} — see the list below. Nothing was issued twice."
+                    : 'That is still being processed from a previous click. Check the list below before submitting again.');
+            }
+        }
+
+        try {
+            if ($request->type === 'return') {
+                $this->storeReturn($request, $order);
+            } else {
+                $error = $this->storeCreditNote($request, $order);
+                if ($error) {
+                    // Refused, so nothing was issued: free the token so a retry isn't blocked.
+                    if ($lockKey) Cache::forget($lockKey);
+                    return back()->withInput()->with('error', $error);
+                }
+            }
+        } catch (\Throwable $e) {
+            if ($lockKey) Cache::forget($lockKey);   // failed / rolled back — allow a retry
+            throw $e;
+        }
+
+        // Remember which document this token produced, so a repeat can say so.
+        if ($lockKey) {
+            Cache::put($lockKey . ':number',
+                SalesAdjustment::where('order_id', $order->id)->latest('id')->value('adjustment_number'),
+                now()->addMinutes(5));
         }
 
         return back()->with('success', ucfirst(str_replace('_', ' ', $request->type)) . ' issued.');
@@ -81,7 +124,16 @@ class SalesAdjustmentController extends Controller
             $amount = 0;
             $lines  = [];
 
-            foreach ($request->items as $line) {
+            // The same item listed twice must be treated as ONE line with the quantities
+            // added up. Checked one at a time, each copy would pass against the full
+            // quantity — the amount would be counted twice while the item was only
+            // reduced once, and voiding would then put the quantity back twice.
+            $requested = collect($request->items)
+                ->groupBy(fn ($line) => (int) $line['order_item_id'])
+                ->map(fn ($group, $itemId) => ['order_item_id' => $itemId, 'quantity' => $group->sum(fn ($l) => (int) $l['quantity'])])
+                ->values();
+
+            foreach ($requested as $line) {
                 $item = OrderItem::where('id', $line['order_item_id'])->where('order_id', $order->id)->lockForUpdate()->first();
                 abort_if(!$item, 404, 'Item does not belong to this order.');
                 abort_if($line['quantity'] > $item->quantity, 422,

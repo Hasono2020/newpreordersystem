@@ -193,7 +193,11 @@ td, th { vertical-align: top; text-align: left; }
                     </table>
                     <table cellspacing="0" cellpadding="0" style="margin-top:3pt;">
                         <tr><td class="lbl">Total Paid</td><td class="r grn"><b>{{ $rp($t['paid']) }}</b></td></tr>
+                        @if($t['balance'] < 0)
+                        <tr><td class="grn"><b>Overpaid (credit)</b></td><td class="r grn"><b>{{ $rp(abs($t['balance'])) }}</b></td></tr>
+                        @else
                         <tr><td class="red"><b>Balance Due</b></td><td class="r red"><b>{{ $rp($t['balance']) }}</b></td></tr>
+                        @endif
                     </table>
                 </div>
             </td>

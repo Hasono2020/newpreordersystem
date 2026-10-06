@@ -682,7 +682,7 @@ class OrderController extends Controller
         $request->validate([
             'amount'    => 'required|numeric|min:0',
             'type'      => 'required|in:deposit,partial,full',
-            'method'    => 'nullable|string|max:50',
+            'method'    => 'nullable|string|max:50|not_in:reallocation',
             'reference' => 'nullable|string|max:100',
             'paid_at'   => 'required|date',
             'notes'     => 'nullable|string',
@@ -760,10 +760,23 @@ class OrderController extends Controller
         app(\App\Services\CreditReallocationService::class)->reconcile($order->customer_id, $order->trip_id);
     }
 
-    public function invoice(Order $order)
+    public function invoice(Request $request, Order $order)
     {
-        $order->load(['customer', 'trip', 'shippingArea', 'items.product', 'items.variant', 'payments.recordedBy', 'payments.voidedBy', 'createdBy']);
-        return view('orders.invoice', compact('order'));
+        $order->load(['customer', 'trip', 'shippingArea', 'items.product', 'items.variant', 'payments.recordedBy', 'payments.voidedBy', 'payments.salesAdjustment', 'createdBy']);
+
+        // Before / after Sales Returns and Credit Notes — see combinedInvoice(). A single order's
+        // shipping and promo depend on ALL the customer's orders in the trip (they combine, and
+        // land on the first one still holding items), so the original is rebuilt for the whole
+        // group and this order is picked out of it.
+        $service     = app(\App\Services\CombinedInvoiceService::class);
+        $adjustments = $service->activeAdjustments(collect([$order]));
+        $viewMode    = ($request->query('view') === 'original' && $adjustments->isNotEmpty()) ? 'original' : 'current';
+        if ($viewMode === 'original') {
+            $group = Order::where('customer_id', $order->customer_id)->where('trip_id', $order->trip_id)->get();
+            $order = $service->restoreOriginal($group, (int) $order->trip_id)->firstWhere('id', $order->id);
+        }
+
+        return view('orders.invoice', compact('order', 'adjustments', 'viewMode'));
     }
 
     /**
@@ -776,7 +789,7 @@ class OrderController extends Controller
         $tripId   = $request->trip_id;
         $orderIds = $request->order_ids ?? [];
 
-        $query = Order::with(['items.product', 'items.variant', 'payments', 'trip', 'shippingArea'])
+        $query = Order::with(['items.product', 'items.variant', 'payments.salesAdjustment', 'trip', 'shippingArea'])
             ->where('customer_id', $customer->id);
 
         if ($tripId)            $query->where('trip_id', $tripId);
@@ -794,9 +807,24 @@ class OrderController extends Controller
         // differently. It returns exactly the variables this view has always
         // received: shippingArea, totalWeightGram, chargeableKg, combinedShipping,
         // combinedDiscount, combinedShipDiscount, combinedPromo, allActiveItems.
-        $breakdown = app(\App\Services\CombinedInvoiceService::class)->priceBreakdown($customer, $orders, $tripId);
+        $service = app(\App\Services\CombinedInvoiceService::class);
 
-        return view('orders.combined-invoice', array_merge(compact('customer', 'orders', 'tripId'), $breakdown));
+        // Before / after Sales Returns and Credit Notes. "original" puts the returned items
+        // back and takes the refunds off, in memory only (nothing is saved), and everything
+        // below — promo, shipping, totals — is then worked out on that restored version.
+        // It only means something when there IS an active adjustment, so otherwise the
+        // request is quietly treated as the normal current view.
+        $adjustments = $service->activeAdjustments($orders);
+        $viewMode    = ($request->query('view') === 'original' && $adjustments->isNotEmpty()) ? 'original' : 'current';
+        if ($viewMode === 'original') {
+            $orders = $service->restoreOriginalForDisplay($orders);
+        }
+
+        $breakdown = $service->priceBreakdown($customer, $orders, $tripId);
+
+        return view('orders.combined-invoice', array_merge(
+            compact('customer', 'orders', 'tripId', 'adjustments', 'viewMode'), $breakdown
+        ));
     }
 
     // ── AJAX: trip products ──────────────────────────────────────────

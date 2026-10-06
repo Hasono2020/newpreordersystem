@@ -35,7 +35,8 @@ class CreditReallocationService
      * order has paid or owes: a payment recorded or voided, an item added or
      * removed, a Sales Return or Credit Note, a price sync.
      *
-     * Two steps, in this order:
+     * Three steps, in this order:
+     *  0. Void any transfer that has lost its other half (an order was deleted).
      *  1. Undo any earlier transfer that is no longer backed by real money
      *     (e.g. the deposit it was drawn from has since been voided) — otherwise
      *     the receiving order would keep showing "paid" with nothing behind it.
@@ -46,8 +47,60 @@ class CreditReallocationService
      */
     public function reconcile(int $customerId, int $tripId): void
     {
+        $this->voidBrokenTransfers($customerId, $tripId);
         $this->unwindUnsupportedTransfers($customerId, $tripId);
         $this->reallocate($customerId, $tripId);
+    }
+
+    /**
+     * A transfer is always a PAIR of rows sharing one batch id — credit leaving one
+     * order (type refund) and arriving on another (type partial). Deleting an order
+     * removes its payments (the foreign key cascades), which tears a pair in half:
+     * the surviving row is then either credit on an order with nothing behind it, or
+     * credit that left an order and arrived nowhere, silently shrinking the
+     * customer's real balance. The unwind step below only inspects the "sending" half
+     * of pairs that still exist, so it can't see either case.
+     *
+     * Any active transfer row whose batch doesn't have exactly one sending and one
+     * receiving row left is voided (with a reason, never deleted); reallocate() then
+     * re-moves whatever is still genuinely supportable.
+     */
+    private function voidBrokenTransfers(int $customerId, int $tripId): void
+    {
+        $orderIds = Order::where('customer_id', $customerId)->where('trip_id', $tripId)->pluck('id');
+        if ($orderIds->isEmpty()) return;
+
+        $rows = Payment::whereIn('order_id', $orderIds)
+            ->where('method', 'reallocation')
+            ->whereNull('voided_at')
+            ->whereNotNull('batch_id')
+            ->get();
+
+        $broken = $rows->groupBy('batch_id')->filter(
+            fn ($batch) => ! ($batch->where('type', 'refund')->count() === 1 && $batch->where('type', 'partial')->count() === 1)
+        );
+        if ($broken->isEmpty()) return;
+
+        $touched = collect();
+        DB::transaction(function () use ($broken, &$touched) {
+            foreach ($broken->flatten() as $row) {
+                $row->update([
+                    'voided_at'   => now(),
+                    'voided_by'   => Auth::id(),
+                    'void_reason' => 'Reversed — the other order in this transfer no longer exists',
+                ]);
+                $touched->push($row->order_id);
+            }
+        });
+
+        Order::whereIn('id', $touched->unique())->get()->each(fn ($o) => $o->recalcPaymentStatus());
+
+        ActivityLog::record(
+            'payment.reallocation_reversed',
+            'Reversed ' . $broken->flatten()->count() . ' credit move row(s) whose other order was deleted',
+            'customer',
+            $customerId
+        );
     }
 
     /**

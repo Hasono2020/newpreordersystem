@@ -107,9 +107,29 @@
 @endif
 
 <div class="d-flex gap-2">
+    @if(!$salesAdjustment->isVoided())
+    <div class="btn-group">
+        <button type="button" class="btn btn-sm btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown">
+            <i class="bi bi-receipt me-1"></i>View invoice
+        </button>
+        <ul class="dropdown-menu">
+            <li><h6 class="dropdown-header">This order</h6></li>
+            <li><a class="dropdown-item" target="_blank" href="{{ route('orders.invoice', [$order, 'view' => 'original']) }}">Before &mdash; original</a></li>
+            <li><a class="dropdown-item" target="_blank" href="{{ route('orders.invoice', $order) }}">After &mdash; with returns &amp; credits</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><h6 class="dropdown-header">Customer's combined invoice</h6></li>
+            <li><a class="dropdown-item" target="_blank" href="{{ route('orders.combined-invoice', ['customer' => $order->customer_id, 'trip_id' => $order->trip_id, 'view' => 'original']) }}">Before &mdash; original</a></li>
+            <li><a class="dropdown-item" target="_blank" href="{{ route('orders.combined-invoice', ['customer' => $order->customer_id, 'trip_id' => $order->trip_id]) }}">After &mdash; with returns &amp; credits</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><span class="dropdown-item-text small text-muted" style="max-width:260px;white-space:normal;">"Before" reverses <strong>all</strong> active returns and credit notes on the order, not just this one.</span></li>
+        </ul>
+    </div>
+    @else
+    {{-- A voided document no longer affects the invoice, so there is no before/after to show. --}}
     <a href="{{ route('orders.invoice', $order) }}" class="btn btn-sm btn-outline-primary" target="_blank">
-        <i class="bi bi-receipt me-1"></i>View Current (Adjusted) Invoice
+        <i class="bi bi-receipt me-1"></i>View Invoice
     </a>
+    @endif
     @if(!$salesAdjustment->isVoided() && auth()->user()->hasPermission('orders.sales_adjustments'))
     <form method="POST" action="{{ route('sales-adjustments.void', $salesAdjustment) }}"
         onsubmit="return confirm('Void {{ $salesAdjustment->adjustment_number }}? This reverses its effect on the order.');">
