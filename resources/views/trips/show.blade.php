@@ -19,6 +19,9 @@
     <a href="{{ route('products.create', ['trip_id' => $trip->id]) }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-tags me-1"></i>Add Product</a>
     @endif
     <a href="{{ route('purchasing.index', ['trip_id' => $trip->id]) }}" class="btn btn-outline-info btn-sm"><i class="bi bi-box-seam me-1"></i>Purchasing</a>
+@if(auth()->user()->hasPermission('orders.export'))
+    <a href="{{ route('trips.invoices.pdf', $trip) }}" class="btn btn-outline-danger btn-sm" title="One combined invoice per customer, as a PDF"><i class="bi bi-file-earmark-pdf me-1"></i>Invoices PDF</a>
+    @endif
 </div>
 
 <div class="row g-3 mb-4">

@@ -10,6 +10,7 @@
     "license": "MIT",
     "require": {
         "php": "^8.3",
+        "dompdf/dompdf": "*",
         "laravel/framework": "^13.8",
         "laravel/telescope": "*",
         "laravel/tinker": "^3.0"

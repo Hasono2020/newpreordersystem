@@ -42,6 +42,7 @@ class ActivityLogController extends Controller
             'payment.voided'           => 'Payment voided',
             'payment.auto_reallocated' => 'Credit moved between orders',
             'payment.reallocation_reversed' => 'Moved credit reversed',
+            'invoice.trip_pdf_downloaded' => 'Trip invoices PDF downloaded',
             'payment.batch_voided'     => 'Payment batch voided',
             'order.updated'            => 'Order edited',
             'order.deleted'            => 'Order deleted',

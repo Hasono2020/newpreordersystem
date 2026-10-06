@@ -789,41 +789,14 @@ class OrderController extends Controller
             return back()->with('error', 'No orders found for this customer.');
         }
 
-        $customer->load('defaultShippingArea');
+        // Promo + shipping come from the shared CombinedInvoiceService so the
+        // on-screen invoice and the whole-trip PDF can never work them out
+        // differently. It returns exactly the variables this view has always
+        // received: shippingArea, totalWeightGram, chargeableKg, combinedShipping,
+        // combinedDiscount, combinedShipDiscount, combinedPromo, allActiveItems.
+        $breakdown = app(\App\Services\CombinedInvoiceService::class)->priceBreakdown($customer, $orders, $tripId);
 
-        // ── Combined promo & shipping calculation ────────────────────────
-        // Collect all active items across all orders
-        $allActiveItems = $orders->flatMap(fn($o) =>
-            $o->items->whereNotIn('status', ['cancelled', 'sold_out'])
-        );
-
-        // Use first available shipping area across all orders (or customer default)
-        $shippingArea = $orders->first(fn($o) => $o->shippingArea)?->shippingArea
-            ?? $customer->defaultShippingArea;
-
-        // Combined weight and shipping — routed through the same
-        // calcTotalWeightGram() helper recalcCustomerShipping() uses, so
-        // this printed preview can't drift from what was actually charged
-        // (e.g. by missing the cargo weight bump).
-        $totalWeightGram  = $this->promoService->calcTotalWeightGram($allActiveItems, (bool) $customer->use_cargo);
-        $combinedShipping = $shippingArea ? $shippingArea->calcShippingFee($totalWeightGram) : 0;
-        $chargeableKg     = \App\Models\ShippingArea::calcChargeableKg($totalWeightGram);
-
-        // Fix #4: use constructor-injected promoService (warm cache, consistent instance)
-        $combinedPromo = $tripId
-            ? $this->promoService->getBestPromo($customer->type, $tripId, $allActiveItems)
-            : null;
-
-        $combinedDiscount        = $combinedPromo ? $combinedPromo['discount'] : 0;
-        $combinedShipSubsidy     = $combinedPromo ? $combinedPromo['max_shipping_subsidy'] : 0;
-        $combinedShipDiscount    = min($combinedShipping, $combinedShipSubsidy);
-
-        return view('orders.combined-invoice', compact(
-            'customer', 'orders', 'tripId',
-            'shippingArea', 'totalWeightGram', 'chargeableKg',
-            'combinedShipping', 'combinedDiscount', 'combinedShipDiscount',
-            'combinedPromo', 'allActiveItems'
-        ));
+        return view('orders.combined-invoice', array_merge(compact('customer', 'orders', 'tripId'), $breakdown));
     }
 
     // ── AJAX: trip products ──────────────────────────────────────────

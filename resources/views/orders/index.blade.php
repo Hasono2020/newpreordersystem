@@ -105,6 +105,21 @@
                         <i class="bi bi-download me-2 text-success"></i>Export orders as Excel
                     </button>
                 </li>
+                {{-- One combined invoice per customer for the whole trip, as a PDF. Needs a trip. --}}
+                @if(auth()->user()->hasPermission('orders.export'))
+                <li>
+                    @if(request('trip_id'))
+                        <a onclick="showExport('Building the invoices PDF — a big trip can take a minute…')" class="dropdown-item" href="{{ route('trips.invoices.pdf', request('trip_id')) }}">
+                            <i class="bi bi-file-earmark-pdf me-2 text-danger"></i>Download all invoices (PDF)
+                        </a>
+                    @else
+                        <span class="dropdown-item disabled" title="Pick a trip in the filter first">
+                            <i class="bi bi-file-earmark-pdf me-2 text-danger"></i>Download all invoices (PDF)
+                            <small class="d-block text-muted">Pick a trip first</small>
+                        </span>
+                    @endif
+                </li>
+                @endif
                 <li>
                     <a onclick="showExport('Preparing your export file. Please wait…')" class="dropdown-item" href="{{ route('orders.items.export', request()->only('trip_id')) }}">
                         <i class="bi bi-download me-2 text-info"></i>Export order items as Excel

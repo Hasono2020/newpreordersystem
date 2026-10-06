@@ -19,6 +19,7 @@ use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\CsAgentController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SalesAdjustmentController;
+use App\Http\Controllers\TripInvoicePdfController;
 
 // Auth
 Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
@@ -31,6 +32,7 @@ Route::middleware('auth')->group(function () {
 
     // Trips
     Route::resource('trips', TripController::class);
+    Route::get('trips/{trip}/invoices.pdf', TripInvoicePdfController::class)->middleware('perm:orders.export')->name('trips.invoices.pdf');
 
     // Products — view always allowed; write actions gated by permission
     Route::get('products-export', [ProductController::class, 'export'])->name('products.export');
