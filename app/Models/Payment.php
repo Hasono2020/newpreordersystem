@@ -43,6 +43,17 @@ class Payment extends Model
         }
         return ucfirst($this->type);
     }
+    /**
+     * The Credit Note / Sales Return number (e.g. CR/B4/10/000007, RP/B4/10/000007)
+     * behind a refund, or null for an ordinary payment. Read from the linked
+     * adjustment itself rather than the free-text "reference" field, which anyone
+     * could have typed over.
+     */
+    public function documentNumber(): ?string
+    {
+        return $this->type === 'refund' ? $this->salesAdjustment?->adjustment_number : null;
+    }
+
     public function isVerified(): bool    { return $this->verification_status === 'verified'; }
     public function isDisputed(): bool    { return $this->verification_status === 'disputed'; }
     public function isUnverified(): bool  { return $this->verification_status === 'unverified'; }

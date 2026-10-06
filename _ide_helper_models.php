@@ -259,6 +259,7 @@ namespace App\Models{
 /**
  * @property int $id
  * @property int $order_id
+ * @property int|null $sales_adjustment_id
  * @property string|null $batch_id
  * @property numeric $amount
  * @property string $type
@@ -297,6 +298,7 @@ namespace App\Models{
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Payment wherePaidAt($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Payment whereRecordedBy($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Payment whereReference($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Payment whereSalesAdjustmentId($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Payment whereType($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Payment whereUpdatedAt($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Payment whereVerificationStatus($value)
@@ -495,35 +497,85 @@ namespace App\Models{
 
 namespace App\Models{
 /**
- * One table, two types — a Sales Return (goods come back, tied to specific
- * order items) and a Credit Note (money refunded with no goods movement,
- * no items). Both reduce what the order owes and both create a linked
- * refund Payment; the only structural difference is whether
- * sales_adjustment_items rows exist for this record.
+ * One table, two types:
+ *  - Sales Return: goods come back, tied to specific order items. Shrinks
+ *    those items (so the order total drops) and refunds money.
  *
- * @property-read \App\Models\User|null $createdBy
+ * - Credit Note: money refunded with NO goods movement and no items. It
+ *    only reduces what the customer has PAID; the order total is untouched
+ *    because they still keep everything. (Lowering the total too would move
+ *    paid and owed together and never clear an overpayment.)
+ * Both create a linked, auto-verified refund Payment.
+ *
+ * @property int $id
+ * @property string $type
+ * @property string $adjustment_number
+ * @property int $order_id
+ * @property int $trip_id
+ * @property numeric $amount
+ * @property string|null $reason
+ * @property int $created_by
+ * @property \Illuminate\Support\Carbon|null $voided_at
+ * @property int|null $voided_by
+ * @property string|null $void_reason
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property-read \App\Models\User $createdBy
  * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\SalesAdjustmentItem> $items
  * @property-read int|null $items_count
- * @property-read \App\Models\Order|null $order
+ * @property-read \App\Models\Order $order
  * @property-read \App\Models\Payment|null $payment
- * @property-read \App\Models\Trip|null $trip
+ * @property-read \App\Models\Trip $trip
  * @property-read \App\Models\User|null $voidedBy
  * @method static \Illuminate\Database\Eloquent\Builder<static>|SalesAdjustment newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|SalesAdjustment newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|SalesAdjustment query()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|SalesAdjustment whereAdjustmentNumber($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|SalesAdjustment whereAmount($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|SalesAdjustment whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|SalesAdjustment whereCreatedBy($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|SalesAdjustment whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|SalesAdjustment whereOrderId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|SalesAdjustment whereReason($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|SalesAdjustment whereTripId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|SalesAdjustment whereType($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|SalesAdjustment whereUpdatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|SalesAdjustment whereVoidReason($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|SalesAdjustment whereVoidedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|SalesAdjustment whereVoidedBy($value)
  */
 	class SalesAdjustment extends \Eloquent {}
 }
 
 namespace App\Models{
 /**
+ * @property int $id
+ * @property int $sales_adjustment_id
+ * @property int|null $order_item_id
+ * @property int|null $product_id
+ * @property int|null $product_variant_id
+ * @property int $quantity
+ * @property numeric $unit_price
+ * @property numeric $line_total
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
  * @property-read \App\Models\OrderItem|null $orderItem
  * @property-read \App\Models\Product|null $product
- * @property-read \App\Models\SalesAdjustment|null $salesAdjustment
+ * @property-read \App\Models\SalesAdjustment $salesAdjustment
  * @property-read \App\Models\ProductVariant|null $variant
  * @method static \Illuminate\Database\Eloquent\Builder<static>|SalesAdjustmentItem newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|SalesAdjustmentItem newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|SalesAdjustmentItem query()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|SalesAdjustmentItem whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|SalesAdjustmentItem whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|SalesAdjustmentItem whereLineTotal($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|SalesAdjustmentItem whereOrderItemId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|SalesAdjustmentItem whereProductId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|SalesAdjustmentItem whereProductVariantId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|SalesAdjustmentItem whereQuantity($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|SalesAdjustmentItem whereSalesAdjustmentId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|SalesAdjustmentItem whereUnitPrice($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|SalesAdjustmentItem whereUpdatedAt($value)
  */
 	class SalesAdjustmentItem extends \Eloquent {}
 }
@@ -615,6 +667,8 @@ namespace App\Models{
  * @property string $name
  * @property int|null $batch_number
  * @property int $next_order_seq
+ * @property int $next_return_seq
+ * @property int $next_credit_note_seq
  * @property string|null $destination
  * @property \Illuminate\Support\Carbon|null $trip_date
  * @property \Illuminate\Support\Carbon|null $order_deadline
@@ -643,7 +697,9 @@ namespace App\Models{
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Trip whereDestination($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Trip whereId($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Trip whereName($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Trip whereNextCreditNoteSeq($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Trip whereNextOrderSeq($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Trip whereNextReturnSeq($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Trip whereNotes($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Trip whereOrderDeadline($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Trip whereStatus($value)

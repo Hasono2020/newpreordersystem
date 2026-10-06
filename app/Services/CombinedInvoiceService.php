@@ -31,8 +31,10 @@ class CombinedInvoiceService
      * fee for it, the best promo, and the discounts that promo gives.
      *
      * @param  Collection<int, Order> $orders  must have items loaded (and each order's shippingArea)
+     * @param  int|string|null $tripId  an int from the PDF (the trip's id), a string from the on-screen
+     *                                 invoice (straight from the URL), or null — hence the union type
      */
-    public function priceBreakdown(Customer $customer, Collection $orders, $tripId): array
+    public function priceBreakdown(Customer $customer, Collection $orders, int|string|null $tripId): array
     {
         $customer->loadMissing('defaultShippingArea');
 
@@ -73,7 +75,7 @@ class CombinedInvoiceService
      *
      * @param  Collection<int, Order> $orders  that customer's orders in the trip, items/payments loaded
      */
-    public function build(Customer $customer, Collection $orders, $tripId): array
+    public function build(Customer $customer, Collection $orders, int|string|null $tripId): array
     {
         $p = $this->priceBreakdown($customer, $orders, $tripId);
 
@@ -117,6 +119,7 @@ class CombinedInvoiceService
             ->map(fn ($pay) => [
                 'date'   => \Carbon\Carbon::parse($pay->paid_at)->format('d M Y'),
                 'label'  => $pay->displayType(),
+                'number' => $pay->documentNumber(), // CR/… or RP/… for a Credit Note / Sales Return
                 'refund' => $pay->type === 'refund',
                 'amount' => (float) $pay->amount,
             ])->values()->all();

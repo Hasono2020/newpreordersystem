@@ -204,8 +204,11 @@ td, th { vertical-align: top; text-align: left; }
                     <table class="pay" cellspacing="0" cellpadding="0">
                         @foreach($inv['payments'] as $pay)
                         <tr>
-                            <td>{{ $pay['date'] }} &mdash; {{ $pay['label'] }}</td>
-                            <td class="r {{ $pay['refund'] ? 'red' : 'grn' }}"><b>{{ $pay['refund'] ? '-' : '+' }} {{ $rp($pay['amount']) }}</b></td>
+                            {{-- Label + amount on one line; date and (for a Credit Note / Sales Return) its
+                                 document number underneath. In this narrow column a long label like
+                                 "Sales Return" plus a date and an amount would wrap. --}}
+                            <td>{{ $pay['label'] }}<br><span class="muted" style="font-size:5.8pt;">{{ $pay['date'] }}</span>@if($pay['number'])<br><span class="muted" style="font-size:5.8pt;">{{ $pay['number'] }}</span>@endif</td>
+                            <td class="r {{ $pay['refund'] ? 'red' : 'grn' }}" style="width:64pt; white-space:nowrap;"><b>{{ $pay['refund'] ? '-' : '+' }} {{ $rp($pay['amount']) }}</b></td>
                         </tr>
                         @endforeach
                     </table>

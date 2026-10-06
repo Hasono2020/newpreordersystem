@@ -284,7 +284,7 @@ td.r { text-align:right; }
             <h4>Payment History</h4>
             @foreach($allPayments as $pay)
                 <div class="pay-row">
-                    <span>{{ \Carbon\Carbon::parse($pay->paid_at)->format('d M Y') }} &mdash; {{ $pay->displayType() }}</span>
+                    <span>{{ \Carbon\Carbon::parse($pay->paid_at)->format('d M Y') }} &mdash; {{ $pay->displayType() }}@if($pay->documentNumber()) <span style="font-family:monospace;font-size:9px;color:#64748b;">{{ $pay->documentNumber() }}</span>@endif</span>
                     <span style="color:{{ $pay->type === 'refund' ? '#dc2626' : '#16a34a' }};font-weight:600;">
                         {{ $pay->type === 'refund' ? '−' : '+' }} Rp {{ number_format($pay->amount, 0, ',', '.') }}
                     </span>
