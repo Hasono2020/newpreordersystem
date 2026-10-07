@@ -281,28 +281,22 @@
     {{-- Verification summary bar (finance/admin only) --}}
     @if(auth()->user()->hasPermission('payments.verify'))
     <div class="row g-2 mb-3">
-        <div class="col-6 col-md-3">
+        <div class="col-4">
             <div class="card text-center py-2">
                 <div class="small text-muted">Unverified</div>
                 <div class="fw-semibold text-warning fs-5">{{ $verificationCounts['unverified'] ?? 0 }}</div>
             </div>
         </div>
-        <div class="col-6 col-md-3">
+        <div class="col-4">
             <div class="card text-center py-2">
                 <div class="small text-muted">Verified</div>
                 <div class="fw-semibold text-success fs-5">{{ $verificationCounts['verified'] ?? 0 }}</div>
             </div>
         </div>
-        <div class="col-6 col-md-3">
+        <div class="col-4">
             <div class="card text-center py-2">
                 <div class="small text-muted">Disputed</div>
                 <div class="fw-semibold text-danger fs-5">{{ $verificationCounts['disputed'] ?? 0 }}</div>
-            </div>
-        </div>
-        <div class="col-6 col-md-3">
-            <div class="card text-center py-2">
-                <div class="small text-muted">Total Verified (Rp)</div>
-                <div class="fw-semibold fs-6">{{ number_format($verificationCounts['verified_amount'] ?? 0, 0, ',', '.') }}</div>
             </div>
         </div>
     </div>

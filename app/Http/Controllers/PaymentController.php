@@ -157,15 +157,12 @@ class PaymentController extends Controller
         if (Auth::user()->isOwnDataOnly()) {
             $vcBase->whereHas('order', fn($q) => $q->where('created_by', Auth::id()));
         }
-        // Refunds are money going OUT, so they're subtracted — summing every
-        // row's amount as-is made a refund look like extra money received.
-        $verifiedBase = (clone $vcBase)->where('verification_status', 'verified');
+        // Just the three counts. (There used to be a "Total Verified (Rp)" money total here; it was
+        // removed from the Payment Log on request, so the amount is no longer worked out at all.)
         $verificationCounts = [
-            'unverified'      => (clone $vcBase)->where('verification_status', 'unverified')->count(),
-            'verified'        => (clone $vcBase)->where('verification_status', 'verified')->count(),
-            'disputed'        => (clone $vcBase)->where('verification_status', 'disputed')->count(),
-            'verified_amount' => (clone $verifiedBase)->where('type', '!=', 'refund')->sum('amount')
-                               - (clone $verifiedBase)->where('type', 'refund')->sum('amount'),
+            'unverified' => (clone $vcBase)->where('verification_status', 'unverified')->count(),
+            'verified'   => (clone $vcBase)->where('verification_status', 'verified')->count(),
+            'disputed'   => (clone $vcBase)->where('verification_status', 'disputed')->count(),
         ];
 
         // ── Ready to Pack: customers whose orders in this trip are ALL paid + verified ──
