@@ -432,9 +432,12 @@ class CombinedInvoiceService
      *                                  (staff who can only see their own data)
      * @return Collection<int, array>
      */
+    /** Everything an invoice needs loaded — shared so a whole-trip build and a slice of it never differ. */
+    private const INVOICE_RELATIONS = ['customer.defaultShippingArea', 'items.product', 'items.variant', 'payments.salesAdjustment', 'trip', 'shippingArea'];
+
     public function forTrip(Trip $trip, ?int $onlyCreatedBy = null): Collection
     {
-        $query = Order::with(['customer.defaultShippingArea', 'items.product', 'items.variant', 'payments.salesAdjustment', 'trip', 'shippingArea'])
+        $query = Order::with(self::INVOICE_RELATIONS)
             ->where('trip_id', $trip->id)
             ->orderByRaw('COALESCE(ordered_at, created_at) ASC')
             ->orderBy('id');
@@ -447,6 +450,58 @@ class CombinedInvoiceService
             ->groupBy('customer_id')
             ->map(fn ($group) => $this->build($group->first()->customer, $group->values(), $trip->id))
             ->sortBy(fn ($invoice) => mb_strtolower($invoice['customer']['name']))
+            ->values();
+    }
+
+    /**
+     * The ids of every customer with an order in this trip, A–Z by name — one light query,
+     * no orders loaded. This is what a background build is cut into parts from: for a trip
+     * with thousands of customers, loading every order just to count and sort them is
+     * exactly the cost the background build exists to avoid.
+     *
+     * @return list<int>
+     */
+    public function customerIdsForTrip(Trip $trip, ?int $onlyCreatedBy = null): array
+    {
+        return Order::query()
+            ->join('customers', 'customers.id', '=', 'orders.customer_id')
+            ->where('orders.trip_id', $trip->id)
+            ->when($onlyCreatedBy !== null, fn ($q) => $q->where('orders.created_by', $onlyCreatedBy))
+            ->select('customers.id', 'customers.name')
+            ->distinct()
+            ->get()
+            ->sortBy(fn ($c) => mb_strtolower((string) $c->name) . '|' . str_pad((string) $c->id, 12, '0', STR_PAD_LEFT))
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Invoices for just these customers, in the order the ids are given (so a slice of the
+     * A–Z list from customerIdsForTrip() comes back A–Z). Same calculation as forTrip().
+     *
+     * @param  list<int> $customerIds
+     */
+    public function forCustomers(Trip $trip, array $customerIds, ?int $onlyCreatedBy = null): Collection
+    {
+        if ($customerIds === []) {
+            return collect();
+        }
+
+        $orders = Order::with(self::INVOICE_RELATIONS)
+            ->where('trip_id', $trip->id)
+            ->whereIn('customer_id', $customerIds)
+            ->when($onlyCreatedBy !== null, fn ($q) => $q->where('created_by', $onlyCreatedBy))
+            ->orderByRaw('COALESCE(ordered_at, created_at) ASC')
+            ->orderBy('id')
+            ->get();
+
+        $position = array_flip($customerIds);
+
+        return $orders->groupBy('customer_id')
+            ->sortBy(fn ($group, $customerId) => $position[$customerId] ?? PHP_INT_MAX)
+            ->map(fn ($group) => $this->build($group->first()->customer, $group->values(), $trip->id))
             ->values();
     }
 }

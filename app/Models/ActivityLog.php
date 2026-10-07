@@ -68,6 +68,7 @@ class ActivityLog extends Model
             'payment.reallocation_reversed' => 'bg-warning text-dark',
             'invoice.trip_pdf_downloaded' => 'bg-secondary',
             'sales_adjustment.duplicate_blocked' => 'bg-secondary',
+            'invoice.export_started' => 'bg-secondary',
             'order.deleted'         => 'bg-danger',
             'order.bulk_deleted'    => 'bg-danger',
             'order.updated'         => 'bg-warning text-dark',

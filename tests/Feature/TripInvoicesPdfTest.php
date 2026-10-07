@@ -309,7 +309,7 @@ test('a bigger trip comes back as one zip of several PDFs, split in alphabetical
     $zip->close();
 })->skip(fn () => dompdfMissing(), 'dompdf is not installed (composer require dompdf/dompdf)');
 
-test('a trip over the size limit is refused with a clear message instead of timing out', function () {
+test('a trip over the size limit is offered a background build instead of timing out', function () {
     config(['invoices.pdf_customers_per_file' => 2, 'invoices.pdf_max_customers' => 3]);
 
     $admin = $this->adminUser();
@@ -318,11 +318,13 @@ test('a trip over the size limit is refused with a clear message instead of timi
         invoiceOrder($trip, invoiceCustomer($this, $admin, $name), $admin);
     }
 
+    // Too big to build while the browser waits: no PDF, no error page — it lands on the page
+    // that offers to build it in the background, with the trip already chosen.
     $response = $this->actingAs($admin)->from(route('orders.index'))->get(route('trips.invoices.pdf', $trip));
 
-    $response->assertRedirect(route('orders.index'));
-    $response->assertSessionHas('error');
-    expect(session('error'))->toContain('4 customers');
+    $response->assertRedirect(route('invoice-exports.index', ['trip' => $trip->id]));
+    $response->assertSessionHas('warning');
+    expect(session('warning'))->toContain('4 customers');
 })->skip(fn () => dompdfMissing(), 'dompdf is not installed (composer require dompdf/dompdf)');
 
 test('a trip with no orders says so instead of producing a blank PDF', function () {

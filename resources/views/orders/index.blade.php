@@ -119,6 +119,12 @@
                         </span>
                     @endif
                 </li>
+                <li>
+                    <a class="dropdown-item" href="{{ route('invoice-exports.index') }}">
+                        <i class="bi bi-hourglass-split me-2 text-secondary"></i>Invoice PDF builds
+                        <small class="d-block text-muted">Progress of big trips built in the background</small>
+                    </a>
+                </li>
                 @endif
                 <li>
                     <a onclick="showExport('Preparing your export file. Please wait…')" class="dropdown-item" href="{{ route('orders.items.export', request()->only('trip_id')) }}">

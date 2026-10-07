@@ -319,7 +319,7 @@ test('PHP memory_limit strings are read correctly', function () {
     expect(TripInvoicePdfController::iniBytes(''))->toBe(0);
 });
 
-test('a trip that is too big is refused BEFORE any invoice is built', function () {
+test('a trip that is too big is handed to the background build BEFORE any invoice is built', function () {
     config(['invoices.pdf_customers_per_file' => 2, 'invoices.pdf_max_customers' => 3]);
 
     $admin = $this->adminUser();
@@ -333,8 +333,8 @@ test('a trip that is too big is refused BEFORE any invoice is built', function (
 
     $response = $this->actingAs($admin)->from(route('orders.index'))->get(route('trips.invoices.pdf', $trip));
 
-    $response->assertRedirect(route('orders.index'));
-    expect(session('error'))->toContain('4 customers');
+    $response->assertRedirect(route('invoice-exports.index', ['trip' => $trip->id]));
+    expect(session('warning'))->toContain('4 customers');
 })->skip(fn () => ! class_exists(\Dompdf\Dompdf::class), 'dompdf is not installed (composer require dompdf/dompdf)');
 
 test('an empty trip is also refused before anything is built', function () {

@@ -27,3 +27,9 @@ Schedule::command('images:cleanup')
 Schedule::command('orders:find-duplicates --days=3 --log')
     ->dailyAt('04:00')
     ->withoutOverlapping();
+
+// Daily: remove finished invoice builds past their keep-time (they can be hundreds of MB),
+// and stop any that stalled. Runs after the other nightly jobs.
+Schedule::command('invoices:prune')
+    ->dailyAt('04:30')
+    ->withoutOverlapping();

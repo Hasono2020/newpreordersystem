@@ -20,6 +20,7 @@ use App\Http\Controllers\CsAgentController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SalesAdjustmentController;
 use App\Http\Controllers\TripInvoicePdfController;
+use App\Http\Controllers\InvoiceExportController;
 
 // Auth
 Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
@@ -33,6 +34,14 @@ Route::middleware('auth')->group(function () {
     // Trips
     Route::resource('trips', TripController::class);
     Route::get('trips/{trip}/invoices.pdf', TripInvoicePdfController::class)->middleware('perm:orders.export')->name('trips.invoices.pdf');
+
+    // Whole-trip invoices for trips too big to build while you wait: built on the queue, downloaded as one ZIP.
+    Route::middleware('perm:orders.export')->group(function () {
+        Route::get('invoice-exports', [InvoiceExportController::class, 'index'])->name('invoice-exports.index');
+        Route::post('trips/{trip}/invoice-exports', [InvoiceExportController::class, 'store'])->name('trips.invoice-exports.store');
+        Route::get('invoice-exports/{invoiceExport}/download', [InvoiceExportController::class, 'download'])->name('invoice-exports.download');
+        Route::delete('invoice-exports/{invoiceExport}', [InvoiceExportController::class, 'destroy'])->name('invoice-exports.destroy');
+    });
 
     // Products — view always allowed; write actions gated by permission
     Route::get('products-export', [ProductController::class, 'export'])->name('products.export');

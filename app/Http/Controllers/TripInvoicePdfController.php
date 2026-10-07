@@ -56,10 +56,10 @@ class TripInvoicePdfController extends Controller
         }
 
         if ($customerCount > $maxCustomers) {
-            return back()->with('error',
-                "\"{$trip->name}\" has {$customerCount} customers — more than the {$maxCustomers}"
-                . ' that can be built in one download without risking a timeout. '
-                . 'Use the individual combined invoices for now, or ask for the background-generation version.');
+            // Too many to build while the browser waits — hand over to the background build,
+            // which cuts it into parts on the queue and gives back one ZIP.
+            return redirect()->route('invoice-exports.index', ['trip' => $trip->id])
+                ->with('warning', "\"{$trip->name}\" has " . number_format($customerCount) . " customers — too many for an instant download, so it can be built in the background instead.");
         }
 
         $all = $invoices->forTrip($trip, $ownerId);

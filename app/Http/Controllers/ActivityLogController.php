@@ -46,6 +46,7 @@ class ActivityLogController extends Controller
             'payment.reallocation_reversed' => 'Moved credit reversed',
             'invoice.trip_pdf_downloaded' => 'Trip invoices PDF downloaded',
             'sales_adjustment.duplicate_blocked' => 'Duplicate refund submission blocked',
+            'invoice.export_started' => 'Invoice build started',
             'payment.batch_voided'     => 'Payment batch voided',
             'order.updated'            => 'Order edited',
             'order.deleted'            => 'Order deleted',
