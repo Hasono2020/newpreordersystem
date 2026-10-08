@@ -92,8 +92,8 @@ td.right { text-align:right; }
     </a>
     @if($adjustments->isNotEmpty())
         <span class="no-print" style="margin-left:16px;display:inline-flex;border:1px solid #475569;border-radius:6px;overflow:hidden;">
-            <a href="{{ request()->fullUrlWithQuery(['view' => null]) }}" style="{{ $viewMode === 'current' ? 'padding:6px 12px;font-size:12px;font-weight:700;text-decoration:none;background:#3b82f6;color:#fff;' : 'padding:6px 12px;font-size:12px;text-decoration:none;background:transparent;color:#cbd5e1;' }}">After returns &amp; credits</a>
-            <a href="{{ request()->fullUrlWithQuery(['view' => 'original']) }}" style="{{ $viewMode === 'original' ? 'padding:6px 12px;font-size:12px;font-weight:700;text-decoration:none;background:#3b82f6;color:#fff;' : 'padding:6px 12px;font-size:12px;text-decoration:none;background:transparent;color:#cbd5e1;' }}">Before (original)</a>
+            <a href="{{ request()->fullUrlWithQuery(['view' => null]) }}" onclick="window.location.replace(this.href); return false;" style="{{ $viewMode === 'current' ? 'padding:6px 12px;font-size:12px;font-weight:700;text-decoration:none;background:#3b82f6;color:#fff;' : 'padding:6px 12px;font-size:12px;text-decoration:none;background:transparent;color:#cbd5e1;' }}">After returns &amp; credits</a>
+            <a href="{{ request()->fullUrlWithQuery(['view' => 'original']) }}" onclick="window.location.replace(this.href); return false;" style="{{ $viewMode === 'original' ? 'padding:6px 12px;font-size:12px;font-weight:700;text-decoration:none;background:#3b82f6;color:#fff;' : 'padding:6px 12px;font-size:12px;text-decoration:none;background:transparent;color:#cbd5e1;' }}">Before (original)</a>
         </span>
     @endif
     <button id="downloadImageBtn" style="margin-left:auto;background:#16a34a;color:#fff;border:none;padding:7px 20px;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600;">

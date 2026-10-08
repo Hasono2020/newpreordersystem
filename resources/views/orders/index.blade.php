@@ -1,363 +1,504 @@
-@php
-    $storeName    = \App\Models\Setting::get('store_name', config('app.name'));
-    $storeTagline = \App\Models\Setting::get('store_tagline', '');
-    $storePhone   = \App\Models\Setting::get('store_phone', '');
-    $storeAddress = \App\Models\Setting::get('store_address', '');
-@endphp
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Invoice {{ $order->order_number }}</title>
-<style>
-* { margin:0; padding:0; box-sizing:border-box; }
-body { font-family: 'Segoe UI', Arial, sans-serif; font-size:13px; color:#1a1a1a; background:#fff; }
+@extends('layouts.app')
+@section('title', 'Orders')
+@section('page-title', 'Orders')
 
-.page { max-width:750px; margin:0 auto; padding:36px 40px; }
+@section('content')
 
-/* Header */
-.invoice-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:28px; padding-bottom:20px; border-bottom:2px solid #1e2a3a; }
-.brand-name { font-size:22px; font-weight:800; color:#1e2a3a; letter-spacing:-.5px; }
-.brand-sub  { font-size:11px; color:#64748b; margin-top:3px; }
-.invoice-meta { text-align:right; }
-.invoice-meta .inv-num { font-size:18px; font-weight:700; color:#1e2a3a; }
-.invoice-meta .inv-date { font-size:11px; color:#64748b; margin-top:4px; }
-.invoice-meta .status-badge { display:inline-block; margin-top:6px; padding:3px 10px; border-radius:20px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; }
-.badge-paid    { background:#dcfce7; color:#166534; }
-.badge-partial { background:#fef9c3; color:#713f12; }
-.badge-unpaid  { background:#fee2e2; color:#991b1b; }
-
-/* Customer & Trip info */
-.info-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:24px; }
-.info-box { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px 16px; }
-.info-box h4 { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:#94a3b8; margin-bottom:8px; }
-.info-box p  { font-size:13px; color:#1e293b; line-height:1.55; }
-.info-box .name { font-weight:700; font-size:14px; }
-
-/* Items table */
-.section-title { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:#64748b; margin-bottom:10px; }
-table { width:100%; border-collapse:collapse; margin-bottom:20px; }
-table thead th { background:#1e2a3a; color:#fff; padding:9px 12px; text-align:left; font-size:11px; font-weight:600; }
-table thead th:last-child, table thead th.right { text-align:right; }
-table tbody td { padding:9px 12px; border-bottom:1px solid #f1f5f9; font-size:12.5px; vertical-align:middle; }
-table tbody tr:last-child td { border-bottom:none; }
-table tbody tr:hover td { background:#f8fafc; }
-td.right { text-align:right; }
-.item-name { font-weight:600; }
-.item-meta { font-size:11px; color:#64748b; margin-top:2px; }
-.status-pill { display:inline-block; padding:1px 7px; border-radius:10px; font-size:10px; font-weight:600; }
-.s-pending   { background:#fef9c3; color:#854d0e; }
-.s-confirmed { background:#dbeafe; color:#1e40af; }
-.s-arrived   { background:#dcfce7; color:#166534; }
-.s-sold_out  { background:#fee2e2; color:#991b1b; }
-.s-cancelled { background:#f1f5f9; color:#64748b; }
-.s-purchased { background:#ede9fe; color:#5b21b6; }
-
-/* Totals */
-.totals-wrap { display:flex; justify-content:flex-end; margin-bottom:24px; }
-.totals-table { width:280px; }
-.totals-table tr td { padding:5px 0; font-size:13px; }
-.totals-table tr td:last-child { text-align:right; font-weight:600; }
-.totals-table .total-row td { border-top:2px solid #1e2a3a; padding-top:10px; font-size:16px; font-weight:800; color:#1e2a3a; }
-.totals-table .discount-row td { color:#16a34a; }
-.totals-table .balance-row td { color:{{ $order->remaining_balance > 0 ? '#dc2626' : '#16a34a' }}; }
-
-/* Payments */
-.payment-section { margin-bottom:24px; }
-.payment-row { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px dashed #e2e8f0; font-size:12px; }
-.payment-row:last-child { border-bottom:none; }
-
-/* Notes */
-.notes-box { background:#fffbeb; border:1px solid #fde68a; border-radius:6px; padding:10px 14px; margin-bottom:20px; font-size:12px; }
-.notes-box span { font-weight:600; color:#92400e; }
-
-/* Footer */
-.invoice-footer { border-top:1px solid #e2e8f0; padding-top:16px; text-align:center; font-size:11px; color:#94a3b8; }
-
-/* Print */
-@media print {
-    body { background:#fff; }
-    .no-print { display:none !important; }
-    .page { padding:20px; }
-}
-</style>
-</head>
-<body>
-
-{{-- Print / Back toolbar --}}
-<div class="no-print" style="background:#1e2a3a;padding:10px 20px;display:flex;align-items:center;gap:12px;">
-    <a href="{{ route('orders.show', $order) }}" style="color:#94a3b8;text-decoration:none;font-size:13px;">
-        ← Back to Order
-    </a>
-    @if($adjustments->isNotEmpty())
-        <span class="no-print" style="margin-left:16px;display:inline-flex;border:1px solid #475569;border-radius:6px;overflow:hidden;">
-            <a href="{{ request()->fullUrlWithQuery(['view' => null]) }}" onclick="window.location.replace(this.href); return false;" style="{{ $viewMode === 'current' ? 'padding:6px 12px;font-size:12px;font-weight:700;text-decoration:none;background:#3b82f6;color:#fff;' : 'padding:6px 12px;font-size:12px;text-decoration:none;background:transparent;color:#cbd5e1;' }}">After returns &amp; credits</a>
-            <a href="{{ request()->fullUrlWithQuery(['view' => 'original']) }}" onclick="window.location.replace(this.href); return false;" style="{{ $viewMode === 'original' ? 'padding:6px 12px;font-size:12px;font-weight:700;text-decoration:none;background:#3b82f6;color:#fff;' : 'padding:6px 12px;font-size:12px;text-decoration:none;background:transparent;color:#cbd5e1;' }}">Before (original)</a>
-        </span>
-    @endif
-    <button id="downloadImageBtn" style="margin-left:auto;background:#16a34a;color:#fff;border:none;padding:7px 20px;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600;">
-        🖼 Download as Image
-    </button>
-    <button onclick="window.print()" style="background:#3b82f6;color:#fff;border:none;padding:7px 20px;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600;">
-        🖨 Print Invoice
-    </button>
-</div>
-
-<div class="page">
-
-    {{-- Header --}}
-    <div class="invoice-header">
-        <div>
-            <div class="brand-name">{{ $storeName }}</div>
-            @if($storeTagline)<div class="brand-sub">{{ $storeTagline }}</div>@endif
-            @if($storePhone)<div class="brand-sub">📱 {{ $storePhone }}</div>@endif
-            @if($storeAddress)<div class="brand-sub">{{ $storeAddress }}</div>@endif
-        </div>
-        <div class="invoice-meta">
-            <div class="inv-num">{{ $order->order_number }}</div>
-            <div class="inv-date">Issued: {{ $order->created_at->format('d M Y') }}</div>
-            <div class="inv-date">Trip: <strong>{{ $order->trip->name }}</strong></div>
-            @php
-                $badgeClass = match($order->payment_status) {
-                    'paid'    => 'badge-paid',
-                    'partial' => 'badge-partial',
-                    default   => 'badge-unpaid',
-                };
-                $badgeLabel = match($order->payment_status) {
-                    'paid'    => 'Fully Paid',
-                    'partial' => 'Partially Paid',
-                    default   => 'Unpaid',
-                };
-            @endphp
-            <div><span class="status-badge {{ $badgeClass }}">{{ $badgeLabel }}</span></div>
-        </div>
+@if(session('import_errors'))
+<div class="alert alert-danger mb-3">
+    <div class="fw-semibold mb-2"><i class="bi bi-x-circle-fill me-1"></i>Import blocked — fix these issues in your Excel file and try again:</div>
+    <ul class="mb-0 ps-3">
+        @foreach(session('import_errors') as $err)
+            <li class="small">{{ $err }}</li>
+        @endforeach
+    </ul>
+    <div class="mt-2 small text-muted">
+        <strong>Tips:</strong> Product codes must exist in the selected trip. Color and Size must exactly match the variant names in the system. Fix all errors listed above, then re-import the file.
     </div>
-
-@if($adjustments->isNotEmpty())
-    @php
-        $adjLabels = $adjustments->map(fn ($a) => ($a->isReturn() ? 'Sales Return ' : 'Credit Note ') . $a->adjustment_number)->implode(', ');
-    @endphp
-    @if($viewMode === 'original')
-        <div style="margin:0 0 10px;padding:7px 11px;border-radius:5px;background:#fef3c7;border:1px solid #f59e0b;color:#78350f;font-size:12px;line-height:1.45;">
-            <strong>ORIGINAL</strong> &mdash; as this invoice stood <strong>before</strong> {{ $adjLabels }}. This is not the amount currently owed; the adjusted invoice is the current one.
-        </div>
-    @else
-        <div style="margin:0 0 10px;padding:7px 11px;border-radius:5px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a8a;font-size:12px;line-height:1.45;">
-            <strong>ADJUSTED</strong> &mdash; includes {{ $adjLabels }}.
-        </div>
-    @endif
+</div>
 @endif
 
-    {{-- Customer + Shipping --}}
-    <div class="info-grid">
-        <div class="info-box">
-            <h4>Bill To</h4>
-            <p class="name">{{ $order->customer->name }}</p>
-            @if($order->customer->phone)
-                <p>📱 {{ $order->customer->phone }}</p>
+@if($noAreaCount > 0 && request('shipping_area') !== 'none')
+<div class="alert alert-warning d-flex justify-content-between align-items-center py-2 mb-3">
+    <div class="small">
+        <i class="bi bi-exclamation-triangle-fill me-1"></i>
+        <strong>{{ $noAreaCount }}</strong> order(s){{ request('trip_id') ? ' in this trip' : '' }} have no shipping area set — shipping can't be calculated until an area is assigned.
+    </div>
+    <a href="{{ route('orders.index', array_merge(request()->only('search','trip_id','payment_status','created_by'), ['shipping_area' => 'none'])) }}"
+       class="btn btn-sm btn-outline-dark py-0">Show them</a>
+</div>
+@endif
+<div class="row g-2 mb-3 align-items-end">
+    <div class="col">
+        <form class="d-flex gap-2 flex-wrap">
+            <input type="text" name="search" class="form-control form-control-sm" style="width:200px;" placeholder="Order # or customer…" value="{{ request('search') }}">
+            <select name="trip_id" class="form-select form-select-sm" style="width:auto;">
+                <option value="">All Trips</option>
+                @foreach($trips as $trip)
+                    <option value="{{ $trip->id }}" {{ request('trip_id') == $trip->id ? 'selected' : '' }}>{{ $trip->name }}</option>
+                @endforeach
+            </select>
+            <select name="payment_status" class="form-select form-select-sm" style="width:auto;">
+                <option value="">All Status</option>
+                <option value="unpaid" {{ request('payment_status')=='unpaid'?'selected':'' }}>Unpaid</option>
+                <option value="partial" {{ request('payment_status')=='partial'?'selected':'' }}>Partial</option>
+                <option value="paid" {{ request('payment_status')=='paid'?'selected':'' }}>Paid</option>
+            </select>
+            <select name="shipping_area" class="form-select form-select-sm" style="width:auto;">
+                <option value="">Any area</option>
+                <option value="none" {{ request('shipping_area')=='none'?'selected':'' }}>⚠ No area set</option>
+                <option value="set"  {{ request('shipping_area')=='set'?'selected':'' }}>Area set</option>
+            </select>
+            @if(!auth()->user()->isOwnDataOnly())
+            <select name="created_by" class="form-select form-select-sm" style="width:auto;">
+                <option value="">All Staff</option>
+                @foreach($staffList as $staff)
+                    <option value="{{ $staff->id }}" {{ request('created_by') == $staff->id ? 'selected' : '' }}>
+                        {{ $staff->name }}
+                    </option>
+                @endforeach
+            </select>
             @endif
-            <p style="margin-top:4px;">
-                <span style="background:#e0e7ff;color:#3730a3;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:600;">
-                    {{ $order->customer->type_label }}
-                </span>
-            </p>
-            @if($order->customer->address)
-                <p style="margin-top:6px;font-size:12px;color:#64748b;">{{ $order->customer->address }}</p>
+            <button class="btn btn-sm btn-outline-secondary">Filter</button>
+            @if(request()->anyFilled(['search','trip_id','payment_status','created_by','shipping_area']))
+                <a href="{{ route('orders.index') }}" class="btn btn-sm btn-link">Clear</a>
             @endif
+        </form>
+    </div>
+    <div class="col-auto d-flex gap-2">
+        @if(auth()->user()->hasPermission('orders.delete'))
+        <div class="dropdown">
+            <button class="btn btn-sm btn-outline-danger dropdown-toggle" data-bs-toggle="dropdown">
+                <i class="bi bi-trash3 me-1"></i>Delete
+            </button>
+            <ul class="dropdown-menu">
+                <li>
+                    <button class="dropdown-item" id="deleteSelectedBtn" disabled onclick="confirmBulkDelete('selected')">
+                        <i class="bi bi-check2-square me-2"></i>Delete selected
+                        <span class="badge bg-danger ms-1" id="selectedCount" style="display:none;"></span>
+                    </button>
+                </li>
+                <li>
+                    <button class="dropdown-item text-danger" onclick="confirmBulkDelete('unpaid')">
+                        <i class="bi bi-x-circle me-2"></i>Delete all unpaid{{ request('trip_id') ? ' (this trip)' : '' }}
+                    </button>
+                </li>
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                    <button class="dropdown-item text-danger" onclick="confirmBulkDelete('trip')">
+                        <i class="bi bi-collection me-2"></i>Delete ALL orders in this trip
+                    </button>
+                </li>
+            </ul>
         </div>
-        <div class="info-box">
-            <h4>Delivery Info</h4>
-            @if($order->shippingArea)
-                <p class="name">{{ $order->shippingArea->name }}</p>
-                @if($order->shippingArea->province)
-                    <p style="color:#64748b;">{{ $order->shippingArea->province }}</p>
-                @endif
-                <p style="margin-top:6px;font-size:12px;">
-                    Weight: <strong>{{ $order->shipping_kg_charged }} kg</strong>
-                    @if($order->customer->use_cargo)
-                        <span style="color:#0369a1;">(includes cargo +1kg)</span>
-                    @endif
-                </p>
-                <p style="font-size:12px;">
-                    Rate:
-                    @if($order->shippingArea->isFlatFee())
-                        Flat Rp {{ number_format($order->shippingArea->flat_fee, 0, ',', '.') }}
+        @endif
+        @if(auth()->user()->hasPermission('orders.export') || auth()->user()->hasPermission('orders.import'))
+        <div class="dropdown">
+            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+                <i class="bi bi-arrow-down-up me-1"></i>
+                @if(auth()->user()->hasPermission('orders.import')) Import / Export @else Export @endif
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end" style="min-width:240px;">
+                <li><h6 class="dropdown-header">Export</h6></li>
+                <li>
+                    <button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#exportOrdersModal">
+                        <i class="bi bi-download me-2 text-success"></i>Export orders as Excel
+                    </button>
+                </li>
+                {{-- One combined invoice per customer for the whole trip, as a PDF. Needs a trip. --}}
+                @if(auth()->user()->hasPermission('orders.export'))
+                <li>
+                    @if(request('trip_id'))
+                        <a onclick="showExport('Building the invoices PDF — a big trip can take a minute…')" class="dropdown-item" href="{{ route('trips.invoices.pdf', request('trip_id')) }}">
+                            <i class="bi bi-file-earmark-pdf me-2 text-danger"></i>Download all invoices (PDF)
+                        </a>
                     @else
-                        Rp {{ number_format($order->shippingArea->price_per_kg, 0, ',', '.') }}/kg
+                        <span class="dropdown-item disabled" title="Pick a trip in the filter first">
+                            <i class="bi bi-file-earmark-pdf me-2 text-danger"></i>Download all invoices (PDF)
+                            <small class="d-block text-muted">Pick a trip first</small>
+                        </span>
                     @endif
-                </p>
-            @else
-                <p style="color:#94a3b8;">No shipping area set</p>
-            @endif
-            @if($order->notes)
-                <p style="margin-top:6px;font-size:11px;color:#92400e;background:#fffbeb;padding:4px 8px;border-radius:4px;">
-                    📝 {{ $order->notes }}
-                </p>
-            @endif
+                </li>
+                <li>
+                    <a class="dropdown-item" href="{{ route('invoice-exports.index') }}">
+                        <i class="bi bi-hourglass-split me-2 text-secondary"></i>Invoice PDF builds
+                        <small class="d-block text-muted">Progress of big trips built in the background</small>
+                    </a>
+                </li>
+                @endif
+                <li>
+                    <a onclick="showExport('Preparing your export file. Please wait…')" class="dropdown-item" href="{{ route('orders.items.export', request()->only('trip_id')) }}">
+                        <i class="bi bi-download me-2 text-info"></i>Export order items as Excel
+                    </a>
+                </li>
+                @if(auth()->user()->hasPermission('orders.import'))
+                <li><hr class="dropdown-divider"></li>
+                <li><h6 class="dropdown-header">Import</h6></li>
+                <li>
+                    <a class="dropdown-item" href="{{ route('orders.import.template') }}" onclick="showExport('Preparing template download…')">
+                        <i class="bi bi-file-earmark-spreadsheet me-2 text-secondary"></i>Download template (.xlsx)
+                    </a>
+                </li>
+                <li>
+                    <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#importOrderModal">
+                        <i class="bi bi-upload me-2 text-primary"></i>Import orders from Excel
+                    </button>
+                </li>
+                @endif
+            </ul>
+        </div>
+        @endif
+@if(auth()->user()->hasPermission('orders.create'))
+        <a href="{{ route('orders.create') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>New Order</a>
+        @endif
+    </div>
+</div>
+
+{{-- Import Order Modal --}}
+<div class="modal fade" id="importOrderModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-upload me-2"></i>Import Orders from Excel</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning py-2 px-3 small mb-3">
+                    <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                    <strong>Import order affects FIFO priority.</strong><br>
+                    If <em>Ordered At</em> column is blank, each row gets a timestamp based on its row position — row 2 is earlier than row 6.<br>
+                    <strong>If importing multiple files: import earliest orders first, latest orders last.</strong>
+                </div>
+                <div class="alert alert-light border small mb-3">
+                    <strong>Columns (14) — Order Import format:</strong><br>
+                    <code class="small">DIBUAT OLEH · NO · NAMA · IG/WA · NO HP · KOTA · KODE · WARNA · SIZE · HARGA SATUAN · DP · TGL DP · AN · KET</code>
+                    <span class="text-muted d-block mt-1">
+                        • <strong>Each row = 1 order + 1 item.</strong> Row order = FIFO priority (row 1 gets stock first).<br>
+                        • <strong>DIBUAT OLEH</strong> is set automatically to the logged-in user — ignored on import.<br>
+                        • <strong>IG/WA</strong> = CS agent who handled the livechat — <strong>required</strong>, must match an existing CS agent name.<br>
+                        • <strong>NO HP</strong> = customer phone number.<br>
+                        • <strong>KODE</strong> must exist in the selected trip. <strong>WARNA/SIZE</strong> must match exactly.<br>
+                        • Leave <strong>HARGA SATUAN</strong> blank to use system product price.<br>
+                        • <strong>AN</strong> = Atas Nama / order notes.<br>
+                        • All rows are validated before import — any error blocks the entire file.
+                    </span>
+                    <a onclick="showExport('Preparing template download…')" href="{{ route('orders.import.template') }}" class="small mt-1 d-inline-block">
+                        <i class="bi bi-download me-1"></i>Download template (.xlsx)
+                    </a>
+                </div>
+                <form method="POST" action="{{ route('orders.import') }}" enctype="multipart/form-data" onsubmit="const ov=document.getElementById('processingOverlay'); document.getElementById('processingMsg').textContent='Uploading file…'; ov.style.display='flex'; setTimeout(()=>{ov.style.display='none';}, 4000);">
+                    @csrf
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Trip <span class="text-danger">*</span></label>
+                        <select name="trip_id" class="form-select" required>
+                            <option value="">Select trip…</option>
+                            @foreach(\App\Models\Trip::orderByDesc('id')->get() as $trip)
+                                <option value="{{ $trip->id }}" {{ request('trip_id') == $trip->id ? 'selected' : '' }}>
+                                    {{ $trip->name }}
+                                </option>
+                            @endforeach
+                        </select>
+                        <div class="form-text text-muted">Products must exist in this trip. Color/Size must match exactly.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Excel File (.xlsx) <span class="text-danger">*</span></label>
+                        <input type="file" name="file" class="form-control" accept=".xlsx,.xls" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-upload me-1"></i>Import Orders
+                    </button>
+                </form>
+            </div>
         </div>
     </div>
+</div>
 
-    {{-- Items --}}
-    <div class="section-title">Order Items</div>
-    <table>
-        <thead>
-            <tr>
-                <th style="width:40%;">Product</th>
-                <th>Variant</th>
-                <th class="right">Qty</th>
-                <th class="right">Unit Price</th>
-                <th class="right">Total</th>
-                <th>Status</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach($order->items->sortBy(fn($i) => $i->product->product_code ?? '') as $item)
-            @php $soldOut = in_array($item->status, ['sold_out', 'cancelled']); @endphp
-            <tr {{ $soldOut ? 'style=opacity:.55' : '' }}>
-                <td>
-                    <div class="item-name">{{ $item->product->product_code ?? '—' }}</div>
-                </td>
-                <td>{{ $item->variant?->label ?? '—' }}</td>
-                <td class="right">{{ $item->quantity }}</td>
-                <td class="right">{{ $soldOut ? 'Rp 0' : 'Rp '.number_format($item->unit_price, 0, ',', '.') }}</td>
-                <td class="right">{{ $soldOut ? 'Rp 0' : 'Rp '.number_format($item->line_total, 0, ',', '.') }}</td>
-                <td>
-                    <span class="status-pill s-{{ $item->status }}">
-                        {{ ucfirst(str_replace('_', ' ', $item->status)) }}
-                    </span>
-                </td>
-            </tr>
-            @endforeach
-        </tbody>
-    </table>
+{{-- Export filtered by CS agent — a checklist, since several can be picked at
+     once. These are the CS agents shown in the IG/WA column (e.g. "CS1 Endang"),
+     not the staff accounts that typed the orders in. Each order's NO URUT in the
+     file is its position in the full first-in-first-out list of the trip, so
+     filtering never renumbers anything: if CS 2 handled orders 2, 4 and 6, an
+     export of CS 2 alone still shows 2, 4, 6. --}}
+<div class="modal fade" id="exportOrdersModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-scrollable">
+        <div class="modal-content">
+            <form method="GET" action="{{ route('orders.export') }}" onsubmit="showExport('Preparing your export file. Please wait…')">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-download me-2"></i>Export Orders as Excel</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="trip_id" value="{{ request('trip_id') }}">
+                    <label class="form-label fw-semibold">Filter by CS (optional)</label>
+                    <div class="form-text text-muted mb-2">
+                        Leave everything unchecked to export all orders. The NO URUT column keeps each order's
+                        place in the full first-in-first-out list, even when you filter.
+                    </div>
+                    <div class="mb-2">
+                        <button type="button" class="btn btn-sm btn-link p-0 me-3" onclick="document.querySelectorAll('.export-cs-check').forEach(c=>c.checked=true)">Select all</button>
+                        <button type="button" class="btn btn-sm btn-link p-0" onclick="document.querySelectorAll('.export-cs-check').forEach(c=>c.checked=false)">Clear</button>
+                    </div>
+                    <div style="max-height:260px;overflow-y:auto;" class="border rounded p-2">
+                        @foreach($csAgents as $agent)
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input export-cs-check" name="cs_agent_ids[]" value="{{ $agent->id }}" id="exportCs{{ $agent->id }}">
+                            <label class="form-check-label" for="exportCs{{ $agent->id }}">
+                                {{ $agent->name }}@unless($agent->is_active) <span class="text-muted small">(inactive)</span>@endunless
+                            </label>
+                        </div>
+                        @endforeach
+                        <div class="form-check border-top mt-2 pt-2">
+                            <input type="checkbox" class="form-check-input export-cs-check" name="cs_agent_ids[]" value="none" id="exportCsNone">
+                            <label class="form-check-label text-muted" for="exportCsNone">No CS agent assigned</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-download me-1"></i>Export
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 
-    {{-- Totals --}}
-    <div class="totals-wrap">
-        <table class="totals-table">
-            <tr>
-                <td style="color:#64748b;">Subtotal</td>
-                <td>Rp {{ number_format($order->subtotal, 0, ',', '.') }}</td>
-            </tr>
-            @if($order->discount_amount > 0)
-            <tr class="discount-row">
-                <td>Promo Discount</td>
-                <td>− Rp {{ number_format($order->discount_amount, 0, ',', '.') }}</td>
-            </tr>
-            @endif
-            <tr>
-                <td style="color:#64748b;">Shipping Fee</td>
-                <td>Rp {{ number_format($order->shipping_fee, 0, ',', '.') }}</td>
-            </tr>
-            @if($order->shipping_discount > 0)
-            <tr class="discount-row">
-                <td>Shipping Discount</td>
-                <td>− Rp {{ number_format($order->shipping_discount, 0, ',', '.') }}</td>
-            </tr>
-            @endif
-            <tr class="total-row">
-                <td>Total</td>
-                <td>Rp {{ number_format($order->total_amount, 0, ',', '.') }}</td>
-            </tr>
-            <tr>
-                <td style="color:#16a34a;">Paid</td>
-                <td style="color:#16a34a;">Rp {{ number_format($order->deposit_paid, 0, ',', '.') }}</td>
-            </tr>
-            @if($order->remaining_balance < 0)
-            {{-- Paid more than this order costs: credit in the customer's favour, not a debt. --}}
-            <tr class="balance-row" style="color:#16a34a;">
-                <td>Overpaid (credit)</td>
-                <td>Rp {{ number_format(abs($order->remaining_balance), 0, ',', '.') }}</td>
-            </tr>
-            @else
-            <tr class="balance-row">
-                <td>Balance Due</td>
-                <td>Rp {{ number_format($order->remaining_balance, 0, ',', '.') }}</td>
-            </tr>
-            @endif
+{{-- Recent Imports status panel (auto-refreshes while any import is queued/processing) --}}
+<div class="card mb-3" id="recentImportsCard" style="display:none;">
+    <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+        <span class="small fw-semibold"><i class="bi bi-clock-history me-1"></i>Recent Imports</span>
+        <button class="btn btn-sm btn-link p-0" onclick="hideImportsPanel()">Hide</button>
+    </div>
+    <div class="card-body py-2" id="recentImportsBody">
+        <div class="text-muted small">Loading…</div>
+    </div>
+</div>
+
+@if(auth()->user()->hasPermission('orders.delete'))
+<form method="POST" action="{{ route('orders.bulk-destroy') }}" id="bulkDeleteForm">
+    @csrf
+    <input type="hidden" name="action" id="bulkAction">
+    <input type="hidden" name="trip_id" value="{{ request('trip_id') }}">
+</form>
+@endif
+
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0 responsive-cards">
+            <thead class="table-light">
+                <tr>
+                    @if(auth()->user()->isAdmin())
+@if(auth()->user()->hasPermission('orders.delete'))
+                    <th style="width:36px;"><input type="checkbox" id="selectAll" class="form-check-input"></th>
+                    @endif
+                    @endif
+                    <th>Order #</th><th>Customer</th><th>Trip</th><th>Subtotal</th><th>Discount</th><th>Total</th><th>Paid</th><th>Balance</th><th>Status</th><th>Created By</th><th>Created Time</th><th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @forelse($orders as $order)
+                <tr class="{{ $order->isFullyReturned() ? 'table-danger' : '' }}">
+                    @if(auth()->user()->isAdmin())
+@if(auth()->user()->hasPermission('orders.delete'))
+                    <td class="no-label"><input type="checkbox" name="order_ids[]" value="{{ $order->id }}" class="form-check-input order-checkbox" form="bulkDeleteForm"></td>
+                    @endif
+                    @endif
+                    <td class="font-monospace small" data-label="Order #">
+                        {{ $order->order_number }}
+                        @if($order->isFullyReturned())
+                            <span class="badge bg-danger d-block mt-1" style="font-size:.65rem;">RETURN</span>
+                        @endif
+                    </td>
+                    <td data-label="Customer">
+                        <div class="text-end">
+                            <div class="fw-semibold">{{ $order->customer->name }}</div>
+                            <div class="text-muted" style="font-size:.72rem;">{{ $order->customer->type_label }}</div>
+                        </div>
+                    </td>
+                    <td class="small text-muted" data-label="Trip">
+                        {{ $order->trip->name }}
+                        @if(!$order->shipping_area_id)
+                            <span class="badge bg-warning text-dark ms-1" style="font-size:.6rem;" title="No shipping area set — shipping not calculated">
+                                <i class="bi bi-exclamation-triangle-fill"></i> No area
+                            </span>
+                        @endif
+                    </td>
+                    <td class="small" data-label="Subtotal">Rp {{ number_format($order->subtotal, 0, ',', '.') }}</td>
+                    <td class="small text-success" data-label="Discount">
+                        @if($order->discount_amount > 0) -Rp {{ number_format($order->discount_amount, 0, ',', '.') }} @else — @endif
+                    </td>
+                    <td class="fw-semibold" data-label="Total">Rp {{ number_format($order->total_amount, 0, ',', '.') }}</td>
+                    <td class="small text-success" data-label="Paid">Rp {{ number_format($order->deposit_paid, 0, ',', '.') }}</td>
+                    <td class="small {{ $order->remaining_balance > 0 ? 'text-danger' : 'text-success' }}" data-label="Balance">
+                        Rp {{ number_format($order->remaining_balance, 0, ',', '.') }}
+                    </td>
+                    <td data-label="Status">{!! $order->payment_status_badge !!}</td>
+                    <td data-label="Created By" class="small text-muted">{{ $order->createdBy->name ?? '—' }}</td>
+                    <td data-label="Created Time" class="small text-muted text-nowrap">{{ $order->created_at->format('d M Y, H:i') }}</td>
+                    <td class="cell-actions no-label">
+                        <a href="{{ route('orders.show', $order) }}" class="btn btn-sm btn-outline-primary">View</a>
+                        @if(auth()->user()->hasPermission('orders.edit') && (auth()->user()->isAdmin() || auth()->user()->role !== 'staff' || $order->created_by === auth()->id()))
+                        <a href="{{ route('orders.edit', $order) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
+                        @endif
+                        <a href="{{ route('orders.combined-invoice', $order->customer_id) }}?trip_id={{ $order->trip_id }}"
+                           target="_blank" class="btn btn-sm btn-outline-dark"
+                           title="Print combined invoice — all this customer's orders in this trip">
+                            <i class="bi bi-printer me-1"></i>Print
+                        </a>
+                    </td>
+                </tr>
+                @empty
+                <tr><td colspan="{{ auth()->user()->isAdmin() ? 12 : 11 }}" class="text-center text-muted py-4">No orders found</td></tr>
+                @endforelse
+            </tbody>
         </table>
     </div>
-
-    {{-- Payment history — voided payments are excluded, same reasoning as
-         the combined invoice: they're already excluded from deposit_paid,
-         so showing them here would make the invoice look like the customer
-         paid more than they actually did. --}}
-    @php
-        // Same reasoning as the combined invoice: reallocation payments are
-        // an internal correction (moving credit between the customer's own
-        // orders), not a real transaction — excluded from what the
-        // customer sees, though still fully visible on the staff-facing
-        // order page for audit purposes.
-        $invoicePayments = $order->payments
-            ->reject(fn($p) => $p->isVoided())
-            ->reject(fn($p) => $p->method === 'reallocation');
-    @endphp
-    @if($invoicePayments->count())
-    <div class="payment-section">
-        <div class="section-title">Payment History</div>
-        @foreach($invoicePayments as $payment)
-        <div class="payment-row">
-            <span>
-                {{ $payment->paid_at->format('d M Y') }} —
-                <strong>{{ $payment->displayType() }}</strong>
-                @if($payment->method) · {{ $payment->method }} @endif
-                @if($payment->reference) · Ref: {{ $payment->reference }} @endif
-            </span>
-            <span style="{{ $payment->type === 'refund' ? 'color:#dc2626' : 'color:#16a34a' }}; font-weight:600;">
-                {{ $payment->type === 'refund' ? '−' : '+' }}Rp {{ number_format($payment->amount, 0, ',', '.') }}
-            </span>
+    <div class="card-footer bg-white d-flex justify-content-between align-items-center py-2">
+        <div class="d-flex align-items-center gap-2">
+            <span class="small text-muted">{{ $orders->total() }} order(s)</span>
+            <form method="GET" action="{{ route('orders.index') }}" class="d-flex align-items-center gap-1 ms-2">
+                @foreach(request()->except('per_page','page') as $k => $v)
+                    <input type="hidden" name="{{ $k }}" value="{{ $v }}">
+                @endforeach
+                <label class="small text-muted mb-0">Show:</label>
+                <select name="per_page" class="form-select form-select-sm" style="width:70px;" onchange="this.form.submit()">
+                    @foreach([20,50,100,200] as $n)
+                        <option value="{{ $n }}" {{ $perPage==$n?'selected':'' }}>{{ $n }}</option>
+                    @endforeach
+                </select>
+            </form>
         </div>
-        @endforeach
+        <div>{{ $orders->links() }}</div>
     </div>
-    @endif
-
-    {{-- Footer --}}
-    <div class="invoice-footer">
-        <p>Generated {{ now()->format('d M Y H:i') }} · {{ $storeName }}</p>
-    </div>
-
 </div>
+
+@if(auth()->user()->isAdmin())
 <script>
-// html2canvas (~50KB) is only fetched the first time this button is
-// clicked, not on every page load — most invoice views are just to print
-// or check totals, and shouldn't pay for a library they never use.
-let html2canvasReady = null;
-function loadHtml2Canvas() {
-    if (!html2canvasReady) {
-        html2canvasReady = new Promise(function (resolve, reject) {
-            const script = document.createElement('script');
-            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
-            script.onload = resolve;
-            script.onerror = reject;
-            document.head.appendChild(script);
-        });
-    }
-    return html2canvasReady;
+const selectAll   = document.getElementById('selectAll');
+const countBadge  = document.getElementById('selectedCount');
+const deleteBtn   = document.getElementById('deleteSelectedBtn');
+
+function updateCount() {
+    const checked = document.querySelectorAll('.order-checkbox:checked').length;
+    if (deleteBtn) { deleteBtn.disabled = checked === 0; }
+    if (countBadge) { countBadge.style.display = checked > 0 ? 'inline-block' : 'none'; countBadge.textContent = checked; }
 }
 
-document.getElementById('downloadImageBtn').addEventListener('click', function () {
-    const btn = this;
-    btn.disabled = true;
-    const originalText = btn.textContent;
-    btn.textContent = 'Preparing…';
-
-    loadHtml2Canvas().then(function () {
-        btn.textContent = 'Rendering…';
-        // scale:2 for a sharper image when zoomed in on a phone (this is
-        // meant to be shared over WhatsApp, not just viewed on a monitor).
-        return html2canvas(document.querySelector('.page'), { scale: 2, backgroundColor: '#ffffff', useCORS: true });
-    }).then(function (canvas) {
-        const link = document.createElement('a');
-        link.download = 'invoice-{{ \Illuminate\Support\Str::slug($order->order_number) }}.png';
-        link.href = canvas.toDataURL('image/png');
-        link.click();
-    }).catch(function () {
-        alert('Could not load the image renderer. Check your connection and try again.');
-    }).finally(function () {
-        btn.disabled = false;
-        btn.textContent = originalText;
-    });
+selectAll?.addEventListener('change', () => {
+    document.querySelectorAll('.order-checkbox').forEach(c => c.checked = selectAll.checked);
+    updateCount();
 });
+document.querySelectorAll('.order-checkbox').forEach(c => c.addEventListener('change', updateCount));
+
+function confirmBulkDelete(action) {
+    const form = document.getElementById('bulkDeleteForm');
+    document.getElementById('bulkAction').value = action;
+    const tripId = '{{ request("trip_id") }}';
+    const msgs = {
+        selected: `Delete ${document.querySelectorAll('.order-checkbox:checked').length} selected order(s)? This cannot be undone.`,
+        unpaid:   'Delete ALL unpaid orders{{ request("trip_id") ? " for this trip" : "" }}? This cannot be undone.',
+        trip:     tripId
+            ? 'Delete ALL orders in this trip? This cannot be undone.'
+            : 'No trip selected. Please filter by a trip first, then use this option.',
+    };
+    if (action === 'trip' && !tripId) { alert(msgs.trip); return; }
+    if (confirm(msgs[action] || 'Delete?')) form.submit();
+}
 </script>
-</body>
-</html>
+@endif
+@endsection
+
+@push('scripts')
+@if(session('import_errors'))
+<script>
+    // Auto-reopen import modal so user sees errors in context
+    document.addEventListener('DOMContentLoaded', function () {
+        var modal = new bootstrap.Modal(document.getElementById('importOrderModal'));
+        modal.show();
+    });
+</script>
+@endif
+
+<script>
+// ── Recent Imports panel: poll while any import is queued/processing ──
+let importErrorsCache = {}; // job.id -> row_errors[], avoids embedding raw text in HTML attributes
+
+function showImportErrors(jobId) {
+    const errors = importErrorsCache[jobId] || [];
+    alert(errors.length ? errors.join('\n') : 'No error details available.');
+}
+
+function renderImportRow(job) {
+    importErrorsCache[job.id] = job.row_errors || [];
+
+    const badge = {
+        queued:     '<span class="badge bg-secondary">Queued</span>',
+        processing: '<span class="badge bg-info text-dark">Processing…</span>',
+        done:       '<span class="badge bg-success">Done</span>',
+        failed:     '<span class="badge bg-danger">Failed</span>',
+    }[job.status] || job.status;
+
+    let detail = '';
+    if (job.status === 'done') {
+        detail = `Imported ${job.imported_count ?? 0} order(s)` + (job.skipped_count ? `, ${job.skipped_count} skipped` : '') + '.'
+            + (job.recalculated_count ? ` Shipping/promo recalculated for ${job.recalculated_count} customer(s).` : '');
+    } else if (job.status === 'failed') {
+        if (job.row_errors && job.row_errors.length) {
+            detail = `${job.row_errors.length} row error(s) — fix the file and re-import. ` +
+                      `<button class="btn btn-sm btn-link p-0 align-baseline" onclick="showImportErrors(${job.id})">View errors</button>`;
+        } else if (job.error_message) {
+            detail = job.error_message;
+        }
+    } else if (job.status === 'processing' && job.total_rows) {
+        detail = `Processing ${job.total_rows} row(s)…`;
+    }
+
+    return `<div class="d-flex justify-content-between align-items-start py-1 small border-bottom">
+        <div>
+            <span class="font-monospace">${job.original_filename}</span><br>
+            <span class="text-muted">${detail}</span>
+        </div>
+        <div class="text-end ms-2">${badge}</div>
+    </div>`;
+}
+
+let importPollTimer = null;
+let latestSeenJobId = 0; // tracks the newest job.id currently shown, for the Hide-persistence logic
+
+function hideImportsPanel() {
+    // Remember "hidden up to this point" — stays hidden across refresh until a NEWER import appears.
+    localStorage.setItem('importsPanelHiddenUntilId', String(latestSeenJobId));
+    document.getElementById('recentImportsCard').style.display = 'none';
+}
+
+function pollImportStatus() {
+    fetch('{{ route("orders.import.status") }}')
+        .then(r => r.json())
+        .then(jobs => {
+            const card = document.getElementById('recentImportsCard');
+            const body = document.getElementById('recentImportsBody');
+            if (!jobs.length) { card.style.display = 'none'; return; }
+
+            latestSeenJobId = Math.max(...jobs.map(j => j.id));
+
+            const stillActive = jobs.some(j => j.status === 'queued' || j.status === 'processing');
+            const hiddenUntilId = parseInt(localStorage.getItem('importsPanelHiddenUntilId') || '0', 10);
+            // Active imports always show (so you don't miss a failure). Otherwise, respect a prior
+            // Hide click unless a newer import has happened since then.
+            const shouldShow = stillActive || latestSeenJobId > hiddenUntilId;
+
+            body.innerHTML = jobs.map(renderImportRow).join('');
+            card.style.display = shouldShow ? 'block' : 'none';
+
+            if (stillActive && !importPollTimer) {
+                importPollTimer = setInterval(pollImportStatus, 4000);
+            } else if (!stillActive && importPollTimer) {
+                clearInterval(importPollTimer);
+                importPollTimer = null;
+            }
+        })
+        .catch(() => {});
+}
+document.addEventListener('DOMContentLoaded', pollImportStatus);
+</script>
+@endpush
