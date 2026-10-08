@@ -6,6 +6,9 @@
 <div class="row g-2 mb-3 align-items-end">
     <div class="col">
         <form class="d-flex gap-2 flex-wrap">
+            <input type="text" name="search" class="form-control form-control-sm" style="width:260px;"
+                   placeholder="Customer, order no. or RP/CR no.…" value="{{ $search ?? '' }}">
+            <button type="submit" class="btn btn-sm btn-outline-secondary"><i class="bi bi-search me-1"></i>Search</button>
             <select name="type" class="form-select form-select-sm" style="width:180px;" onchange="this.form.submit()">
                 <option value="">All types</option>
                 <option value="return" {{ request('type') === 'return' ? 'selected' : '' }}>Sales Return</option>
@@ -17,7 +20,7 @@
                     <option value="{{ $trip->id }}" {{ (string) request('trip_id') === (string) $trip->id ? 'selected' : '' }}>{{ $trip->name }}</option>
                 @endforeach
             </select>
-            @if(request('type') || request('trip_id'))
+            @if(request('type') || request('trip_id') || ($search ?? '') !== '')
                 <a href="{{ route('sales-adjustments.index') }}" class="btn btn-sm btn-link">Clear</a>
             @endif
         </form>
@@ -47,7 +50,9 @@
                     <td>{{ $adj->createdBy->name }}</td>
                 </tr>
                 @empty
-                <tr><td colspan="9" class="text-center text-muted py-4">No returns or credit notes yet</td></tr>
+                <tr><td colspan="9" class="text-center text-muted py-4">
+                    {{ (($search ?? '') !== '' || request('type') || request('trip_id')) ? 'Nothing matches — try a different search or clear the filters.' : 'No returns or credit notes yet' }}
+                </td></tr>
                 @endforelse
             </tbody>
         </table>

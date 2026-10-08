@@ -33,10 +33,26 @@ class SalesAdjustmentController extends Controller
         if ($request->filled('trip_id')) $query->where('trip_id', $request->trip_id);
         if (Auth::user()->isOwnDataOnly()) $query->whereHas('order', fn ($q) => $q->where('created_by', Auth::id()));
 
+        // Search: the document number (RP/… or CR/…), the order number, or the customer's name / phone.
+        // Works together with the type and trip filters above (all of them must match).
+        $search = trim((string) $request->query('search', ''));
+        if ($search !== '') {
+            // "%" and "_" are wildcards in LIKE — a person typing them means the literal character.
+            $like = '%' . addcslashes($search, '\\%_') . '%';
+
+            $query->where(function ($q) use ($like) {
+                $q->where('adjustment_number', 'like', $like)
+                  ->orWhereHas('order', function ($o) use ($like) {
+                      $o->where('order_number', 'like', $like)
+                        ->orWhereHas('customer', fn ($c) => $c->where('name', 'like', $like)->orWhere('phone', 'like', $like));
+                  });
+            });
+        }
+
         $adjustments = $query->paginate(30)->withQueryString();
         $trips = \App\Models\Trip::orderByDesc('id')->get();
 
-        return view('sales-adjustments.index', compact('adjustments', 'trips'));
+        return view('sales-adjustments.index', compact('adjustments', 'trips', 'search'));
     }
 
     public function show(SalesAdjustment $salesAdjustment)
