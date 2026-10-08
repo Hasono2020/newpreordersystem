@@ -323,3 +323,25 @@ test('the return / credit note page offers both invoices, for the order and for 
     expect($html)->toContain(e(route('orders.invoice', [$order, 'view' => 'original'])));
     expect($html)->toContain(e(route('orders.combined-invoice', ['customer' => $customer->id, 'trip_id' => $trip->id, 'view' => 'original'])));
 });
+
+// ── Back button ─────────────────────────────────────────────────────
+
+test('switching between before and after replaces the history entry, so Back still leaves the invoice', function () {
+    [$admin, $trip, $customer, $order] = baScenario($this);
+
+    // Both views, both pages: each of the two switch links must replace the page rather than stack a new one.
+    $pages = [
+        baCombinedUrl($customer, $trip),
+        baCombinedUrl($customer, $trip, ['view' => 'original']),
+        route('orders.invoice', $order),
+        route('orders.invoice', [$order, 'view' => 'original']),
+    ];
+    foreach ($pages as $url) {
+        $html = $this->actingAs($admin)->get($url)->assertOk()->getContent();
+        expect(substr_count($html, 'window.location.replace(this.href)'))->toBe(2);
+    }
+
+    // The combined invoice's Back button still steps back through history (to wherever the person came from).
+    $combined = $this->actingAs($admin)->get(baCombinedUrl($customer, $trip, ['view' => 'original']))->getContent();
+    expect($combined)->toContain('window.history.back()');
+});

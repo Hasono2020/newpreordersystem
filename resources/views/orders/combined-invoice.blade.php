@@ -108,8 +108,8 @@ td.r { text-align:right; }
     <button onclick="window.history.length > 1 ? window.history.back() : window.location.href='/customers'" style="padding:7px 18px;background:#f1f5f9;color:#1e2a3a;border:1px solid #e2e8f0;border-radius:5px;cursor:pointer;font-size:12px;">&#8592; Back</button>
     @if($adjustments->isNotEmpty())
         <span class="no-print" style="display:inline-flex;align-self:center;border:1px solid #cbd5e1;border-radius:5px;overflow:hidden;">
-            <a href="{{ request()->fullUrlWithQuery(['view' => null]) }}" style="{{ $viewMode === 'current' ? 'padding:6px 12px;font-size:11px;font-weight:700;text-decoration:none;background:#1e2a3a;color:#fff;' : 'padding:6px 12px;font-size:11px;text-decoration:none;background:#fff;color:#334155;' }}">After returns &amp; credits</a>
-            <a href="{{ request()->fullUrlWithQuery(['view' => 'original']) }}" style="{{ $viewMode === 'original' ? 'padding:6px 12px;font-size:11px;font-weight:700;text-decoration:none;background:#1e2a3a;color:#fff;' : 'padding:6px 12px;font-size:11px;text-decoration:none;background:#fff;color:#334155;' }}">Before (original)</a>
+            <a href="{{ request()->fullUrlWithQuery(['view' => null]) }}" onclick="window.location.replace(this.href); return false;" style="{{ $viewMode === 'current' ? 'padding:6px 12px;font-size:11px;font-weight:700;text-decoration:none;background:#1e2a3a;color:#fff;' : 'padding:6px 12px;font-size:11px;text-decoration:none;background:#fff;color:#334155;' }}">After returns &amp; credits</a>
+            <a href="{{ request()->fullUrlWithQuery(['view' => 'original']) }}" onclick="window.location.replace(this.href); return false;" style="{{ $viewMode === 'original' ? 'padding:6px 12px;font-size:11px;font-weight:700;text-decoration:none;background:#1e2a3a;color:#fff;' : 'padding:6px 12px;font-size:11px;text-decoration:none;background:#fff;color:#334155;' }}">Before (original)</a>
         </span>
     @endif
     <span style="font-size:10px;color:#94a3b8;align-self:center;">Tip: in the print dialog, choose <strong>"Save as PDF"</strong> as the destination to save. Paper size is set to A5.</span>
