@@ -863,28 +863,39 @@ class PurchasingController extends Controller
                 ->update(['supplier_stock' => 0, 'allocated_qty' => 0]);
         }
 
-        // ── 4) Recalculate every affected order ─────────────────────
+        // ── 4) Recalculate every affected customer ──────────────────
         // Merged splits and restored sold_out rows both change what the
-        // order is charged for, and recalculating a pure arrived->confirmed
+        // customer is charged for. Recalculating a pure arrived->confirmed
         // transition (no actual total change) is harmless — simpler and
         // safer to recalc everything touched than to track exactly which
         // subset changed.
-        $promoService = app(\App\Services\PromoService::class);
-        foreach (array_chunk($affectedOrderIds, 300) as $orderIdChunk) {
-            $orders = \App\Models\Order::with(['items.product', 'items.variant', 'customer', 'shippingArea'])
-                ->whereIn('id', $orderIdChunk)->get();
-            foreach ($orders as $affectedOrder) {
-                $calc = $promoService->recalculate($affectedOrder);
-                $affectedOrder->update([
-                    'subtotal'             => $calc['subtotal'],
-                    'discount_amount'      => $calc['discount_amount'],
-                    'shipping_fee'         => $calc['shipping_fee'],
-                    'shipping_discount'    => $calc['shipping_discount'],
-                    'shipping_weight_gram' => $calc['shipping_weight_gram'],
-                    'shipping_kg_charged'  => $calc['shipping_kg_charged'],
-                    'total_amount'         => $calc['total_amount'],
-                ]);
+        $this->recombineCustomersOf($affectedOrderIds);
+    }
+
+    /**
+     * Re-price the customers who own these orders — ALL of each customer's orders in the trip,
+     * together, so shipping and promo are worked out once for the whole shipment (shipping on
+     * the oldest order, none on the rest) and every order's paid status and credit follow the
+     * new totals.
+     *
+     * This used to re-price each order ON ITS OWN, as if it were the customer's only order. That
+     * gave every touched order its own shipping charge, so a customer with several orders ended up
+     * with totals adding up to more than their invoice (the invoice is always worked out combined).
+     *
+     * @param array<int,int|string> $orderIds
+     */
+    private function recombineCustomersOf(array $orderIds): void
+    {
+        $pairs = [];
+        foreach (array_chunk(array_unique($orderIds), 1000) as $chunk) {
+            foreach (\App\Models\Order::whereIn('id', $chunk)->get(['id', 'customer_id', 'trip_id']) as $o) {
+                $pairs[$o->customer_id . '-' . $o->trip_id] = [(int) $o->customer_id, (int) $o->trip_id];
             }
+        }
+
+        $promoService = app(\App\Services\PromoService::class);
+        foreach ($pairs as [$customerId, $tripId]) {
+            $promoService->recalcCustomerShipping($customerId, $tripId);
         }
     }
 
@@ -1108,30 +1119,10 @@ class PurchasingController extends Controller
 
             $purchasing->update(['status' => 'arrived']);
 
-            // ── Step 6: recalculate ONLY orders whose totals changed ────
+            // ── Step 6: recalculate ONLY customers with an order whose totals changed ────
             // pending->arrived doesn't change a total (still counted), so we
-            // only recalc orders that had a sold_out or partial-split item.
-            $promoService    = app(\App\Services\PromoService::class);
-            $recalcOrderIds  = array_keys($ordersNeedingRecalc);
-
-            foreach (array_chunk($recalcOrderIds, 300) as $orderIdChunk) {
-                $orders = \App\Models\Order::with(['items.product', 'items.variant', 'customer', 'shippingArea'])
-                    ->whereIn('id', $orderIdChunk)
-                    ->get();
-
-                foreach ($orders as $affectedOrder) {
-                    $calc = $promoService->recalculate($affectedOrder);
-                    $affectedOrder->update([
-                        'subtotal'             => $calc['subtotal'],
-                        'discount_amount'      => $calc['discount_amount'],
-                        'shipping_fee'         => $calc['shipping_fee'],
-                        'shipping_discount'    => $calc['shipping_discount'],
-                        'shipping_weight_gram' => $calc['shipping_weight_gram'],
-                        'shipping_kg_charged'  => $calc['shipping_kg_charged'],
-                        'total_amount'         => $calc['total_amount'],
-                    ]);
-                }
-            }
+            // only recalc customers who had a sold_out or partial-split item.
+            $this->recombineCustomersOf(array_keys($ordersNeedingRecalc));
         });
 
         \App\Models\ActivityLog::record(
