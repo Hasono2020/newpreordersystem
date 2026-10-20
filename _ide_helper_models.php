@@ -151,6 +151,55 @@ namespace App\Models{
 
 namespace App\Models{
 /**
+ * A background request to build every invoice for a trip — see the invoice_exports migration.
+ *
+ * @property int $id
+ * @property int $trip_id
+ * @property int|null $created_by
+ * @property int|null $owner_id
+ * @property string $status
+ * @property array<array-key, mixed> $customer_ids
+ * @property int $total_customers
+ * @property int $processed_customers
+ * @property int $customers_per_part
+ * @property int $total_parts
+ * @property int $parts_done
+ * @property string|null $file_path
+ * @property int|null $file_size
+ * @property string|null $error_message
+ * @property \Illuminate\Support\Carbon|null $started_at
+ * @property \Illuminate\Support\Carbon|null $finished_at
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property-read \App\Models\User|null $createdBy
+ * @property-read \App\Models\Trip $trip
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|InvoiceExport newModelQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|InvoiceExport newQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|InvoiceExport query()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|InvoiceExport whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|InvoiceExport whereCreatedBy($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|InvoiceExport whereCustomerIds($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|InvoiceExport whereCustomersPerPart($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|InvoiceExport whereErrorMessage($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|InvoiceExport whereFilePath($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|InvoiceExport whereFileSize($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|InvoiceExport whereFinishedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|InvoiceExport whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|InvoiceExport whereOwnerId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|InvoiceExport wherePartsDone($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|InvoiceExport whereProcessedCustomers($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|InvoiceExport whereStartedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|InvoiceExport whereStatus($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|InvoiceExport whereTotalCustomers($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|InvoiceExport whereTotalParts($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|InvoiceExport whereTripId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|InvoiceExport whereUpdatedAt($value)
+ */
+	class InvoiceExport extends \Eloquent {}
+}
+
+namespace App\Models{
+/**
  * @property int $id
  * @property string $order_number
  * @property int $trip_id

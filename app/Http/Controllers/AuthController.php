@@ -26,6 +26,8 @@ class AuthController extends Controller
                 return back()->withErrors(['email' => 'Your account has been deactivated.'])->onlyInput('email');
             }
             $request->session()->regenerate();
+            // Logging out empties the session; bring back the filters this person last used.
+            \App\Http\Middleware\RememberListUrl::restoreForUser(Auth::user(), $request);
             return redirect()->intended(route('dashboard'));
         }
 
