@@ -648,6 +648,38 @@ namespace App\Models{
 
 namespace App\Models{
 /**
+ * The packages for one customer in one trip: how many there are in total, and (through
+ * the batches) how many have been sent so far and on which dates.
+ *
+ * @property int $id
+ * @property int $customer_id
+ * @property int $trip_id
+ * @property int|null $package_total
+ * @property int|null $updated_by
+ * @property int|null $package_count
+ * @property string|null $shipped_on
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property-read \App\Models\Customer $customer
+ * @property-read \App\Models\Trip $trip
+ * @property-read \App\Models\User|null $updatedBy
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Shipment newModelQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Shipment newQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Shipment query()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Shipment whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Shipment whereCustomerId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Shipment whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Shipment wherePackageCount($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Shipment whereShippedOn($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Shipment whereTripId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Shipment whereUpdatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Shipment whereUpdatedBy($value)
+ */
+	class Shipment extends \Eloquent {}
+}
+
+namespace App\Models{
+/**
  * @property int $id
  * @property string $name
  * @property string|null $province
@@ -767,6 +799,7 @@ namespace App\Models{
  * @property string|null $phone
  * @property bool $is_active
  * @property string|null $notes
+ * @property array<array-key, mixed>|null $list_urls
  * @property string $email
  * @property \Illuminate\Support\Carbon|null $email_verified_at
  * @property string $password
@@ -786,6 +819,7 @@ namespace App\Models{
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereEmailVerifiedAt($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereId($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereIsActive($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereListUrls($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereName($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereNotes($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User wherePassword($value)

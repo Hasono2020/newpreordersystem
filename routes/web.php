@@ -101,6 +101,9 @@ Route::middleware('auth')->group(function () {
     Route::post('payments/{payment}/verify',  [PaymentController::class, 'verify'])->middleware('perm:payments.verify')->name('payments.verify');
     Route::post('payments/batch/{batchId}/verify', [PaymentController::class, 'verifyBatch'])->middleware('perm:payments.verify')->name('payments.batch.verify');
     Route::post('payments/shipment', [PaymentController::class, 'saveShipment'])->middleware('perm:payments.view')->name('payments.shipment.save');
+    Route::post('payments/shipment/batch', [PaymentController::class, 'storeShipmentBatch'])->middleware('perm:payments.view')->name('payments.shipment.batch.store');
+    Route::put('payments/shipment/batch/{batch}', [PaymentController::class, 'updateShipmentBatch'])->middleware('perm:payments.view')->name('payments.shipment.batch.update');
+    Route::delete('payments/shipment/batch/{batch}', [PaymentController::class, 'destroyShipmentBatch'])->middleware('perm:payments.view')->name('payments.shipment.batch.destroy');
     Route::post('payments/mark-printed', [PaymentController::class, 'markPrinted'])->middleware('perm:payments.view')->name('payments.mark-printed');
     Route::post('payments/{payment}/dispute', [PaymentController::class, 'dispute'])->middleware('perm:payments.verify')->name('payments.dispute');
     Route::get('payments/export', [PaymentController::class, 'export'])->middleware('perm:payments.export')->name('payments.export');

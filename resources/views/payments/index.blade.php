@@ -93,8 +93,8 @@
         <a class="nav-link {{ $tab === 'shipment' ? 'active' : '' }}"
            href="{{ route('payments.index', ['trip_id' => $tripId, 'tab' => 'shipment', 'search' => $search ?? '']) }}">
             <i class="bi bi-box-seam me-1"></i>Shipment
-            @if(($toShipCount ?? 0) > 0)
-                <span class="badge bg-success ms-1" title="Fully paid, no package count entered yet">{{ $toShipCount }}</span>
+            @if((($toShipCount ?? 0) + ($partialCount ?? 0)) > 0)
+                <span class="badge bg-success ms-1" title="Fully paid, with packages still to send">{{ ($toShipCount ?? 0) + ($partialCount ?? 0) }}</span>
             @endif
         </a>
     </li>
@@ -420,12 +420,16 @@
     </div>
 @elseif($tab === 'shipment')
     @php
-        $shipBase = ['trip_id' => $tripId, 'tab' => 'shipment', 'search' => $search ?? ''];
-        $savedId  = session('shipment_saved');
-        $shipChips = ['' => ['All', $toShipCount + $shippedCount], 'pending' => ['To ship', $toShipCount], 'shipped' => ['Shipped', $shippedCount]];
+        $shipBase  = ['trip_id' => $tripId, 'tab' => 'shipment', 'search' => $search ?? ''];
+        $savedId   = session('shipment_saved');
+        $shipChips = [
+            ''        => ['All',     $toShipCount + $partialCount + $shippedCount],
+            'pending' => ['To ship', $toShipCount],
+            'partial' => ['Partly sent', $partialCount],
+            'shipped' => ['All sent', $shippedCount],
+        ];
     @endphp
 
-    {{-- Show everyone / only those still to send / only those already sent --}}
     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
         @foreach($shipChips as $key => $chip)
             @php $label = $chip[0]; $n = $chip[1]; @endphp
@@ -435,7 +439,7 @@
             </a>
         @endforeach
         <span class="small text-muted ms-2">
-            <i class="bi bi-shield-check me-1"></i>Saved rows are locked — press <b>Edit</b> to change them.
+            <i class="bi bi-shield-check me-1"></i>1) set the total packages &nbsp; 2) add each sending with its date. Saved numbers are locked until you press <b>Edit</b>.
         </span>
     </div>
 
@@ -447,9 +451,11 @@
                 <div class="p-4 text-center text-muted">
                     <i class="bi bi-inbox d-block mb-2" style="font-size:1.5rem;"></i>
                     @if(($shipFilter ?? '') === 'pending')
-                        Nothing left to ship — every fully paid customer has a package count.
+                        Nothing waiting — every fully paid customer already has something sent.
+                    @elseif(($shipFilter ?? '') === 'partial')
+                        No customer is partly sent.
                     @elseif(($shipFilter ?? '') === 'shipped')
-                        Nothing has been shipped yet.
+                        No customer has had all packages sent yet.
                     @else
                         No customers to ship yet — only customers whose orders are fully paid and all payments verified appear here.
                     @endif
@@ -462,17 +468,23 @@
                             <th>Customer</th>
                             <th class="text-center">Orders</th>
                             <th class="text-end">Total</th>
-                            <th style="min-width:300px;">Shipment</th>
+                            <th style="min-width:380px;">Packages</th>
                             <th class="text-center">Printed</th>
                             <th class="text-end">Invoice</th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach($readyToPack as $row)
-                        @php $sent = $row->package_count !== null; @endphp
-                        <tr id="ship-{{ $row->customer_id }}"
-                            class="ship-row {{ $sent ? 'is-sent' : '' }} {{ (int) $savedId === (int) $row->customer_id ? 'just-saved' : '' }}"
-                            data-name="{{ $row->customer_name }}">
+                        @php
+                            $cid    = $row->customer_id;
+                            $ptotal = $row->package_total !== null ? (int) $row->package_total : null;
+                            $psent  = (int) $row->packages_sent;
+                            $pleft  = $ptotal !== null ? max(0, $ptotal - $psent) : null;
+                            $done   = $ptotal !== null && $psent >= $ptotal;
+                            $batches = $shipBatches[$cid] ?? collect();
+                        @endphp
+                        <tr id="ship-{{ $cid }}" data-name="{{ $row->customer_name }}"
+                            class="ship-row {{ $done ? 'is-sent' : ($psent > 0 ? 'is-partial' : '') }} {{ (int) $savedId === (int) $cid ? 'just-saved' : '' }}">
                             <td>
                                 <div class="fw-semibold">{{ $row->customer_name }}</div>
                                 <div class="small text-muted">{{ $row->customer_phone }}</div>
@@ -481,48 +493,109 @@
                             <td class="text-end fw-semibold">Rp {{ number_format($row->total_amount, 0, ',', '.') }}</td>
 
                             <td>
-                                <form method="POST" action="{{ route('payments.shipment.save') }}" class="ship-form"
-                                      data-sent="{{ $sent ? 1 : 0 }}"
-                                      data-orig-count="{{ $row->package_count }}" data-orig-date="{{ $row->shipped_on }}">
+                            @if($ptotal === null)
+                                {{-- Step 1: how many packages in total --}}
+                                <form method="POST" action="{{ route('payments.shipment.save') }}" class="ship-form" data-kind="total-new">
                                     @csrf
-                                    <input type="hidden" name="customer_id" value="{{ $row->customer_id }}">
+                                    <input type="hidden" name="customer_id" value="{{ $cid }}">
                                     <input type="hidden" name="trip_id" value="{{ $tripId }}">
-
-                                    {{-- Locked view of what was saved --}}
-                                    @if($sent)
-                                    <div class="ship-view d-flex align-items-center gap-2 flex-wrap">
-                                        <span class="badge bg-success fs-6"><i class="bi bi-box-seam me-1"></i>{{ $row->package_count }} {{ $row->package_count == 1 ? 'package' : 'packages' }}</span>
-                                        <span class="text-muted"><i class="bi bi-truck me-1"></i>{{ \Carbon\Carbon::parse($row->shipped_on)->format('d M Y') }}</span>
-                                        <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" onclick="shipEdit({{ $row->customer_id }})">
-                                            <i class="bi bi-pencil me-1"></i>Edit
+                                    <div class="d-flex align-items-end gap-2 flex-wrap">
+                                        <div>
+                                            <label class="form-label small text-muted mb-0">Total packages</label>
+                                            <input type="text" name="package_total" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off"
+                                                   class="form-control ship-count" style="width:110px;" placeholder="e.g. 10">
+                                        </div>
+                                        <button type="submit" class="btn btn-primary ship-save"><i class="bi bi-check2 me-1"></i>Set total</button>
+                                    </div>
+                                </form>
+                            @else
+                                {{-- Progress + locked total --}}
+                                <div class="ship-unit">
+                                    <div class="unit-view d-flex align-items-center gap-2 flex-wrap">
+                                        @if($done)
+                                            <span class="badge bg-success fs-6"><i class="bi bi-check-circle me-1"></i>{{ $psent }} of {{ $ptotal }} sent</span>
+                                        @elseif($psent > 0)
+                                            <span class="badge bg-warning text-dark fs-6"><i class="bi bi-hourglass-split me-1"></i>{{ $psent }} of {{ $ptotal }} sent · {{ $pleft }} left</span>
+                                        @else
+                                            <span class="badge bg-secondary fs-6"><i class="bi bi-box-seam me-1"></i>0 of {{ $ptotal }} sent</span>
+                                        @endif
+                                        <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" onclick="shipOpen(this)">
+                                            <i class="bi bi-pencil me-1"></i>Edit total
                                         </button>
                                     </div>
-                                    @endif
+                                    <form method="POST" action="{{ route('payments.shipment.save') }}" class="ship-form unit-edit d-none" data-kind="total-edit">
+                                        @csrf
+                                        <input type="hidden" name="customer_id" value="{{ $cid }}">
+                                        <input type="hidden" name="trip_id" value="{{ $tripId }}">
+                                        <div class="d-flex align-items-end gap-2 flex-wrap">
+                                            <div>
+                                                <label class="form-label small text-muted mb-0">Total packages ({{ $psent }} already sent)</label>
+                                                <input type="text" name="package_total" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off"
+                                                       class="form-control ship-count" style="width:110px;" value="{{ $ptotal }}" disabled>
+                                            </div>
+                                            <button type="submit" class="btn btn-primary ship-save"><i class="bi bi-check2 me-1"></i>Save total</button>
+                                            <button type="button" class="btn btn-outline-secondary" onclick="shipClose(this)">Cancel</button>
+                                            <button type="button" class="btn btn-link text-danger btn-sm ms-auto" onclick="shipRemoveAll({{ $cid }})">
+                                                <i class="bi bi-trash me-1"></i>Remove everything
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
 
-                                    {{-- Inputs: open straight away for a customer not shipped yet, hidden until Edit otherwise --}}
-                                    <div class="ship-edit {{ $sent ? 'd-none' : '' }}">
+                                {{-- Step 2: every sending so far --}}
+                                @foreach($batches as $batch)
+                                <div class="ship-unit border-top mt-2 pt-2">
+                                    <div class="unit-view d-flex align-items-center gap-2">
+                                        <span class="fw-semibold">{{ $batch->packages }} {{ $batch->packages == 1 ? 'package' : 'packages' }}</span>
+                                        <span class="text-muted"><i class="bi bi-truck me-1"></i>{{ $batch->shipped_on->format('d M Y') }}</span>
+                                        <button type="button" class="btn btn-sm btn-link ms-auto p-0 me-2" onclick="shipOpen(this)"><i class="bi bi-pencil me-1"></i>Edit</button>
+                                        <button type="button" class="btn btn-sm btn-link text-danger p-0"
+                                                onclick="shipDeleteBatch(this, {{ $batch->id }}, '{{ $batch->packages }} package(s) on {{ $batch->shipped_on->format('d M Y') }}')"><i class="bi bi-trash me-1"></i>Delete</button>
+                                    </div>
+                                    <form method="POST" action="{{ route('payments.shipment.batch.update', $batch) }}" class="ship-form unit-edit d-none" data-kind="batch-edit">
+                                        @csrf @method('PUT')
                                         <div class="d-flex align-items-end gap-2 flex-wrap">
                                             <div>
                                                 <label class="form-label small text-muted mb-0">Packages</label>
-                                                <input type="text" name="package_count" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off"
-                                                       class="form-control ship-count" style="width:90px;" placeholder="0"
-                                                       value="{{ $row->package_count }}" {{ $sent ? 'disabled' : '' }}>
+                                                <input type="text" name="packages" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off"
+                                                       class="form-control form-control-sm ship-count" style="width:90px;" value="{{ $batch->packages }}" disabled>
                                             </div>
                                             <div>
-                                                <label class="form-label small text-muted mb-0">Date <span class="text-muted">({{ $sent ? 'saved' : 'blank = today' }})</span></label>
-                                                <input type="date" name="shipped_on" class="form-control ship-date" style="width:160px;"
-                                                       value="{{ $row->shipped_on }}" {{ $sent ? 'disabled' : '' }}>
+                                                <label class="form-label small text-muted mb-0">Date</label>
+                                                <input type="date" name="shipped_on" class="form-control form-control-sm ship-date" style="width:150px;"
+                                                       value="{{ $batch->shipped_on->toDateString() }}" disabled>
                                             </div>
-                                            <button type="submit" class="btn btn-primary ship-save"><i class="bi bi-check2 me-1"></i>{{ $sent ? 'Save changes' : 'Save' }}</button>
-                                            @if($sent)
-                                            <button type="button" class="btn btn-outline-secondary" onclick="shipCancel({{ $row->customer_id }})">Cancel</button>
-                                            <button type="button" class="btn btn-link text-danger btn-sm ms-auto" onclick="shipRemove({{ $row->customer_id }})">
-                                                <i class="bi bi-trash me-1"></i>Remove
-                                            </button>
-                                            @endif
+                                            <button type="submit" class="btn btn-sm btn-primary ship-save">Save</button>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="shipClose(this)">Cancel</button>
                                         </div>
+                                    </form>
+                                </div>
+                                @endforeach
+
+                                {{-- Add another sending (not when everything is already sent) --}}
+                                @if($pleft > 0)
+                                <form method="POST" action="{{ route('payments.shipment.batch.store') }}" class="ship-form border-top mt-2 pt-2"
+                                      data-kind="batch-add" data-left="{{ $pleft }}">
+                                    @csrf
+                                    <input type="hidden" name="customer_id" value="{{ $cid }}">
+                                    <input type="hidden" name="trip_id" value="{{ $tripId }}">
+                                    <div class="d-flex align-items-end gap-2 flex-wrap">
+                                        <div>
+                                            <label class="form-label small text-muted mb-0">Sent now</label>
+                                            <input type="text" name="packages" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off"
+                                                   class="form-control form-control-sm ship-count" style="width:90px;" placeholder="{{ $pleft }} left">
+                                        </div>
+                                        <div>
+                                            <label class="form-label small text-muted mb-0">Date <span>(blank = today)</span></label>
+                                            <input type="date" name="shipped_on" class="form-control form-control-sm ship-date" style="width:150px;">
+                                        </div>
+                                        <button type="submit" class="btn btn-sm btn-primary ship-save"><i class="bi bi-plus-lg me-1"></i>Add</button>
+                                        <button type="submit" name="rest" value="1" class="btn btn-sm btn-outline-success ship-save"
+                                                title="Log everything that is still left as sent">Send the rest ({{ $pleft }})</button>
                                     </div>
                                 </form>
+                                @endif
+                            @endif
                             </td>
 
                             <td class="text-center">
@@ -534,18 +607,18 @@
                                 @endif
                             </td>
                             <td class="text-end text-nowrap">
-                                <a href="{{ route('orders.combined-invoice', $row->customer_id) }}?trip_id={{ $tripId }}"
+                                <a href="{{ route('orders.combined-invoice', $cid) }}?trip_id={{ $tripId }}"
                                    target="_blank" class="btn btn-sm btn-outline-primary me-1">
                                     <i class="bi bi-printer me-1"></i>Print
                                 </a>
-                                <a href="{{ route('orders.combined-invoice', $row->customer_id) }}?trip_id={{ $tripId }}&autoprint=1"
+                                <a href="{{ route('orders.combined-invoice', $cid) }}?trip_id={{ $tripId }}&autoprint=1"
                                    target="_blank" class="btn btn-sm btn-outline-dark me-1"
                                    title="Opens the invoice and starts the Save-as-PDF dialog automatically">
                                     <i class="bi bi-file-earmark-pdf me-1"></i>PDF
                                 </a>
                                 <form method="POST" action="{{ route('payments.mark-printed') }}" class="d-inline">
                                     @csrf
-                                    <input type="hidden" name="customer_id" value="{{ $row->customer_id }}">
+                                    <input type="hidden" name="customer_id" value="{{ $cid }}">
                                     <input type="hidden" name="trip_id" value="{{ $tripId }}">
                                     <button type="submit" class="btn btn-sm {{ $row->printed_at ? 'btn-outline-secondary' : 'btn-success' }}">
                                         @if($row->printed_at)
@@ -569,7 +642,10 @@
         </div>
     </div>
 
-    {{-- Remove a shipment: its own form so it can never be triggered by pressing Enter in a field --}}
+    {{-- Delete a sending / remove a whole shipment: their own forms, so Enter in a field can never trigger them --}}
+    <form id="shipDeleteForm" method="POST" action="" class="d-none">
+        @csrf @method('DELETE')
+    </form>
     <form id="shipRemoveForm" method="POST" action="{{ route('payments.shipment.save') }}" class="d-none">
         @csrf
         <input type="hidden" name="customer_id" value="">
@@ -579,6 +655,7 @@
 
     <style>
         .shipment-table .ship-row.is-sent { background: rgba(25,135,84,.07); }
+        .shipment-table .ship-row.is-partial { background: rgba(255,193,7,.09); }
         .shipment-table .ship-row.editing { background: #fff8e1; box-shadow: inset 4px 0 0 #ffc107; }
         .shipment-table .ship-row.just-saved { animation: shipFlash 3s ease-out; }
         @keyframes shipFlash { 0%,40% { background:#cfe8ff; box-shadow: inset 4px 0 0 #0d6efd; } 100% { } }
@@ -700,91 +777,96 @@ function fallbackCopy(text, cb) {
 
 // ── Shipment tab: guard against accidental changes ──────────────────────────
 (function () {
-    const rowOf = id => document.getElementById('ship-' + id);
-    const dirty = new Set();
+    const SEL = '.ship-form input[name=packages], .ship-form input[name=package_total], .ship-form input[type=date]';
 
-    function refreshDirty(row) {
-        const form = row.querySelector('.ship-form');
-        const count = form.querySelector('.ship-count').value.trim();
-        const date  = form.querySelector('.ship-date').value;
-        const changed = count !== (form.dataset.origCount || '') || (form.dataset.sent === '1' && date !== (form.dataset.origDate || ''));
-        if (changed && (count !== '' || form.dataset.sent === '1')) dirty.add(row.id); else dirty.delete(row.id);
-    }
-
-    window.shipEdit = function (id) {
-        const row = rowOf(id); if (!row) return;
-        row.classList.add('editing');
-        row.querySelector('.ship-view')?.classList.add('d-none');
-        row.querySelector('.ship-edit').classList.remove('d-none');
-        row.querySelectorAll('.ship-count, .ship-date').forEach(i => i.disabled = false);
-        const c = row.querySelector('.ship-count'); c.focus(); c.select();
+    // Open a locked unit (the total, or one logged sending) for editing.
+    window.shipOpen = function (btn) {
+        const unit = btn.closest('.ship-unit'); if (!unit) return;
+        unit.querySelector('.unit-view').classList.add('d-none');
+        unit.querySelector('.unit-edit').classList.remove('d-none');
+        unit.querySelectorAll('.unit-edit input[type=text], .unit-edit input[type=date]').forEach(i => i.disabled = false);
+        btn.closest('.ship-row').classList.add('editing');
+        const c = unit.querySelector('.unit-edit .ship-count'); if (c) { c.focus(); c.select(); }
     };
 
-    window.shipCancel = function (id) {
-        const row = rowOf(id); if (!row) return;
-        const form = row.querySelector('.ship-form');
-        row.querySelector('.ship-count').value = form.dataset.origCount || '';
-        row.querySelector('.ship-date').value  = form.dataset.origDate || '';
-        row.querySelectorAll('.ship-count, .ship-date').forEach(i => i.disabled = true);
-        row.querySelector('.ship-edit').classList.add('d-none');
-        row.querySelector('.ship-view')?.classList.remove('d-none');
-        row.classList.remove('editing');
-        dirty.delete(row.id);
+    // Close it again, putting back what was saved.
+    window.shipClose = function (btn) {
+        const unit = btn.closest('.ship-unit'); if (!unit) return;
+        unit.querySelectorAll('.unit-edit input[type=text], .unit-edit input[type=date]').forEach(i => { i.value = i.defaultValue; i.disabled = true; });
+        unit.querySelector('.unit-edit').classList.add('d-none');
+        unit.querySelector('.unit-view').classList.remove('d-none');
+        const row = btn.closest('.ship-row');
+        if (!row.querySelector('.unit-edit:not(.d-none)')) row.classList.remove('editing');
     };
 
-    window.shipRemove = function (id) {
-        const row = rowOf(id); if (!row) return;
-        const form = row.querySelector('.ship-form');
-        if (!confirm('Remove the shipment of ' + row.dataset.name + ' (' + form.dataset.origCount + ' package(s))?\n\nThey will go back to "To ship".')) return;
+    window.shipDeleteBatch = function (btn, id, what) {
+        const name = btn.closest('.ship-row').dataset.name;
+        if (!confirm('Delete this sending of ' + name + ' (' + what + ')?\n\nThose packages go back to "left to send".')) return;
+        const f = document.getElementById('shipDeleteForm');
+        f.action = @json(route('payments.shipment.batch.destroy', 0)).replace(/0$/, id);
+        f.submit();
+    };
+
+    window.shipRemoveAll = function (customerId) {
+        const row = document.getElementById('ship-' + customerId);
+        if (!confirm('Remove the WHOLE shipment of ' + row.dataset.name + '?\n\nThe total and every sending logged for it will be deleted.')) return;
         const f = document.getElementById('shipRemoveForm');
-        f.querySelector('[name=customer_id]').value = id;
-        dirty.clear();
+        f.querySelector('[name=customer_id]').value = customerId;
         f.submit();
     };
 
     // Digits only (a text box, not a number box, so the mouse wheel and arrow keys can't change it).
     document.addEventListener('input', function (e) {
-        if (!e.target.classList.contains('ship-count')) return;
-        e.target.value = e.target.value.replace(/\D+/g, '');
-        const row = e.target.closest('.ship-row'); if (row) refreshDirty(row);
-    });
-    document.addEventListener('change', function (e) {
-        if (!e.target.classList.contains('ship-date')) return;
-        const row = e.target.closest('.ship-row'); if (row) refreshDirty(row);
+        if (e.target.matches('.ship-count')) e.target.value = e.target.value.replace(/\D+/g, '');
     });
 
-    // Say what is about to be saved, for a change to a saved row or an unusually large number.
+    // Say what is about to change, and stop empty or pointless saves.
     document.addEventListener('submit', function (e) {
         const form = e.target.closest('.ship-form'); if (!form) return;
-        const row = form.closest('.ship-row');
+        const row  = form.closest('.ship-row');
         const name = row.dataset.name;
-        const count = form.querySelector('.ship-count').value.trim();
-        const date = form.querySelector('.ship-date').value;
+        const kind = form.dataset.kind;
+        const rest = e.submitter && e.submitter.name === 'rest';
+        const countEl = form.querySelector('.ship-count');
+        const dateEl  = form.querySelector('.ship-date');
+        const count = countEl ? countEl.value.trim() : '';
+        const date  = dateEl ? dateEl.value : '';
+        const stop = m => { e.preventDefault(); if (m) alert(m); };
 
-        if (count === '' || parseInt(count, 10) < 1) {
-            e.preventDefault();
-            alert('Enter the number of packages for ' + name + '.');
-            form.querySelector('.ship-count').focus();
-            return;
+        if (!rest && (count === '' || parseInt(count, 10) < 1)) {
+            return stop('Enter the number of packages for ' + name + '.');
         }
         let msg = null;
-        if (form.dataset.sent === '1') {
+        if (kind === 'total-new') {
+            if (parseInt(count, 10) > 20) msg = 'Total ' + count + ' packages for ' + name + '?\n\nThat is a lot — press OK only if it is right.';
+        } else if (kind === 'total-edit') {
+            if (count === countEl.defaultValue) { e.preventDefault(); return window.shipClose(form.querySelector('.ship-save')); }
+            msg = 'Change the total packages of ' + name + '?\n\n' + countEl.defaultValue + '  →  ' + count;
+        } else if (kind === 'batch-edit') {
             const lines = [];
-            if (count !== form.dataset.origCount) lines.push('Packages: ' + form.dataset.origCount + '  →  ' + count);
-            if (date && date !== form.dataset.origDate) lines.push('Date: ' + form.dataset.origDate + '  →  ' + date);
-            if (!lines.length) { e.preventDefault(); window.shipCancel(row.id.replace('ship-', '')); return; }
-            msg = 'Change the saved shipment of ' + name + '?\n\n' + lines.join('\n');
-        } else if (parseInt(count, 10) > 20) {
-            msg = count + ' packages for ' + name + '?\n\nThat is a lot — press OK only if it is right.';
+            if (count !== countEl.defaultValue) lines.push('Packages: ' + countEl.defaultValue + '  →  ' + count);
+            if (date !== dateEl.defaultValue) lines.push('Date: ' + dateEl.defaultValue + '  →  ' + date);
+            if (!lines.length) { e.preventDefault(); return window.shipClose(form.querySelector('.ship-save')); }
+            msg = 'Change this sending of ' + name + '?\n\n' + lines.join('\n');
+        } else if (kind === 'batch-add') {
+            const left = parseInt(form.dataset.left, 10);
+            const when = date ? date : 'today';
+            if (rest) msg = 'Mark the remaining ' + left + ' package(s) of ' + name + ' as sent (' + when + ')?';
+            else if (parseInt(count, 10) > left) return stop('Only ' + left + ' package(s) are left to send to ' + name + '.');
+            else if (parseInt(count, 10) > 20) msg = count + ' packages for ' + name + '?\n\nThat is a lot — press OK only if it is right.';
         }
         if (msg && !confirm(msg)) { e.preventDefault(); return; }
-        dirty.clear();
+        form.dataset.submitting = '1';
         form.querySelectorAll('.ship-save').forEach(b => { b.disabled = true; });
+        // a disabled submit button would drop its value (rest=1): send it along explicitly
+        if (rest) { const h = document.createElement('input'); h.type = 'hidden'; h.name = 'rest'; h.value = '1'; form.appendChild(h); }
     });
 
     // Don't lose typing by accident (page change, search, filter, closing the tab).
     window.addEventListener('beforeunload', function (e) {
-        if (dirty.size) { e.preventDefault(); e.returnValue = ''; }
+        if (document.querySelector('.ship-form[data-submitting="1"]')) return;
+        const dirty = [...document.querySelectorAll(SEL)].some(i => !i.disabled && i.value !== i.defaultValue);
+        if (dirty) { e.preventDefault(); e.returnValue = ''; }
     });
 
     // After a save, bring that customer into view.

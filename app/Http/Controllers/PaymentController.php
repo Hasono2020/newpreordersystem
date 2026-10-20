@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Models\Shipment;
+use App\Models\ShipmentBatch;
 use App\Models\Customer;
 use App\Models\Trip;
 use Carbon\Carbon;
@@ -171,9 +172,11 @@ class PaymentController extends Controller
         // ── Shipment: customers whose orders in this trip are ALL paid + verified, with what was sent ──
         $readyToPack = collect();
         $readyCount  = 0;
-        $toShipCount = 0;
-        $shippedCount = 0;
-        $shipFilter  = in_array($request->get('ship'), ['pending', 'shipped'], true) ? $request->get('ship') : '';
+        $toShipCount = 0;    // nothing sent yet
+        $partialCount = 0;   // some sent, some still to send
+        $shippedCount = 0;   // everything sent
+        $shipBatches = collect();
+        $shipFilter  = in_array($request->get('ship'), ['pending', 'partial', 'shipped'], true) ? $request->get('ship') : '';
         if ($tripId) {
             $tidInt = (int) $tripId;
             $custQuery = DB::table('orders')
@@ -197,8 +200,8 @@ class PaymentController extends Controller
                     DB::raw("(SELECT COUNT(DISTINCT po.id) FROM orders po JOIN payments p ON p.order_id = po.id WHERE po.customer_id = orders.customer_id AND po.trip_id = {$tidInt} AND p.voided_at IS NULL AND p.verification_status != 'verified') as unverified_order_count"),
                     DB::raw('MAX(orders.invoice_printed_at) as printed_at'),
                     // One shipments row per customer+trip, so MAX() just picks that row's value.
-                    DB::raw('MAX(shipments.package_count) as package_count'),
-                    DB::raw('MAX(shipments.shipped_on) as shipped_on'),
+                    DB::raw('MAX(shipments.package_total) as package_total'),
+                    DB::raw("(SELECT COALESCE(SUM(sb.packages), 0) FROM shipment_batches sb JOIN shipments sh ON sh.id = sb.shipment_id WHERE sh.customer_id = orders.customer_id AND sh.trip_id = {$tidInt}) as packages_sent"),
                 ])
                 ->having('unpaid_count', '=', 0)
                 ->having('unverified_order_count', '=', 0)
@@ -206,18 +209,34 @@ class PaymentController extends Controller
                     $q->havingRaw('SUM(orders.total_amount) = ?', [(int) preg_replace('/[^0-9]/', '', $search)]))
                 ->orderBy('customers.name');
 
-            // Counts for the tab badge and the All / To ship / Shipped chips (they follow the search box).
-            $shipCounts  = DB::query()->fromSub((clone $custQuery)->reorder(), 'ready')
-                ->selectRaw('COUNT(*) as total, COALESCE(SUM(CASE WHEN package_count IS NULL THEN 1 ELSE 0 END), 0) as pending')
+            // Counts for the tab badge and the All / To ship / Partial / Shipped buttons (they follow the search box).
+            //   Shipped = every package sent;  Partial = some sent;  To ship = none sent yet.
+            $doneSql    = '(package_total IS NOT NULL AND packages_sent >= package_total)';
+            $partialSql = "(packages_sent > 0 AND NOT {$doneSql})";
+            $shipCounts = DB::query()->fromSub((clone $custQuery)->reorder(), 'ready')
+                ->selectRaw("COUNT(*) as total,
+                    COALESCE(SUM(CASE WHEN {$doneSql} THEN 1 ELSE 0 END), 0) as done,
+                    COALESCE(SUM(CASE WHEN {$partialSql} THEN 1 ELSE 0 END), 0) as partial")
                 ->first();
-            $toShipCount  = (int) $shipCounts->pending;
-            $shippedCount = (int) $shipCounts->total - $toShipCount;
+            $shippedCount = (int) $shipCounts->done;
+            $partialCount = (int) $shipCounts->partial;
+            $toShipCount  = (int) $shipCounts->total - $shippedCount - $partialCount;
 
-            $custQuery->when($shipFilter === 'pending', fn($q) => $q->havingRaw('package_count IS NULL'))
-                      ->when($shipFilter === 'shipped', fn($q) => $q->havingRaw('package_count IS NOT NULL'));
+            $custQuery->when($shipFilter === 'pending', fn($q) => $q->havingRaw('packages_sent = 0'))
+                      ->when($shipFilter === 'partial', fn($q) => $q->havingRaw($partialSql))
+                      ->when($shipFilter === 'shipped', fn($q) => $q->havingRaw($doneSql));
 
             $readyToPack = $custQuery->paginate(50, ['*'], 'pack_page')->withQueryString();
             $readyCount  = $readyToPack->total();
+
+            // Every sending logged for the customers on this page, oldest first.
+            $shipBatches = ShipmentBatch::query()
+                ->join('shipments', 'shipments.id', '=', 'shipment_batches.shipment_id')
+                ->where('shipments.trip_id', $tidInt)
+                ->whereIn('shipments.customer_id', $readyToPack->pluck('customer_id'))
+                ->orderBy('shipment_batches.shipped_on')->orderBy('shipment_batches.id')
+                ->get(['shipment_batches.*', 'shipments.customer_id as customer_id'])
+                ->groupBy('customer_id');
         }
 
         $staffList = \App\Models\User::where('is_active', true)->orderBy('name')->get(['id','name','role']);
@@ -286,7 +305,7 @@ class PaymentController extends Controller
             }
         }
 
-        return view('payments.index', compact('trips', 'tripId', 'tab', 'outstanding', 'log', 'search', 'verificationFilter', 'verificationCounts', 'createdByFilter', 'staffList', 'readyToPack', 'readyCount', 'toShipCount', 'shippedCount', 'shipFilter', 'batchMeta', 'overpaid'));
+        return view('payments.index', compact('trips', 'tripId', 'tab', 'outstanding', 'log', 'search', 'verificationFilter', 'verificationCounts', 'createdByFilter', 'staffList', 'readyToPack', 'readyCount', 'toShipCount', 'partialCount', 'shippedCount', 'shipFilter', 'shipBatches', 'batchMeta', 'overpaid'));
     }
 
     /**
@@ -707,63 +726,168 @@ class PaymentController extends Controller
      * Verify an entire payment batch at once (all non-voided rows sharing the batch_id).
      * Useful when one customer transfer was split across several orders.
      */
+    /** Fully paid + every payment verified: the only customers that can be shipped. */
+    private function isReadyToShip(int $customerId, int $tripId): bool
+    {
+        $orders = Order::where('customer_id', $customerId)->where('trip_id', $tripId)
+            ->when(Auth::user()->isOwnDataOnly(), fn($q) => $q->where('created_by', Auth::id()))
+            ->get();
+
+        return $orders->isNotEmpty()
+            && $orders->every(fn($o) => $o->payment_status === 'paid')
+            && !Payment::whereIn('order_id', $orders->pluck('id'))
+                ->whereNull('voided_at')->where('verification_status', '!=', 'verified')->exists();
+    }
+
+    /** Staff limited to their own data may only touch customers they have orders for. */
+    private function authorizeShipmentAccess(int $customerId, int $tripId): void
+    {
+        if (!Auth::user()->isOwnDataOnly()) return;
+        $mine = Order::where('customer_id', $customerId)->where('trip_id', $tripId)->where('created_by', Auth::id())->exists();
+        if (!$mine) abort(403);
+    }
+
+    /** Back to the Shipment tab, on that customer's row. */
+    private function shipmentBack(Customer $customer, string $kind, string $message)
+    {
+        return back()->with($kind, $message)
+            ->with('shipment_saved', $kind === 'success' ? $customer->id : null)
+            ->withFragment('ship-' . $customer->id);
+    }
+
     /**
-     * Shipment tab: save how many packages were sent to a customer for a trip, and the shipping date.
+     * Shipment tab: set the TOTAL number of packages for a customer in a trip.
      *
      * Only customers who are fully paid (every order paid, every payment verified) can be shipped.
-     * Typing a package count fills in today's date; the date can then be edited.
-     *
-     * An empty package count is refused, so a count can never be wiped by accident — removing a
-     * shipment is its own explicit action (clear=1, a separate button that asks for confirmation).
+     * The total can be changed later, but never below what has already been sent. An empty total is
+     * refused (so a saved number is never wiped by accident); removing the whole shipment — total and
+     * everything sent — is its own explicit action (clear=1, behind a confirmation button).
      */
     public function saveShipment(Request $request)
     {
         $data = $request->validate([
             'customer_id'   => 'required|exists:customers,id',
             'trip_id'       => 'required|exists:trips,id',
-            'package_count' => 'nullable|integer|min:1|max:9999',
-            'shipped_on'    => 'nullable|date',
+            'package_total' => 'nullable|integer|min:1|max:9999',
             'clear'         => 'nullable|boolean',
         ]);
+        $customerId = (int) $data['customer_id'];
+        $tripId     = (int) $data['trip_id'];
+        $customer   = Customer::findOrFail($customerId);
 
-        $customer = Customer::findOrFail($data['customer_id']);
-
-        $orders = Order::where('customer_id', $data['customer_id'])->where('trip_id', $data['trip_id'])
-            ->when(Auth::user()->isOwnDataOnly(), fn($q) => $q->where('created_by', Auth::id()))
-            ->get();
-
-        $ready = $orders->isNotEmpty()
-            && $orders->every(fn($o) => $o->payment_status === 'paid')
-            && !Payment::whereIn('order_id', $orders->pluck('id'))
-                ->whereNull('voided_at')->where('verification_status', '!=', 'verified')->exists();
-        if (!$ready) {
-            return back()->with('error', "{$customer->name} is not fully paid and verified yet, so it cannot be shipped.");
+        $this->authorizeShipmentAccess($customerId, $tripId);
+        if (!$this->isReadyToShip($customerId, $tripId)) {
+            return $this->shipmentBack($customer, 'error', "{$customer->name} is not fully paid and verified yet, so it cannot be shipped.");
         }
 
-        $keys     = ['customer_id' => $data['customer_id'], 'trip_id' => $data['trip_id']];
+        $keys     = ['customer_id' => $customerId, 'trip_id' => $tripId];
         $existing = Shipment::where($keys)->first();
 
         if ($request->boolean('clear')) {
-            if ($existing) $existing->update(['package_count' => null, 'shipped_on' => null, 'updated_by' => Auth::id()]);
-            return back()->with('success', "Shipment removed for {$customer->name}.")->withFragment('ship-' . $customer->id);
+            $existing?->delete(); // takes every sending logged for it along
+            return $this->shipmentBack($customer, 'success', "Shipment removed for {$customer->name}.");
         }
 
-        $count = $data['package_count'] ?? null;
-        if ($count === null) {
-            return back()->with('error', "Enter the number of packages for {$customer->name}.")->withFragment('ship-' . $customer->id);
+        $total = $data['package_total'] ?? null;
+        if ($total === null) {
+            return $this->shipmentBack($customer, 'error', "Enter the total number of packages for {$customer->name}.");
         }
 
-        // The date typed in, else the one already saved, else today (the first time a count is entered).
-        $date = $data['shipped_on'] ?? $existing?->shipped_on?->toDateString() ?? now()->toDateString();
+        $sent = $existing ? $existing->packagesSent() : 0;
+        if ($total < $sent) {
+            return $this->shipmentBack($customer, 'error', "{$sent} package(s) are already sent to {$customer->name}, so the total cannot be {$total}. Change or delete a sending first.");
+        }
 
-        Shipment::updateOrCreate($keys, [
-            'package_count' => $count, 'shipped_on' => $date, 'updated_by' => Auth::id(),
+        Shipment::updateOrCreate($keys, ['package_total' => $total, 'updated_by' => Auth::id()]);
+
+        return $this->shipmentBack($customer, 'success', "Saved for {$customer->name}: {$total} package(s) in total, {$sent} sent so far.");
+    }
+
+    /**
+     * Log one sending: some of the customer's packages, on a date (today if left blank).
+     * "rest=1" sends everything that is still left. Never more than the total.
+     */
+    public function storeShipmentBatch(Request $request)
+    {
+        $data = $request->validate([
+            'customer_id' => 'required|exists:customers,id',
+            'trip_id'     => 'required|exists:trips,id',
+            'packages'    => 'nullable|integer|min:1|max:9999',
+            'shipped_on'  => 'nullable|date',
+            'rest'        => 'nullable|boolean',
         ]);
+        $customerId = (int) $data['customer_id'];
+        $tripId     = (int) $data['trip_id'];
+        $customer   = Customer::findOrFail($customerId);
 
-        return back()
-            ->with('success', "Saved for {$customer->name}: {$count} package(s), shipped " . Carbon::parse($date)->format('d M Y') . '.')
-            ->with('shipment_saved', $customer->id)
-            ->withFragment('ship-' . $customer->id);
+        $this->authorizeShipmentAccess($customerId, $tripId);
+        if (!$this->isReadyToShip($customerId, $tripId)) {
+            return $this->shipmentBack($customer, 'error', "{$customer->name} is not fully paid and verified yet, so it cannot be shipped.");
+        }
+
+        $shipment = Shipment::where(['customer_id' => $customerId, 'trip_id' => $tripId])->first();
+        if (!$shipment || !$shipment->package_total) {
+            return $this->shipmentBack($customer, 'error', "Set the total number of packages for {$customer->name} first.");
+        }
+
+        $sent = $shipment->packagesSent();
+        $left = $shipment->package_total - $sent;
+        if ($left <= 0) {
+            return $this->shipmentBack($customer, 'error', "All {$shipment->package_total} package(s) of {$customer->name} are already sent.");
+        }
+
+        $packages = $request->boolean('rest') ? $left : ($data['packages'] ?? null);
+        if ($packages === null) {
+            return $this->shipmentBack($customer, 'error', "Enter how many packages were sent to {$customer->name}.");
+        }
+        if ($packages > $left) {
+            return $this->shipmentBack($customer, 'error', "Only {$left} package(s) are left to send to {$customer->name} (total {$shipment->package_total}, already sent {$sent}).");
+        }
+
+        $date = $data['shipped_on'] ?? now()->toDateString();
+        $shipment->batches()->create(['packages' => $packages, 'shipped_on' => $date, 'created_by' => Auth::id()]);
+        $shipment->update(['updated_by' => Auth::id()]);
+
+        $left -= $packages;
+        return $this->shipmentBack($customer, 'success',
+            "Saved for {$customer->name}: {$packages} package(s) sent on " . Carbon::parse($date)->format('d M Y')
+            . ($left > 0 ? " — {$left} left to send." : ' — all packages are sent.'));
+    }
+
+    /** Change the number of packages or the date of one logged sending. */
+    public function updateShipmentBatch(Request $request, ShipmentBatch $batch)
+    {
+        $data = $request->validate([
+            'packages'   => 'required|integer|min:1|max:9999',
+            'shipped_on' => 'required|date',
+        ]);
+        $shipment = $batch->shipment;
+        $customer = Customer::findOrFail($shipment->customer_id);
+        $this->authorizeShipmentAccess($shipment->customer_id, $shipment->trip_id);
+
+        $others = (int) ShipmentBatch::where('shipment_id', $shipment->id)->where('id', '!=', $batch->id)->sum('packages');
+        $room   = $shipment->package_total - $others;
+        if ($data['packages'] > $room) {
+            return $this->shipmentBack($customer, 'error', "That would be more than the total: at most {$room} package(s) can be in this sending (total {$shipment->package_total}, other sendings {$others}).");
+        }
+
+        $batch->update(['packages' => $data['packages'], 'shipped_on' => $data['shipped_on']]);
+        $shipment->update(['updated_by' => Auth::id()]);
+
+        return $this->shipmentBack($customer, 'success', "Updated for {$customer->name}: {$data['packages']} package(s) on " . Carbon::parse($data['shipped_on'])->format('d M Y') . '.');
+    }
+
+    /** Delete one logged sending (those packages go back to "left to send"). */
+    public function destroyShipmentBatch(ShipmentBatch $batch)
+    {
+        $shipment = $batch->shipment;
+        $customer = Customer::findOrFail($shipment->customer_id);
+        $this->authorizeShipmentAccess($shipment->customer_id, $shipment->trip_id);
+
+        $batch->delete();
+        $shipment->update(['updated_by' => Auth::id()]);
+
+        return $this->shipmentBack($customer, 'success', "Deleted a sending of {$customer->name} — those package(s) are back to 'left to send'.");
     }
 
     public function markPrinted(Request $request)

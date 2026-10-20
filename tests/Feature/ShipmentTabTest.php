@@ -4,14 +4,17 @@ use App\Models\Customer;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Models\Shipment;
+use App\Models\ShipmentBatch;
 use App\Models\Trip;
 use App\Models\User;
 
 /*
  * The "Ready to Pack" tab is now the "Shipment" tab. Only customers who are fully paid (every
- * order paid, every payment verified) are listed, with the total amount (automatic), the number
- * of packages sent (typed in) and the shipping date (filled in when the package count is saved,
- * and editable).
+ * order paid, every payment verified) are listed. Packages are not always sent on one day, so:
+ *
+ *   1) the TOTAL number of packages is set once (shipments.package_total), then
+ *   2) every sending is logged with its own number of packages and date (shipment_batches),
+ *      e.g. 10 packages = 3 on 10 Oct + 3 on 11 Oct + the rest (4) on 12 Oct.
  */
 
 function shCustomer($test, User $admin, Trip $trip, float $total = 500000, string $status = 'paid', string $verification = 'verified'): Customer
@@ -36,11 +39,29 @@ function shTab($test, User $admin, Trip $trip, array $extra = [])
     return $test->actingAs($admin)->get(route('payments.index', ['trip_id' => $trip->id, 'tab' => 'shipment'] + $extra));
 }
 
-function shSave($test, User $admin, Customer $customer, Trip $trip, array $fields)
+function shTotal($test, User $admin, Customer $customer, Trip $trip, $total, array $extra = [])
 {
     return $test->actingAs($admin)->post(route('payments.shipment.save'), [
+        'customer_id' => $customer->id, 'trip_id' => $trip->id, 'package_total' => $total,
+    ] + $extra);
+}
+
+function shAdd($test, User $admin, Customer $customer, Trip $trip, array $fields)
+{
+    return $test->actingAs($admin)->post(route('payments.shipment.batch.store'), [
         'customer_id' => $customer->id, 'trip_id' => $trip->id,
     ] + $fields);
+}
+
+function shShipment(Customer $customer, Trip $trip): ?Shipment
+{
+    return Shipment::where('customer_id', $customer->id)->where('trip_id', $trip->id)->first();
+}
+
+function shRow(string $html, Customer $customer): string
+{
+    $row = substr($html, strpos($html, 'id="ship-' . $customer->id . '"'));
+    return substr($row, 0, strpos($row, '</tr>'));
 }
 
 test('the tab is called Shipment, not Ready to Pack', function () {
@@ -85,176 +106,148 @@ test('the old tab=pack address still opens the Shipment tab', function () {
     $customer = shCustomer($this, $admin, $trip);
 
     $this->actingAs($admin)->get(route('payments.index', ['trip_id' => $trip->id, 'tab' => 'pack']))
-        ->assertOk()->assertSee($customer->name)->assertSee('name="package_count"', false);
+        ->assertOk()->assertSee($customer->name)->assertSee('name="package_total"', false);
 });
 
-test('entering the package count fills in today as the shipping date', function () {
+// ── Step 1: the total ───────────────────────────────────────────────
+
+test('the total number of packages is saved first, with nothing sent yet', function () {
     $admin = $this->adminUser();
     $trip  = $this->openTrip();
     $customer = shCustomer($this, $admin, $trip);
 
-    shSave($this, $admin, $customer, $trip, ['package_count' => 3])->assertRedirect();
+    shTotal($this, $admin, $customer, $trip, 10)->assertSessionHas('success');
 
-    $shipment = Shipment::where('customer_id', $customer->id)->where('trip_id', $trip->id)->first();
-    expect($shipment->package_count)->toBe(3)
-        ->and($shipment->shipped_on->toDateString())->toBe(now()->toDateString())
+    $shipment = shShipment($customer, $trip);
+    expect($shipment->package_total)->toBe(10)->and($shipment->packagesSent())->toBe(0)
         ->and($shipment->updated_by)->toBe($admin->id);
+    expect(shRow(shTab($this, $admin, $trip)->getContent(), $customer))->toContain('0 of 10 sent');
 });
 
-test('a date typed in is kept instead of today', function () {
+test('an empty total is refused, so a saved total cannot be wiped by accident', function () {
     $admin = $this->adminUser();
     $trip  = $this->openTrip();
     $customer = shCustomer($this, $admin, $trip);
 
-    shSave($this, $admin, $customer, $trip, ['package_count' => 2, 'shipped_on' => '2026-10-15']);
+    shTotal($this, $admin, $customer, $trip, 6);
+    shTotal($this, $admin, $customer, $trip, '')->assertSessionHas('error');
 
-    expect(Shipment::first()->shipped_on->toDateString())->toBe('2026-10-15');
+    expect(shShipment($customer, $trip)->package_total)->toBe(6);
 });
 
-test('changing the package count later keeps the saved date', function () {
+test('a package number must be a whole number from 1 up', function () {
     $admin = $this->adminUser();
     $trip  = $this->openTrip();
     $customer = shCustomer($this, $admin, $trip);
 
-    shSave($this, $admin, $customer, $trip, ['package_count' => 2, 'shipped_on' => '2026-10-15']);
-    shSave($this, $admin, $customer, $trip, ['package_count' => 4]); // date left blank
-
-    $shipment = Shipment::first();
-    expect($shipment->package_count)->toBe(4)
-        ->and($shipment->shipped_on->toDateString())->toBe('2026-10-15')
-        ->and(Shipment::count())->toBe(1);
-});
-
-test('the shipping date can be edited on its own', function () {
-    $admin = $this->adminUser();
-    $trip  = $this->openTrip();
-    $customer = shCustomer($this, $admin, $trip);
-
-    shSave($this, $admin, $customer, $trip, ['package_count' => 2, 'shipped_on' => '2026-10-15']);
-    shSave($this, $admin, $customer, $trip, ['package_count' => 2, 'shipped_on' => '2026-10-17']);
-
-    expect(Shipment::first()->shipped_on->toDateString())->toBe('2026-10-17');
-});
-
-test('an empty package count is refused, so a saved count cannot be wiped by accident', function () {
-    $admin = $this->adminUser();
-    $trip  = $this->openTrip();
-    $customer = shCustomer($this, $admin, $trip);
-
-    shSave($this, $admin, $customer, $trip, ['package_count' => 6, 'shipped_on' => '2026-10-15']);
-    shSave($this, $admin, $customer, $trip, ['package_count' => '', 'shipped_on' => '2026-10-15'])
-        ->assertSessionHas('error');
-
-    $shipment = Shipment::first();
-    expect($shipment->package_count)->toBe(6)->and($shipment->shipped_on->toDateString())->toBe('2026-10-15');
-});
-
-test('removing a shipment is its own action and clears the count and the date', function () {
-    $admin = $this->adminUser();
-    $trip  = $this->openTrip();
-    $customer = shCustomer($this, $admin, $trip);
-
-    shSave($this, $admin, $customer, $trip, ['package_count' => 2]);
-    shSave($this, $admin, $customer, $trip, ['clear' => 1])->assertSessionHas('success');
-
-    $shipment = Shipment::first();
-    expect($shipment->package_count)->toBeNull()->and($shipment->shipped_on)->toBeNull();
-
-    // and the customer is back under "To ship"
-    expect(shTab($this, $admin, $trip, ['ship' => 'pending'])->getContent())->toContain(e($customer->name));
-});
-
-test('removing a shipment never touches an unpaid customer', function () {
-    $admin = $this->adminUser();
-    $trip  = $this->openTrip();
-    $unpaid = shCustomer($this, $admin, $trip, 300000, 'unpaid');
-
-    shSave($this, $admin, $unpaid, $trip, ['clear' => 1])->assertSessionHas('error');
+    foreach (['0', '-2', 'abc', '2.5', '100000'] as $bad) {
+        shTotal($this, $admin, $customer, $trip, $bad)->assertSessionHasErrors('package_total');
+    }
     expect(Shipment::count())->toBe(0);
+
+    shTotal($this, $admin, $customer, $trip, 5);
+    foreach (['0', 'abc', '2.5'] as $bad) {
+        shAdd($this, $admin, $customer, $trip, ['packages' => $bad])->assertSessionHasErrors('packages');
+    }
+    expect(ShipmentBatch::count())->toBe(0);
 });
 
-test('the saved message names the customer, and that row is highlighted on return', function () {
+test('the total can be raised or lowered, but never below what is already sent', function () {
     $admin = $this->adminUser();
     $trip  = $this->openTrip();
     $customer = shCustomer($this, $admin, $trip);
 
-    $response = shSave($this, $admin, $customer, $trip, ['package_count' => 3]);
-    $response->assertSessionHas('success', fn($m) => str_contains($m, $customer->name) && str_contains($m, '3 package'));
-    $response->assertSessionHas('shipment_saved', $customer->id);
-    expect($response->headers->get('Location'))->toEndWith('#ship-' . $customer->id);
+    shTotal($this, $admin, $customer, $trip, 10);
+    shAdd($this, $admin, $customer, $trip, ['packages' => 6]);
+
+    shTotal($this, $admin, $customer, $trip, 5)->assertSessionHas('error');   // 6 already sent
+    expect(shShipment($customer, $trip)->package_total)->toBe(10);
+
+    shTotal($this, $admin, $customer, $trip, 6)->assertSessionHas('success'); // exactly what is sent: fine
+    shTotal($this, $admin, $customer, $trip, 12)->assertSessionHas('success');
+    expect(shShipment($customer, $trip)->package_total)->toBe(12);
 });
 
-test('a saved row is locked until Edit is pressed, a new row is open for typing', function () {
-    $admin = $this->adminUser();
-    $trip  = $this->openTrip();
-    $sent  = shCustomer($this, $admin, $trip);
-    $new   = shCustomer($this, $admin, $trip);
-    shSave($this, $admin, $sent, $trip, ['package_count' => 4, 'shipped_on' => '2026-10-15']);
+// ── Step 2: every sending ───────────────────────────────────────────
 
-    $html = shTab($this, $admin, $trip)->assertOk()->getContent();
-
-    // the saved row: inputs disabled, a locked summary and an Edit button
-    $sentRow = substr($html, strpos($html, 'id="ship-' . $sent->id . '"'));
-    $sentRow = substr($sentRow, 0, strpos($sentRow, '</tr>'));
-    expect($sentRow)->toContain('4 packages')->toContain('shipEdit(' . $sent->id . ')')
-        ->and($sentRow)->toMatch('/name="package_count"[^>]*disabled/');
-
-    // the new row: nothing locked, no Edit button
-    $newRow = substr($html, strpos($html, 'id="ship-' . $new->id . '"'));
-    $newRow = substr($newRow, 0, strpos($newRow, '</tr>'));
-    expect($newRow)->not->toContain('shipEdit(')
-        ->and($newRow)->not->toMatch('/name="package_count"[^>]*disabled/');
-});
-
-test('the package box is a text box for digits, so the mouse wheel cannot change it', function () {
-    $admin = $this->adminUser();
-    $trip  = $this->openTrip();
-    shCustomer($this, $admin, $trip);
-
-    $html = shTab($this, $admin, $trip)->getContent();
-    expect($html)->toMatch('/<input type="text" name="package_count" inputmode="numeric"/')
-        ->and($html)->not->toMatch('/<input type="number" name="package_count"/');
-});
-
-test('the All / To ship / Shipped buttons filter the list and show the counts', function () {
-    $admin = $this->adminUser();
-    $trip  = $this->openTrip();
-    $sent = shCustomer($this, $admin, $trip);
-    $todo = shCustomer($this, $admin, $trip);
-    shSave($this, $admin, $sent, $trip, ['package_count' => 1]);
-
-    $all     = shTab($this, $admin, $trip)->getContent();
-    $pending = shTab($this, $admin, $trip, ['ship' => 'pending'])->getContent();
-    $shipped = shTab($this, $admin, $trip, ['ship' => 'shipped'])->getContent();
-
-    expect($all)->toContain(e($sent->name))->toContain(e($todo->name))
-        ->and($pending)->toContain(e($todo->name))->not->toContain(e($sent->name))
-        ->and($shipped)->toContain(e($sent->name))->not->toContain(e($todo->name));
-
-    // counts on the buttons: All 2, To ship 1, Shipped 1
-    expect($all)->toMatch('/All\s*<span[^>]*>2<\/span>/')
-        ->and($all)->toMatch('/To ship\s*<span[^>]*>1<\/span>/')
-        ->and($all)->toMatch('/Shipped\s*<span[^>]*>1<\/span>/');
-});
-
-test('the filter buttons keep the search and the trip', function () {
+test('a sending is logged with its packages, and today is used when no date is typed', function () {
     $admin = $this->adminUser();
     $trip  = $this->openTrip();
     $customer = shCustomer($this, $admin, $trip);
 
-    $html = shTab($this, $admin, $trip, ['search' => $customer->name])->getContent();
-    expect($html)->toContain('ship=pending')->toContain('trip_id=' . $trip->id);
+    shTotal($this, $admin, $customer, $trip, 10);
+    shAdd($this, $admin, $customer, $trip, ['packages' => 3])->assertSessionHas('success');
+
+    $batch = ShipmentBatch::first();
+    expect($batch->packages)->toBe(3)
+        ->and($batch->shipped_on->toDateString())->toBe(now()->toDateString())
+        ->and($batch->created_by)->toBe($admin->id);
+
+    $row = shRow(shTab($this, $admin, $trip)->getContent(), $customer);
+    expect($row)->toContain('3 of 10 sent')->toContain('7 left');
 });
 
-test('the saved package count and date show up on the tab', function () {
+test('10 packages can go out in three sendings on three different days', function () {
     $admin = $this->adminUser();
     $trip  = $this->openTrip();
     $customer = shCustomer($this, $admin, $trip);
 
-    shSave($this, $admin, $customer, $trip, ['package_count' => 5, 'shipped_on' => '2026-10-15']);
+    shTotal($this, $admin, $customer, $trip, 10);
+    shAdd($this, $admin, $customer, $trip, ['packages' => 3, 'shipped_on' => '2026-10-10']);
+    shAdd($this, $admin, $customer, $trip, ['packages' => 3, 'shipped_on' => '2026-10-11']);
 
-    $html = shTab($this, $admin, $trip)->assertOk()->getContent();
-    expect($html)->toMatch('/name="package_count"[^>]*value="5"/')->toContain('value="2026-10-15"');
+    // two sent, the row says how many are left
+    $row = shRow(shTab($this, $admin, $trip)->getContent(), $customer);
+    expect($row)->toContain('6 of 10 sent')->toContain('4 left')
+        ->and($row)->toContain('10 Oct 2026')->toContain('11 Oct 2026');
+
+    // "Send the rest" logs exactly what is left, on the date given
+    shAdd($this, $admin, $customer, $trip, ['rest' => 1, 'shipped_on' => '2026-10-12'])->assertSessionHas('success');
+
+    $batches = shShipment($customer, $trip)->batches()->get();
+    expect($batches->pluck('packages')->all())->toBe([3, 3, 4])
+        ->and($batches->map(fn($b) => $b->shipped_on->toDateString())->all())->toBe(['2026-10-10', '2026-10-11', '2026-10-12']);
+
+    $row = shRow(shTab($this, $admin, $trip)->getContent(), $customer);
+    expect($row)->toContain('10 of 10 sent')->not->toContain('left')
+        ->and($row)->toContain('12 Oct 2026');
+});
+
+test('more packages than are left cannot be logged', function () {
+    $admin = $this->adminUser();
+    $trip  = $this->openTrip();
+    $customer = shCustomer($this, $admin, $trip);
+
+    shTotal($this, $admin, $customer, $trip, 10);
+    shAdd($this, $admin, $customer, $trip, ['packages' => 8]);
+    shAdd($this, $admin, $customer, $trip, ['packages' => 3])->assertSessionHas('error'); // only 2 left
+
+    expect(ShipmentBatch::count())->toBe(1);
+});
+
+test('nothing can be sent before the total is set, or once everything is already sent', function () {
+    $admin = $this->adminUser();
+    $trip  = $this->openTrip();
+    $customer = shCustomer($this, $admin, $trip);
+
+    shAdd($this, $admin, $customer, $trip, ['packages' => 1])->assertSessionHas('error');
+    expect(ShipmentBatch::count())->toBe(0);
+
+    shTotal($this, $admin, $customer, $trip, 2);
+    shAdd($this, $admin, $customer, $trip, ['packages' => 2]);
+    shAdd($this, $admin, $customer, $trip, ['rest' => 1])->assertSessionHas('error');
+    shAdd($this, $admin, $customer, $trip, ['packages' => 1])->assertSessionHas('error');
+    expect(ShipmentBatch::count())->toBe(1);
+});
+
+test('a sending needs a number of packages unless it is "send the rest"', function () {
+    $admin = $this->adminUser();
+    $trip  = $this->openTrip();
+    $customer = shCustomer($this, $admin, $trip);
+
+    shTotal($this, $admin, $customer, $trip, 5);
+    shAdd($this, $admin, $customer, $trip, ['packages' => ''])->assertSessionHas('error');
+    expect(ShipmentBatch::count())->toBe(0);
 });
 
 test('a customer who is not fully paid cannot be shipped, and nothing is saved', function () {
@@ -263,29 +256,78 @@ test('a customer who is not fully paid cannot be shipped, and nothing is saved',
     $unpaid     = shCustomer($this, $admin, $trip, 300000, 'unpaid');
     $unverified = shCustomer($this, $admin, $trip, 410000, 'paid', 'unverified');
 
-    shSave($this, $admin, $unpaid, $trip, ['package_count' => 2])->assertSessionHas('error');
-    shSave($this, $admin, $unverified, $trip, ['package_count' => 2])->assertSessionHas('error');
-
-    expect(Shipment::count())->toBe(0);
+    foreach ([$unpaid, $unverified] as $customer) {
+        shTotal($this, $admin, $customer, $trip, 4)->assertSessionHas('error');
+        shAdd($this, $admin, $customer, $trip, ['packages' => 2])->assertSessionHas('error');
+    }
+    expect(Shipment::count())->toBe(0)->and(ShipmentBatch::count())->toBe(0);
 });
 
-test('a package count must be a whole number from 1 up', function () {
+test('a logged sending can be corrected, but not beyond the total', function () {
     $admin = $this->adminUser();
     $trip  = $this->openTrip();
     $customer = shCustomer($this, $admin, $trip);
 
-    foreach (['0', '-2', 'abc', '2.5', '100000'] as $bad) {
-        shSave($this, $admin, $customer, $trip, ['package_count' => $bad])->assertSessionHasErrors('package_count');
-    }
-    expect(Shipment::count())->toBe(0);
+    shTotal($this, $admin, $customer, $trip, 10);
+    shAdd($this, $admin, $customer, $trip, ['packages' => 3, 'shipped_on' => '2026-10-10']);
+    shAdd($this, $admin, $customer, $trip, ['packages' => 3, 'shipped_on' => '2026-10-11']);
+    $first = ShipmentBatch::orderBy('id')->first();
+
+    $this->actingAs($admin)->put(route('payments.shipment.batch.update', $first), ['packages' => 4, 'shipped_on' => '2026-10-09'])
+        ->assertSessionHas('success');
+    expect($first->fresh()->packages)->toBe(4)->and($first->fresh()->shipped_on->toDateString())->toBe('2026-10-09');
+
+    // 4 + 3 = 7 sent; raising the first to 8 would make 11 > 10
+    $this->actingAs($admin)->put(route('payments.shipment.batch.update', $first), ['packages' => 8, 'shipped_on' => '2026-10-09'])
+        ->assertSessionHas('error');
+    expect($first->fresh()->packages)->toBe(4);
 });
 
-test('the shipment of one trip does not show on another trip', function () {
+test('a logged sending can be deleted, and its packages are left to send again', function () {
+    $admin = $this->adminUser();
+    $trip  = $this->openTrip();
+    $customer = shCustomer($this, $admin, $trip);
+
+    shTotal($this, $admin, $customer, $trip, 10);
+    shAdd($this, $admin, $customer, $trip, ['rest' => 1]); // all 10 sent
+    expect(shRow(shTab($this, $admin, $trip)->getContent(), $customer))->toContain('10 of 10 sent');
+
+    $this->actingAs($admin)->delete(route('payments.shipment.batch.destroy', ShipmentBatch::first()))->assertSessionHas('success');
+
+    expect(ShipmentBatch::count())->toBe(0)->and(shShipment($customer, $trip)->package_total)->toBe(10);
+    expect(shRow(shTab($this, $admin, $trip)->getContent(), $customer))->toContain('0 of 10 sent');
+});
+
+test('removing the whole shipment deletes the total and every sending with it', function () {
+    $admin = $this->adminUser();
+    $trip  = $this->openTrip();
+    $customer = shCustomer($this, $admin, $trip);
+
+    shTotal($this, $admin, $customer, $trip, 10);
+    shAdd($this, $admin, $customer, $trip, ['packages' => 3]);
+    shTotal($this, $admin, $customer, $trip, '', ['clear' => 1])->assertSessionHas('success');
+
+    expect(Shipment::count())->toBe(0)->and(ShipmentBatch::count())->toBe(0);
+});
+
+test('the saved message names the customer, and that row is highlighted on return', function () {
+    $admin = $this->adminUser();
+    $trip  = $this->openTrip();
+    $customer = shCustomer($this, $admin, $trip);
+
+    shTotal($this, $admin, $customer, $trip, 10);
+    $response = shAdd($this, $admin, $customer, $trip, ['packages' => 3, 'shipped_on' => '2026-10-10']);
+
+    $response->assertSessionHas('success', fn($m) => str_contains($m, $customer->name) && str_contains($m, '3 package') && str_contains($m, '7 left'));
+    $response->assertSessionHas('shipment_saved', $customer->id);
+    expect($response->headers->get('Location'))->toEndWith('#ship-' . $customer->id);
+});
+
+test('the sendings of one trip do not show on another trip', function () {
     $admin = $this->adminUser();
     $trip1 = $this->openTrip();
     $trip2 = Trip::factory()->open()->create(['created_by' => $admin->id]);
     $customer = shCustomer($this, $admin, $trip1);
-    // same customer, second trip
     $order = Order::factory()->create([
         'trip_id' => $trip2->id, 'customer_id' => $customer->id, 'created_by' => $admin->id,
         'subtotal' => 200000, 'total_amount' => 200000, 'deposit_paid' => 200000, 'payment_status' => 'paid',
@@ -293,26 +335,128 @@ test('the shipment of one trip does not show on another trip', function () {
     Payment::factory()->create(['order_id' => $order->id, 'amount' => 200000, 'type' => 'deposit',
         'paid_at' => now(), 'voided_at' => null, 'verification_status' => 'verified']);
 
-    shSave($this, $admin, $customer, $trip1, ['package_count' => 7, 'shipped_on' => '2026-10-15']);
+    shTotal($this, $admin, $customer, $trip1, 7);
+    shAdd($this, $admin, $customer, $trip1, ['packages' => 2, 'shipped_on' => '2026-10-15']);
 
-    expect(shTab($this, $admin, $trip2)->assertOk()->getContent())
-        ->not->toMatch('/name="package_count"[^>]*value="7"/')->not->toContain('2026-10-15');
-    expect(shTab($this, $admin, $trip1)->assertOk()->getContent())
-        ->toMatch('/name="package_count"[^>]*value="7"/');
+    $other = shRow(shTab($this, $admin, $trip2)->assertOk()->getContent(), $customer);
+    expect($other)->not->toContain('2 of 7')->not->toContain('15 Oct 2026')->toContain('name="package_total"');
+    expect(shRow(shTab($this, $admin, $trip1)->getContent(), $customer))->toContain('2 of 7 sent');
 });
 
-test('the tab badge counts only fully paid customers that have not been sent yet', function () {
+// ── What the page shows ─────────────────────────────────────────────
+
+test('a saved total is locked until Edit total is pressed, a new row is open for typing', function () {
     $admin = $this->adminUser();
     $trip  = $this->openTrip();
-    $sent = shCustomer($this, $admin, $trip);
-    shCustomer($this, $admin, $trip);
-    shCustomer($this, $admin, $trip);
-    shCustomer($this, $admin, $trip, 100000, 'unpaid');
-
-    shSave($this, $admin, $sent, $trip, ['package_count' => 1]);
+    $set = shCustomer($this, $admin, $trip);
+    $new = shCustomer($this, $admin, $trip);
+    shTotal($this, $admin, $set, $trip, 4);
 
     $html = shTab($this, $admin, $trip)->assertOk()->getContent();
-    expect($html)->toMatch('/Shipment\s*<span class="badge bg-success ms-1"[^>]*>2<\/span>/');
+
+    $setRow = shRow($html, $set);
+    expect($setRow)->toContain('shipOpen(')
+        ->and($setRow)->toMatch('/name="package_total"[^>]*disabled/');
+
+    $newRow = shRow($html, $new);
+    expect($newRow)->not->toContain('shipOpen(')
+        ->and($newRow)->toContain('name="package_total"')
+        ->and($newRow)->not->toMatch('/name="package_total"[^>]*disabled/');
+});
+
+test('a saved sending is locked until Edit is pressed', function () {
+    $admin = $this->adminUser();
+    $trip  = $this->openTrip();
+    $customer = shCustomer($this, $admin, $trip);
+    shTotal($this, $admin, $customer, $trip, 10);
+    shAdd($this, $admin, $customer, $trip, ['packages' => 3, 'shipped_on' => '2026-10-10']);
+
+    $row = shRow(shTab($this, $admin, $trip)->getContent(), $customer);
+    expect($row)->toContain('3 packages')->toContain('10 Oct 2026')
+        ->and($row)->toMatch('/name="packages"[^>]*value="3"[^>]*disabled/');
+});
+
+test('the add-a-sending form disappears once every package is sent', function () {
+    $admin = $this->adminUser();
+    $trip  = $this->openTrip();
+    $customer = shCustomer($this, $admin, $trip);
+    shTotal($this, $admin, $customer, $trip, 4);
+
+    expect(shRow(shTab($this, $admin, $trip)->getContent(), $customer))->toContain('Send the rest (4)');
+
+    shAdd($this, $admin, $customer, $trip, ['rest' => 1]);
+    expect(shRow(shTab($this, $admin, $trip)->getContent(), $customer))->not->toContain('Send the rest');
+});
+
+test('package boxes are text boxes for digits, so the mouse wheel cannot change them', function () {
+    $admin = $this->adminUser();
+    $trip  = $this->openTrip();
+    $customer = shCustomer($this, $admin, $trip);
+    shCustomer($this, $admin, $trip);
+    shTotal($this, $admin, $customer, $trip, 4);
+
+    $html = shTab($this, $admin, $trip)->getContent();
+    expect($html)->toMatch('/<input type="text" name="package_total" inputmode="numeric"/')
+        ->and($html)->toMatch('/<input type="text" name="packages" inputmode="numeric"/')
+        ->and($html)->not->toMatch('/<input type="number" name="(package_total|packages)"/');
+});
+
+test('the buttons filter into To ship, Partly sent and All sent, and show the counts', function () {
+    $admin = $this->adminUser();
+    $trip  = $this->openTrip();
+    $none    = shCustomer($this, $admin, $trip);   // nothing sent (not even a total)
+    $total   = shCustomer($this, $admin, $trip);   // total set, nothing sent
+    $partial = shCustomer($this, $admin, $trip);
+    $done    = shCustomer($this, $admin, $trip);
+    shTotal($this, $admin, $total, $trip, 5);
+    shTotal($this, $admin, $partial, $trip, 5);
+    shAdd($this, $admin, $partial, $trip, ['packages' => 2]);
+    shTotal($this, $admin, $done, $trip, 5);
+    shAdd($this, $admin, $done, $trip, ['rest' => 1]);
+
+    $all     = shTab($this, $admin, $trip)->getContent();
+    $pending = shTab($this, $admin, $trip, ['ship' => 'pending'])->getContent();
+    $partlyH = shTab($this, $admin, $trip, ['ship' => 'partial'])->getContent();
+    $sentH   = shTab($this, $admin, $trip, ['ship' => 'shipped'])->getContent();
+
+    foreach ([$none, $total, $partial, $done] as $c) expect($all)->toContain(e($c->name));
+
+    expect($pending)->toContain(e($none->name))->toContain(e($total->name))
+        ->not->toContain(e($partial->name))->not->toContain(e($done->name));
+    expect($partlyH)->toContain(e($partial->name))->not->toContain(e($none->name))->not->toContain(e($done->name));
+    expect($sentH)->toContain(e($done->name))->not->toContain(e($partial->name))->not->toContain(e($none->name));
+
+    // counts: All 4, To ship 2, Partly sent 1, All sent 1
+    expect($all)->toMatch('/All\s*<span[^>]*>4<\/span>/')
+        ->and($all)->toMatch('/To ship\s*<span[^>]*>2<\/span>/')
+        ->and($all)->toMatch('/Partly sent\s*<span[^>]*>1<\/span>/')
+        ->and($all)->toMatch('/All sent\s*<span[^>]*>1<\/span>/');
+});
+
+test('the filter buttons keep the search and the trip', function () {
+    $admin = $this->adminUser();
+    $trip  = $this->openTrip();
+    $customer = shCustomer($this, $admin, $trip);
+
+    $html = shTab($this, $admin, $trip, ['search' => $customer->name])->getContent();
+    expect($html)->toContain('ship=pending')->toContain('ship=partial')->toContain('trip_id=' . $trip->id);
+});
+
+test('the tab badge counts customers that still have packages to send', function () {
+    $admin = $this->adminUser();
+    $trip  = $this->openTrip();
+    $untouched = shCustomer($this, $admin, $trip);
+    $partial   = shCustomer($this, $admin, $trip);
+    $done      = shCustomer($this, $admin, $trip);
+    shCustomer($this, $admin, $trip, 100000, 'unpaid');
+
+    shTotal($this, $admin, $partial, $trip, 5);
+    shAdd($this, $admin, $partial, $trip, ['packages' => 2]);
+    shTotal($this, $admin, $done, $trip, 5);
+    shAdd($this, $admin, $done, $trip, ['rest' => 1]);
+
+    $html = shTab($this, $admin, $trip)->assertOk()->getContent();
+    expect($html)->toMatch('/Shipment\s*<span class="badge bg-success ms-1"[^>]*>2<\/span>/'); // untouched + partial
 });
 
 test('printing still works from the Shipment tab', function () {
