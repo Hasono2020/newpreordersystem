@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\Order;
 use App\Models\Payment;
+use App\Models\Shipment;
 use App\Models\Customer;
 use App\Models\Trip;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -27,6 +29,7 @@ class PaymentController extends Controller
         $trips = Trip::orderByDesc('id')->get();
         $tripId = $request->trip_id ?: ($trips->first()->id ?? null);
         $tab = $request->get('tab', 'outstanding');
+        if ($tab === 'pack') $tab = 'shipment'; // the old name of this tab, for bookmarks and remembered links
         $search = trim($request->get('search', ''));
         $createdByFilter = !Auth::user()->isOwnDataOnly() ? $request->get('created_by', '') : '';
 
@@ -165,13 +168,18 @@ class PaymentController extends Controller
             'disputed'   => (clone $vcBase)->where('verification_status', 'disputed')->count(),
         ];
 
-        // ── Ready to Pack: customers whose orders in this trip are ALL paid + verified ──
+        // ── Shipment: customers whose orders in this trip are ALL paid + verified, with what was sent ──
         $readyToPack = collect();
         $readyCount  = 0;
+        $toShipCount = 0;
+        $shippedCount = 0;
+        $shipFilter  = in_array($request->get('ship'), ['pending', 'shipped'], true) ? $request->get('ship') : '';
         if ($tripId) {
             $tidInt = (int) $tripId;
             $custQuery = DB::table('orders')
                 ->join('customers', 'customers.id', '=', 'orders.customer_id')
+                ->leftJoin('shipments', fn($j) => $j->on('shipments.customer_id', '=', 'orders.customer_id')
+                                                    ->on('shipments.trip_id', '=', 'orders.trip_id'))
                 ->where('orders.trip_id', $tidInt)
                 ->when(Auth::user()->isOwnDataOnly(), fn($q) => $q->where('orders.created_by', Auth::id()))
                 ->when($createdByFilter, fn($q) => $q->where('orders.created_by', $createdByFilter))
@@ -188,12 +196,25 @@ class PaymentController extends Controller
                     DB::raw("SUM(CASE WHEN orders.payment_status != 'paid' THEN 1 ELSE 0 END) as unpaid_count"),
                     DB::raw("(SELECT COUNT(DISTINCT po.id) FROM orders po JOIN payments p ON p.order_id = po.id WHERE po.customer_id = orders.customer_id AND po.trip_id = {$tidInt} AND p.voided_at IS NULL AND p.verification_status != 'verified') as unverified_order_count"),
                     DB::raw('MAX(orders.invoice_printed_at) as printed_at'),
+                    // One shipments row per customer+trip, so MAX() just picks that row's value.
+                    DB::raw('MAX(shipments.package_count) as package_count'),
+                    DB::raw('MAX(shipments.shipped_on) as shipped_on'),
                 ])
                 ->having('unpaid_count', '=', 0)
                 ->having('unverified_order_count', '=', 0)
                 ->when($search && $this->isMoneySearch($search), fn($q) =>
                     $q->havingRaw('SUM(orders.total_amount) = ?', [(int) preg_replace('/[^0-9]/', '', $search)]))
                 ->orderBy('customers.name');
+
+            // Counts for the tab badge and the All / To ship / Shipped chips (they follow the search box).
+            $shipCounts  = DB::query()->fromSub((clone $custQuery)->reorder(), 'ready')
+                ->selectRaw('COUNT(*) as total, COALESCE(SUM(CASE WHEN package_count IS NULL THEN 1 ELSE 0 END), 0) as pending')
+                ->first();
+            $toShipCount  = (int) $shipCounts->pending;
+            $shippedCount = (int) $shipCounts->total - $toShipCount;
+
+            $custQuery->when($shipFilter === 'pending', fn($q) => $q->havingRaw('package_count IS NULL'))
+                      ->when($shipFilter === 'shipped', fn($q) => $q->havingRaw('package_count IS NOT NULL'));
 
             $readyToPack = $custQuery->paginate(50, ['*'], 'pack_page')->withQueryString();
             $readyCount  = $readyToPack->total();
@@ -265,7 +286,7 @@ class PaymentController extends Controller
             }
         }
 
-        return view('payments.index', compact('trips', 'tripId', 'tab', 'outstanding', 'log', 'search', 'verificationFilter', 'verificationCounts', 'createdByFilter', 'staffList', 'readyToPack', 'readyCount', 'batchMeta', 'overpaid'));
+        return view('payments.index', compact('trips', 'tripId', 'tab', 'outstanding', 'log', 'search', 'verificationFilter', 'verificationCounts', 'createdByFilter', 'staffList', 'readyToPack', 'readyCount', 'toShipCount', 'shippedCount', 'shipFilter', 'batchMeta', 'overpaid'));
     }
 
     /**
@@ -686,6 +707,65 @@ class PaymentController extends Controller
      * Verify an entire payment batch at once (all non-voided rows sharing the batch_id).
      * Useful when one customer transfer was split across several orders.
      */
+    /**
+     * Shipment tab: save how many packages were sent to a customer for a trip, and the shipping date.
+     *
+     * Only customers who are fully paid (every order paid, every payment verified) can be shipped.
+     * Typing a package count fills in today's date; the date can then be edited.
+     *
+     * An empty package count is refused, so a count can never be wiped by accident — removing a
+     * shipment is its own explicit action (clear=1, a separate button that asks for confirmation).
+     */
+    public function saveShipment(Request $request)
+    {
+        $data = $request->validate([
+            'customer_id'   => 'required|exists:customers,id',
+            'trip_id'       => 'required|exists:trips,id',
+            'package_count' => 'nullable|integer|min:1|max:9999',
+            'shipped_on'    => 'nullable|date',
+            'clear'         => 'nullable|boolean',
+        ]);
+
+        $customer = Customer::findOrFail($data['customer_id']);
+
+        $orders = Order::where('customer_id', $data['customer_id'])->where('trip_id', $data['trip_id'])
+            ->when(Auth::user()->isOwnDataOnly(), fn($q) => $q->where('created_by', Auth::id()))
+            ->get();
+
+        $ready = $orders->isNotEmpty()
+            && $orders->every(fn($o) => $o->payment_status === 'paid')
+            && !Payment::whereIn('order_id', $orders->pluck('id'))
+                ->whereNull('voided_at')->where('verification_status', '!=', 'verified')->exists();
+        if (!$ready) {
+            return back()->with('error', "{$customer->name} is not fully paid and verified yet, so it cannot be shipped.");
+        }
+
+        $keys     = ['customer_id' => $data['customer_id'], 'trip_id' => $data['trip_id']];
+        $existing = Shipment::where($keys)->first();
+
+        if ($request->boolean('clear')) {
+            if ($existing) $existing->update(['package_count' => null, 'shipped_on' => null, 'updated_by' => Auth::id()]);
+            return back()->with('success', "Shipment removed for {$customer->name}.")->withFragment('ship-' . $customer->id);
+        }
+
+        $count = $data['package_count'] ?? null;
+        if ($count === null) {
+            return back()->with('error', "Enter the number of packages for {$customer->name}.")->withFragment('ship-' . $customer->id);
+        }
+
+        // The date typed in, else the one already saved, else today (the first time a count is entered).
+        $date = $data['shipped_on'] ?? $existing?->shipped_on?->toDateString() ?? now()->toDateString();
+
+        Shipment::updateOrCreate($keys, [
+            'package_count' => $count, 'shipped_on' => $date, 'updated_by' => Auth::id(),
+        ]);
+
+        return back()
+            ->with('success', "Saved for {$customer->name}: {$count} package(s), shipped " . Carbon::parse($date)->format('d M Y') . '.')
+            ->with('shipment_saved', $customer->id)
+            ->withFragment('ship-' . $customer->id);
+    }
+
     public function markPrinted(Request $request)
     {
         $data = $request->validate([
