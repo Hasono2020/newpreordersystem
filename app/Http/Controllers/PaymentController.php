@@ -825,33 +825,38 @@ class PaymentController extends Controller
             return $this->shipmentBack($customer, 'error', "{$customer->name} is not fully paid and verified yet, so it cannot be shipped.");
         }
 
-        $shipment = Shipment::where(['customer_id' => $customerId, 'trip_id' => $tripId])->first();
-        if (!$shipment || !$shipment->package_total) {
-            return $this->shipmentBack($customer, 'error', "Set the total number of packages for {$customer->name} first.");
-        }
+        // Locked while we count, so two people logging a sending at the same moment
+        // cannot together send more packages than the total.
+        $result = DB::transaction(function () use ($customerId, $tripId, $data, $request, $customer) {
+            $shipment = Shipment::where(['customer_id' => $customerId, 'trip_id' => $tripId])->lockForUpdate()->first();
+            if (!$shipment || !$shipment->package_total) {
+                return ['error', "Set the total number of packages for {$customer->name} first."];
+            }
 
-        $sent = $shipment->packagesSent();
-        $left = $shipment->package_total - $sent;
-        if ($left <= 0) {
-            return $this->shipmentBack($customer, 'error', "All {$shipment->package_total} package(s) of {$customer->name} are already sent.");
-        }
+            $sent = $shipment->packagesSent();
+            $left = $shipment->package_total - $sent;
+            if ($left <= 0) {
+                return ['error', "All {$shipment->package_total} package(s) of {$customer->name} are already sent."];
+            }
 
-        $packages = $request->boolean('rest') ? $left : ($data['packages'] ?? null);
-        if ($packages === null) {
-            return $this->shipmentBack($customer, 'error', "Enter how many packages were sent to {$customer->name}.");
-        }
-        if ($packages > $left) {
-            return $this->shipmentBack($customer, 'error', "Only {$left} package(s) are left to send to {$customer->name} (total {$shipment->package_total}, already sent {$sent}).");
-        }
+            $packages = $request->boolean('rest') ? $left : ($data['packages'] ?? null);
+            if ($packages === null) {
+                return ['error', "Enter how many packages were sent to {$customer->name}."];
+            }
+            if ($packages > $left) {
+                return ['error', "Only {$left} package(s) are left to send to {$customer->name} (total {$shipment->package_total}, already sent {$sent})."];
+            }
 
-        $date = $data['shipped_on'] ?? now()->toDateString();
-        $shipment->batches()->create(['packages' => $packages, 'shipped_on' => $date, 'created_by' => Auth::id()]);
-        $shipment->update(['updated_by' => Auth::id()]);
+            $date = $data['shipped_on'] ?? now()->toDateString();
+            $shipment->batches()->create(['packages' => $packages, 'shipped_on' => $date, 'created_by' => Auth::id()]);
+            $shipment->update(['updated_by' => Auth::id()]);
 
-        $left -= $packages;
-        return $this->shipmentBack($customer, 'success',
-            "Saved for {$customer->name}: {$packages} package(s) sent on " . Carbon::parse($date)->format('d M Y')
-            . ($left > 0 ? " — {$left} left to send." : ' — all packages are sent.'));
+            $left -= $packages;
+            return ['success', "Saved for {$customer->name}: {$packages} package(s) sent on " . Carbon::parse($date)->format('d M Y')
+                . ($left > 0 ? " — {$left} left to send." : ' — all packages are sent.')];
+        });
+
+        return $this->shipmentBack($customer, $result[0], $result[1]);
     }
 
     /** Change the number of packages or the date of one logged sending. */

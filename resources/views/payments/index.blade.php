@@ -869,6 +869,13 @@ function fallbackCopy(text, cb) {
         if (dirty) { e.preventDefault(); e.returnValue = ''; }
     });
 
+    // Coming back with the browser's Back button: the Save buttons were switched off when the form was sent.
+    window.addEventListener('pageshow', function (e) {
+        if (!e.persisted) return;
+        document.querySelectorAll('.ship-form[data-submitting]').forEach(f => { delete f.dataset.submitting; });
+        document.querySelectorAll('.ship-save').forEach(b => { b.disabled = false; });
+    });
+
     // After a save, bring that customer into view.
     try {
         const target = /^#ship-\d+$/.test(location.hash) && document.getElementById(location.hash.slice(1));

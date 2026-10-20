@@ -40,25 +40,28 @@ return new class extends Migration
             ]);
         }
 
+        // Add / copy / drop instead of renameColumn, so it works on any MySQL or MariaDB version.
         Schema::table('shipments', function (Blueprint $table) {
-            $table->renameColumn('package_count', 'package_total');
+            $table->unsignedSmallInteger('package_total')->nullable()->after('trip_id');
         });
+        DB::table('shipments')->update(['package_total' => DB::raw('package_count')]);
         Schema::table('shipments', function (Blueprint $table) {
-            $table->dropColumn('shipped_on');
+            $table->dropColumn(['package_count', 'shipped_on']);
         });
     }
 
     public function down(): void
     {
         Schema::table('shipments', function (Blueprint $table) {
-            $table->date('shipped_on')->nullable()->after('package_total');
+            $table->unsignedSmallInteger('package_count')->nullable()->after('trip_id');
+            $table->date('shipped_on')->nullable()->after('package_count');
         });
         foreach (DB::table('shipments')->get() as $row) {
             $first = DB::table('shipment_batches')->where('shipment_id', $row->id)->orderBy('shipped_on')->value('shipped_on');
-            DB::table('shipments')->where('id', $row->id)->update(['shipped_on' => $first]);
+            DB::table('shipments')->where('id', $row->id)->update(['package_count' => $row->package_total, 'shipped_on' => $first]);
         }
         Schema::table('shipments', function (Blueprint $table) {
-            $table->renameColumn('package_total', 'package_count');
+            $table->dropColumn('package_total');
         });
         Schema::dropIfExists('shipment_batches');
     }
