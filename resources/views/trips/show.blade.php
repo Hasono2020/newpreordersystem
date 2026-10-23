@@ -20,7 +20,7 @@
     @endif
     <a href="{{ route('purchasing.index', ['trip_id' => $trip->id]) }}" class="btn btn-outline-info btn-sm"><i class="bi bi-box-seam me-1"></i>Purchasing</a>
 @if(auth()->user()->hasPermission('orders.export'))
-    <a href="{{ route('trips.invoices.pdf', $trip) }}" class="btn btn-outline-danger btn-sm" title="One combined invoice per customer, as a PDF"><i class="bi bi-file-earmark-pdf me-1"></i>Invoices PDF</a>
+    <button type="button" class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#invoicePdfModal" title="One combined invoice per customer, as a PDF"><i class="bi bi-file-earmark-pdf me-1"></i>Invoices PDF</button>
     @endif
 </div>
 
@@ -106,4 +106,7 @@
         </div>
     </div>
 </div>
+@if(auth()->user()->hasPermission('orders.export'))
+    @include('partials.invoice-pdf-modal', ['tripId' => $trip->id, 'csAgents' => $csAgents])
+@endif
 @endsection

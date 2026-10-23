@@ -109,9 +109,9 @@
                 @if(auth()->user()->hasPermission('orders.export'))
                 <li>
                     @if(request('trip_id'))
-                        <a onclick="showExport('Building the invoices PDF — a big trip can take a minute…')" class="dropdown-item" href="{{ route('trips.invoices.pdf', request('trip_id')) }}">
+                        <button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#invoicePdfModal">
                             <i class="bi bi-file-earmark-pdf me-2 text-danger"></i>Download all invoices (PDF)
-                        </a>
+                        </button>
                     @else
                         <span class="dropdown-item disabled" title="Pick a trip in the filter first">
                             <i class="bi bi-file-earmark-pdf me-2 text-danger"></i>Download all invoices (PDF)
@@ -262,6 +262,10 @@
         </div>
     </div>
 </div>
+
+@if(request('trip_id') && auth()->user()->hasPermission('orders.export'))
+    @include('partials.invoice-pdf-modal', ['tripId' => request('trip_id'), 'csAgents' => $csAgents])
+@endif
 
 {{-- Recent Imports status panel (auto-refreshes while any import is queued/processing) --}}
 <div class="card mb-3" id="recentImportsCard" style="display:none;">

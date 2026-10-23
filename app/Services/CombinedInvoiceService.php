@@ -435,7 +435,7 @@ class CombinedInvoiceService
     /** Everything an invoice needs loaded — shared so a whole-trip build and a slice of it never differ. */
     private const INVOICE_RELATIONS = ['customer.defaultShippingArea', 'items.product', 'items.variant', 'payments.salesAdjustment', 'trip', 'shippingArea'];
 
-    public function forTrip(Trip $trip, ?int $onlyCreatedBy = null): Collection
+    public function forTrip(Trip $trip, ?int $onlyCreatedBy = null, ?array $csPicked = null): Collection
     {
         $query = Order::with(self::INVOICE_RELATIONS)
             ->where('trip_id', $trip->id)
@@ -444,6 +444,13 @@ class CombinedInvoiceService
 
         if ($onlyCreatedBy !== null) {
             $query->where('created_by', $onlyCreatedBy);
+        }
+
+        // A CS filter picks CUSTOMERS, not orders: a customer is in if ANY of their orders
+        // was handled by a picked CS, and their invoice then still carries ALL their orders
+        // (the combined invoice has to add up to what they actually owe).
+        if ($this->hasCsFilter($csPicked)) {
+            $query->whereIn('customer_id', $this->csCustomerSubquery($trip, $onlyCreatedBy, $csPicked));
         }
 
         return $query->get()
@@ -461,12 +468,13 @@ class CombinedInvoiceService
      *
      * @return list<int>
      */
-    public function customerIdsForTrip(Trip $trip, ?int $onlyCreatedBy = null): array
+    public function customerIdsForTrip(Trip $trip, ?int $onlyCreatedBy = null, ?array $csPicked = null): array
     {
         return Order::query()
             ->join('customers', 'customers.id', '=', 'orders.customer_id')
             ->where('orders.trip_id', $trip->id)
             ->when($onlyCreatedBy !== null, fn ($q) => $q->where('orders.created_by', $onlyCreatedBy))
+            ->when($this->hasCsFilter($csPicked), fn ($q) => $q->whereIn('orders.customer_id', $this->csCustomerSubquery($trip, $onlyCreatedBy, $csPicked)))
             ->select('customers.id', 'customers.name')
             ->distinct()
             ->get()
@@ -503,5 +511,42 @@ class CombinedInvoiceService
             ->sortBy(fn ($group, $customerId) => $position[$customerId] ?? PHP_INT_MAX)
             ->map(fn ($group) => $this->build($group->first()->customer, $group->values(), $trip->id))
             ->values();
+    }
+
+    /** True when the CS checklist had anything ticked. */
+    public function hasCsFilter(?array $csPicked): bool
+    {
+        return array_values(array_filter((array) $csPicked, fn ($v) => $v !== null && $v !== '')) !== [];
+    }
+
+    /** Number of customers with an order in this trip, optionally only those a picked CS handled. */
+    public function countCustomers(Trip $trip, ?int $onlyCreatedBy = null, ?array $csPicked = null): int
+    {
+        return Order::where('trip_id', $trip->id)
+            ->when($onlyCreatedBy !== null, fn ($q) => $q->where('created_by', $onlyCreatedBy))
+            ->when($this->hasCsFilter($csPicked), fn ($q) => $q->whereIn('customer_id', $this->csCustomerSubquery($trip, $onlyCreatedBy, $csPicked)))
+            ->distinct()->count('customer_id');
+    }
+
+    /** "Rina, Dewi, No CS agent assigned" — the picked CS in words, for messages and the activity log. */
+    public function describeCsPick(?array $csPicked): string
+    {
+        $picked = array_values(array_filter((array) $csPicked, fn ($v) => $v !== null && $v !== ''));
+        $names  = \App\Models\CsAgent::whereIn('id', array_filter(array_map('intval', array_diff($picked, ['none']))))
+            ->orderBy('name')->pluck('name')->all();
+        if (in_array('none', $picked, true)) {
+            $names[] = 'No CS agent assigned';
+        }
+        return implode(', ', $names);
+    }
+
+    /** Ids of the customers who have at least one order in this trip handled by the picked CS. */
+    private function csCustomerSubquery(Trip $trip, ?int $onlyCreatedBy, ?array $csPicked)
+    {
+        return Order::query()
+            ->select('orders.customer_id')
+            ->where('orders.trip_id', $trip->id)
+            ->when($onlyCreatedBy !== null, fn ($q) => $q->where('orders.created_by', $onlyCreatedBy))
+            ->handledByCs($csPicked);
     }
 }

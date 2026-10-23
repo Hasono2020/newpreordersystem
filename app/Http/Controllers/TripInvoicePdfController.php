@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\ActivityLog;
-use App\Models\Order;
 use App\Models\Trip;
 use App\Services\CombinedInvoiceService;
 use App\Services\InvoicePdfRenderer;
@@ -47,22 +46,27 @@ class TripInvoicePdfController extends Controller
         // Count customers with one cheap query BEFORE building anything. Checking the size
         // after forTrip() would build every invoice in memory first — exactly the cost the
         // limit exists to avoid — and only then refuse.
-        $customerCount = Order::where('trip_id', $trip->id)
-            ->when($ownerId !== null, fn ($q) => $q->where('created_by', $ownerId))
-            ->distinct()->count('customer_id');
+        // Optional CS checklist (same as the Excel export): only customers who have an order
+        // handled by a ticked CS. Nothing ticked = everyone.
+        $csPicked = $this->csPicked($request);
+        $csLabel  = $invoices->hasCsFilter($csPicked) ? $invoices->describeCsPick($csPicked) : null;
+
+        $customerCount = $invoices->countCustomers($trip, $ownerId, $csPicked);
 
         if ($customerCount === 0) {
-            return back()->with('error', "There are no orders in \"{$trip->name}\" to make invoices from.");
+            return back()->with('error', $csLabel
+                ? "No customers in \"{$trip->name}\" have an order handled by: {$csLabel}."
+                : "There are no orders in \"{$trip->name}\" to make invoices from.");
         }
 
         if ($customerCount > $maxCustomers) {
             // Too many to build while the browser waits — hand over to the background build,
             // which cuts it into parts on the queue and gives back one ZIP.
-            return redirect()->route('invoice-exports.index', ['trip' => $trip->id])
+            return redirect()->route('invoice-exports.index', array_filter(['trip' => $trip->id, 'cs_agent_ids' => $csPicked ?: null]))
                 ->with('warning', "\"{$trip->name}\" has " . number_format($customerCount) . " customers — too many for an instant download, so it can be built in the background instead.");
         }
 
-        $all = $invoices->forTrip($trip, $ownerId);
+        $all = $invoices->forTrip($trip, $ownerId, $csPicked);
 
         $slug  = Str::slug($trip->name) ?: 'trip-' . $trip->id;
         $parts = $all->chunk($perFile)->values();
@@ -70,6 +74,7 @@ class TripInvoicePdfController extends Controller
         ActivityLog::record(
             'invoice.trip_pdf_downloaded',
             "Downloaded invoices PDF for \"{$trip->name}\" — {$all->count()} customer(s)"
+                . ($csLabel ? " (CS: {$csLabel})" : '')
                 . ($parts->count() > 1 ? " in {$parts->count()} files" : ''),
             'trip',
             $trip->id
@@ -110,6 +115,15 @@ class TripInvoicePdfController extends Controller
 
         return response()->download($zipPath, "invoices_{$slug}.zip", ['Content-Type' => 'application/zip'])
             ->deleteFileAfterSend(true);
+    }
+
+    /** The ticked CS ids (and "none") from the checklist, as a plain list. Empty = no filter. */
+    private function csPicked(Request $request): array
+    {
+        return array_values(array_filter(
+            array_map(fn ($v) => is_scalar($v) ? (string) $v : '', (array) $request->query('cs_agent_ids', [])),
+            fn ($v) => $v !== ''
+        ));
     }
 
     /** Raise PHP's memory limit to at least $bytes — never lower one that's already higher (or unlimited). */

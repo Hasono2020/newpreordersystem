@@ -64,7 +64,8 @@ class TripController extends Controller
             'partial' => $trip->orders->where('payment_status', 'partial')->count(),
             'paid'    => $trip->orders->where('payment_status', 'paid')->count(),
         ];
-        return view('trips.show', compact('trip', 'orderSummary'));
+        $csAgents = \App\Models\CsAgent::orderByDesc('is_active')->orderBy('name')->get(['id', 'name', 'is_active']);
+        return view('trips.show', compact('trip', 'orderSummary', 'csAgents'));
     }
 
     public function edit(Trip $trip)

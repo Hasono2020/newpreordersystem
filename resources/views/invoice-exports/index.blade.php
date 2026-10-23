@@ -14,12 +14,19 @@
             so it runs in the background in {{ number_format((int) ceil($offer['customers'] / $offer['perPart'])) }} parts and you
             get <strong>one ZIP</strong> when it&rsquo;s finished. One invoice per customer, A&ndash;Z.
         </p>
+        @if($offer['csLabel'])
+        <p class="small mb-2"><i class="bi bi-funnel me-1"></i>Only customers with an order handled by <strong>{{ $offer['csLabel'] }}</strong>.
+            Their invoices still list all of their orders.</p>
+        @endif
         <p class="small text-muted mb-3">
             Expect a few minutes for every 1,000 customers (longer when the server is busy). You can close this page or keep working &mdash;
             it carries on by itself, and the ZIP is kept for {{ (int) config('invoices.export_keep_days', 3) }} days.
         </p>
         <form method="POST" action="{{ route('trips.invoice-exports.store', $offer['trip']) }}" onsubmit="this.querySelector('button').disabled = true;">
             @csrf
+            @foreach($offer['csPicked'] as $csValue)
+                <input type="hidden" name="cs_agent_ids[]" value="{{ $csValue }}">
+            @endforeach
             <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-play-fill me-1"></i>Start building</button>
             <a href="{{ route('invoice-exports.index') }}" class="btn btn-outline-secondary btn-sm">Not now</a>
         </form>

@@ -41,6 +41,35 @@ class Order extends Model
     public function csAgent()     { return $this->belongsTo(CsAgent::class); }
     public function invoicePrintedBy() { return $this->belongsTo(User::class, 'invoice_printed_by'); }
 
+    /**
+     * Only orders handled by the picked CS agents. $picked is what the CS checklist sends:
+     * agent ids, and/or the word "none" for orders with no CS agent assigned. An empty list
+     * means "no filter" (everything). A list with nothing usable in it matches nothing,
+     * rather than quietly widening to everything.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder $query
+     * @param  array<int,mixed>|null $picked
+     */
+    public function scopeHandledByCs($query, ?array $picked)
+    {
+        $picked = array_values(array_filter((array) $picked, fn ($v) => $v !== null && $v !== ''));
+        if ($picked === []) {
+            return $query;
+        }
+
+        $wantNone = in_array('none', $picked, true);
+        $agentIds = array_values(array_filter(array_map('intval', array_filter($picked, fn ($v) => $v !== 'none'))));
+
+        if ($agentIds === [] && ! $wantNone) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->where(function ($q) use ($agentIds, $wantNone) {
+            if ($agentIds !== []) $q->whereIn('orders.cs_agent_id', $agentIds);
+            if ($wantNone)        $q->orWhereNull('orders.cs_agent_id');
+        });
+    }
+
     public function getActiveItemsCountAttribute(): int
     {
         // Use the loaded items collection if available to avoid an extra query (N+1)

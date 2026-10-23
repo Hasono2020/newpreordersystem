@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Jobs\GenerateInvoiceExportPartJob;
 use App\Models\ActivityLog;
 use App\Models\InvoiceExport;
-use App\Models\Order;
 use App\Models\Trip;
 use App\Services\CombinedInvoiceService;
 use App\Services\InvoicePdfRenderer;
@@ -35,10 +34,16 @@ class InvoiceExportController extends Controller
         // offer to build it in the background instead.
         $offer = null;
         if ($request->filled('trip') && $trip = Trip::find($request->query('trip'))) {
-            $count = Order::where('trip_id', $trip->id)
-                ->when($ownerOnly, fn ($q) => $q->where('created_by', Auth::id()))
-                ->distinct()->count('customer_id');
-            $offer = ['trip' => $trip, 'customers' => $count, 'perPart' => $this->perPart()];
+            $svc      = app(CombinedInvoiceService::class);
+            $csPicked = $this->csPicked($request->query('cs_agent_ids'));
+            $count    = $svc->countCustomers($trip, $ownerOnly ? Auth::id() : null, $csPicked);
+            $offer    = [
+                'trip'      => $trip,
+                'customers' => $count,
+                'perPart'   => $this->perPart(),
+                'csPicked'  => $csPicked,
+                'csLabel'   => $svc->hasCsFilter($csPicked) ? $svc->describeCsPick($csPicked) : null,
+            ];
         }
 
         $hasActive = $exports->contains(fn ($e) => ! $e->isFinished());
@@ -66,11 +71,15 @@ class InvoiceExportController extends Controller
                 ->with('warning', "\"{$trip->name}\" is already being built — its progress is below.");
         }
 
-        $ownerId = Auth::user()->isOwnDataOnly() ? Auth::id() : null;
-        $ids     = $invoices->customerIdsForTrip($trip, $ownerId);
+        $ownerId  = Auth::user()->isOwnDataOnly() ? Auth::id() : null;
+        $csPicked = $this->csPicked($request->input('cs_agent_ids'));
+        $csLabel  = $invoices->hasCsFilter($csPicked) ? $invoices->describeCsPick($csPicked) : null;
+        $ids      = $invoices->customerIdsForTrip($trip, $ownerId, $csPicked);
 
         if ($ids === []) {
-            return back()->with('error', "There are no orders in \"{$trip->name}\" to make invoices from.");
+            return back()->with('error', $csLabel
+                ? "No customers in \"{$trip->name}\" have an order handled by: {$csLabel}."
+                : "There are no orders in \"{$trip->name}\" to make invoices from.");
         }
 
         $perPart = $this->perPart();
@@ -89,7 +98,8 @@ class InvoiceExportController extends Controller
 
         ActivityLog::record(
             'invoice.export_started',
-            "Started building invoices for \"{$trip->name}\" in the background — " . count($ids) . " customer(s) in {$parts} part(s)",
+            "Started building invoices for \"{$trip->name}\" in the background — " . count($ids) . " customer(s) in {$parts} part(s)"
+                . ($csLabel ? " (CS: {$csLabel})" : ''),
             'trip',
             $trip->id
         );
@@ -98,6 +108,15 @@ class InvoiceExportController extends Controller
 
         return redirect()->route('invoice-exports.index')
             ->with('success', 'Started. You can leave this page — it keeps building in the background.');
+    }
+
+    /** The ticked CS ids (and "none") as a plain list. Empty = no filter. */
+    private function csPicked(mixed $raw): array
+    {
+        return array_values(array_filter(
+            array_map(fn ($v) => is_scalar($v) ? (string) $v : '', (array) $raw),
+            fn ($v) => $v !== ''
+        ));
     }
 
     public function download(InvoiceExport $invoiceExport)
