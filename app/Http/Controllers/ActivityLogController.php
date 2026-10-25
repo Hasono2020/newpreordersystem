@@ -59,6 +59,8 @@ class ActivityLogController extends Controller
             'credit_note.issued'       => 'Credit Note issued',
             'sales_adjustment.voided'  => 'Sales Return/Credit Note voided',
             'report.sales_recap_exported' => 'Sales recap exported',
+            'report.orders_exported'   => 'Orders exported to Excel',
+            'payment.exported'         => 'Payments exported to Excel',
             'purchasing.arrival_confirmed' => 'PO arrival confirmed',
             'purchasing.arrival_corrected' => 'PO arrival corrected',
         ];

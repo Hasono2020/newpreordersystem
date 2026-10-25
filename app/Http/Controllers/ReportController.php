@@ -237,6 +237,21 @@ class ReportController extends Controller
             // there's nothing to export for them.
         }
 
+        // Audit trail: who downloaded the orders file, for which trip and (if ticked) which CS.
+        $exportTrip = $request->trip_id ? \App\Models\Trip::find($request->trip_id) : null;
+        $csPicked   = array_values(array_filter(
+            array_map(fn ($v) => is_scalar($v) ? (string) $v : '', (array) $request->cs_agent_ids),
+            fn ($v) => $v !== ''
+        ));
+        \App\Models\ActivityLog::record(
+            'report.orders_exported',
+            'Exported orders to Excel for ' . ($exportTrip ? "\"{$exportTrip->name}\"" : 'all trips')
+                . " — {$orders->count()} order(s), " . (count($rows) - 1) . ' item row(s)'
+                . ($csPicked !== [] ? ' (CS: ' . \App\Models\CsAgent::describePick($csPicked) . ')' : ''),
+            $exportTrip ? 'trip' : null,
+            $exportTrip?->id
+        );
+
         return $this->streamXlsx('orders_export.xlsx', $rows);
     }
 

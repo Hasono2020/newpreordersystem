@@ -528,13 +528,7 @@ class CombinedInvoiceService
     /** "Rina, Dewi, No CS agent assigned" — the picked CS in words, for messages and the activity log. */
     public function describeCsPick(?array $csPicked): string
     {
-        $picked = array_values(array_filter((array) $csPicked, fn ($v) => $v !== null && $v !== ''));
-        $names  = \App\Models\CsAgent::whereIn('id', array_filter(array_map('intval', array_diff($picked, ['none']))))
-            ->orderBy('name')->pluck('name')->all();
-        if (in_array('none', $picked, true)) {
-            $names[] = 'No CS agent assigned';
-        }
-        return implode(', ', $names);
+        return \App\Models\CsAgent::describePick($csPicked);
     }
 
     /** Ids of the customers who have at least one order in this trip handled by the picked CS. */

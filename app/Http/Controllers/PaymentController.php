@@ -589,6 +589,16 @@ class PaymentController extends Controller
             ];
         }
 
+        // Audit trail: who downloaded the payments file, for which trip and (if ticked) which CS.
+        \App\Models\ActivityLog::record(
+            'payment.exported',
+            'Exported payments to Excel for ' . ($trip ? "\"{$trip->name}\"" : 'a trip')
+                . ' — ' . $payments->count() . ' payment(s), ' . (count($sheet1) - 1) . ' customer(s) owing'
+                . ($csPicked !== [] ? ' (CS: ' . \App\Models\CsAgent::describePick($csPicked) . ')' : ''),
+            $trip ? 'trip' : null,
+            $trip?->id
+        );
+
         // ── Build two-sheet xlsx manually ─────────────────────────────
         $filename = "payments_{$label}" . ($csPicked !== [] ? '_filtered-by-CS' : '') . ".xlsx";
         $xlsx = $this->buildMultiSheetXlsx([

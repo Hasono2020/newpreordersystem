@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\ActivityLog;
 use App\Models\CsAgent;
 use App\Models\Order;
 use App\Models\Payment;
@@ -158,4 +159,41 @@ test('the payments page offers the CS pop-up for the export', function () {
         ->assertSee('exportPaymentsModal', false)
         ->assertSee('Rina')
         ->assertSee('No CS agent assigned');
+});
+
+// ── The Activity Log ────────────────────────────────────────────────
+
+test('exporting payments leaves a line in the Activity Log, with the CS when one is ticked', function () {
+    $s = pxScenario($this);
+
+    pxExport($this, $s)->assertOk();
+    $all = ActivityLog::where('action', 'payment.exported')->latest('id')->first();
+    expect($all)->not->toBeNull();
+    expect($all->user_id)->toBe($s['admin']->id);
+    expect($all->description)->toContain('5 payment(s)')->toContain('4 customer(s) owing')->not->toContain('CS:');
+
+    pxExport($this, $s, [(string) $s['rina']->id])->assertOk();
+    $rina = ActivityLog::where('action', 'payment.exported')->latest('id')->first();
+    expect($rina->description)->toContain('2 payment(s)')->toContain('2 customer(s) owing')->toContain('(CS: Rina)');
+});
+
+test('exporting orders leaves a line in the Activity Log, with the CS when one is ticked', function () {
+    $s = pxScenario($this);
+
+    $this->actingAs($s['admin'])->get(route('orders.export', ['trip_id' => $s['trip']->id]))->assertOk();
+    $all = ActivityLog::where('action', 'report.orders_exported')->latest('id')->first();
+    expect($all)->not->toBeNull();
+    expect($all->description)->toContain($s['trip']->name)->toContain('5 order(s)')->not->toContain('CS:');
+
+    $this->actingAs($s['admin'])
+        ->get(route('orders.export', ['trip_id' => $s['trip']->id, 'cs_agent_ids' => [$s['dewi']->id, 'none']]))->assertOk();
+    $some = ActivityLog::where('action', 'report.orders_exported')->latest('id')->first();
+    expect($some->description)->toContain('3 order(s)')->toContain('Dewi')->toContain('No CS agent assigned');
+});
+
+test('the Activity Log can be filtered to the two new export actions', function () {
+    $s = pxScenario($this);
+
+    $this->actingAs($s['admin'])->get(route('activity-logs.index'))
+        ->assertOk()->assertSee('Payments exported to Excel')->assertSee('Orders exported to Excel');
 });
