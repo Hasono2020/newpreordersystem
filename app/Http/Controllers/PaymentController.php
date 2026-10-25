@@ -305,7 +305,10 @@ class PaymentController extends Controller
             }
         }
 
-        return view('payments.index', compact('trips', 'tripId', 'tab', 'outstanding', 'log', 'search', 'verificationFilter', 'verificationCounts', 'createdByFilter', 'staffList', 'readyToPack', 'readyCount', 'toShipCount', 'partialCount', 'shippedCount', 'shipFilter', 'shipBatches', 'batchMeta', 'overpaid'));
+        // For the CS checklist in the Excel export pop-up.
+        $csAgents = \App\Models\CsAgent::orderByDesc('is_active')->orderBy('name')->get(['id', 'name', 'is_active']);
+
+        return view('payments.index', compact('trips', 'tripId', 'tab', 'outstanding', 'log', 'search', 'verificationFilter', 'verificationCounts', 'createdByFilter', 'staffList', 'readyToPack', 'readyCount', 'toShipCount', 'partialCount', 'shippedCount', 'shipFilter', 'shipBatches', 'batchMeta', 'overpaid', 'csAgents'));
     }
 
     /**
@@ -519,12 +522,27 @@ class PaymentController extends Controller
         $trip   = Trip::find($tripId);
         $label  = $trip ? preg_replace('/[^\w\-]/', '_', $trip->name) : 'trip';
 
+        // Optional CS checklist (same as the orders export): the CS AGENT who handled the
+        // order — not the staff account that typed it in. "none" = orders with no CS agent.
+        // Nothing ticked = everything, as before.
+        $csPicked = array_values(array_filter(
+            array_map(fn ($v) => is_scalar($v) ? (string) $v : '', (array) $request->query('cs_agent_ids', [])),
+            fn ($v) => $v !== ''
+        ));
+
         // ── Sheet 1: Outstanding Balances ─────────────────────────────
+        // With a CS ticked this lists the CUSTOMERS who have at least one order handled by
+        // that CS, and their figures still add up ALL their orders in the trip — a balance
+        // worked out from only some of a customer's orders would be wrong.
         $sheet1 = [
             ['Customer', 'Phone', 'Type', 'Orders', 'Total Ordered (Rp)', 'Total Paid (Rp)', 'Balance Due (Rp)'],
         ];
         $orders = Order::with('customer')
             ->where('trip_id', $tripId)
+            ->when($csPicked !== [], fn ($q) => $q->whereIn(
+                'customer_id',
+                Order::select('orders.customer_id')->where('orders.trip_id', $tripId)->handledByCs($csPicked)
+            ))
             ->get()
             ->groupBy('customer_id');
         foreach ($orders as $customerOrders) {
@@ -550,8 +568,10 @@ class PaymentController extends Controller
         $sheet2 = [
             ['Date', 'Customer', 'Phone', 'Order Number', 'Amount (Rp)', 'Method', 'Reference', 'Notes', 'Recorded By', 'Voided'],
         ];
+        // Payment Log: each payment belongs to one order, so with a CS ticked it lists the
+        // payments made on the orders that CS handled.
         $payments = Payment::with(['order.customer', 'recordedBy'])
-            ->whereHas('order', fn($q) => $q->where('trip_id', $tripId))
+            ->whereHas('order', fn($q) => $q->where('trip_id', $tripId)->handledByCs($csPicked))
             ->orderBy('paid_at', 'desc')
             ->get();
         foreach ($payments as $p) {
@@ -570,7 +590,7 @@ class PaymentController extends Controller
         }
 
         // ── Build two-sheet xlsx manually ─────────────────────────────
-        $filename = "payments_{$label}.xlsx";
+        $filename = "payments_{$label}" . ($csPicked !== [] ? '_filtered-by-CS' : '') . ".xlsx";
         $xlsx = $this->buildMultiSheetXlsx([
             'Outstanding Balances' => $sheet1,
             'Payment Log'          => $sheet2,

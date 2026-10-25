@@ -42,6 +42,32 @@ class Order extends Model
     public function invoicePrintedBy() { return $this->belongsTo(User::class, 'invoice_printed_by'); }
 
     /**
+     * How many customers have an order in this trip — optionally only those with at least one
+     * order handled by a picked CS (see scopeHandledByCs) and/or created by one staff member.
+     * This is the number the invoice download compares with its "too big for an instant
+     * download" limit, so it is one cheap query and builds no invoices.
+     *
+     * @param  array<int,mixed>|null $csPicked
+     */
+    public static function invoiceCustomerCount(int $tripId, ?int $onlyCreatedBy = null, ?array $csPicked = null): int
+    {
+        $hasCs = array_filter((array) $csPicked, fn ($v) => $v !== null && $v !== '') !== [];
+
+        return static::query()
+            ->where('orders.trip_id', $tripId)
+            ->when($onlyCreatedBy !== null, fn ($q) => $q->where('orders.created_by', $onlyCreatedBy))
+            ->when($hasCs, fn ($q) => $q->whereIn(
+                'orders.customer_id',
+                static::query()
+                    ->select('orders.customer_id')
+                    ->where('orders.trip_id', $tripId)
+                    ->when($onlyCreatedBy !== null, fn ($q2) => $q2->where('orders.created_by', $onlyCreatedBy))
+                    ->handledByCs($csPicked)
+            ))
+            ->distinct()->count('orders.customer_id');
+    }
+
+    /**
      * Only orders handled by the picked CS agents. $picked is what the CS checklist sends:
      * agent ids, and/or the word "none" for orders with no CS agent assigned. An empty list
      * means "no filter" (everything). A list with nothing usable in it matches nothing,

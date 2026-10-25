@@ -522,10 +522,7 @@ class CombinedInvoiceService
     /** Number of customers with an order in this trip, optionally only those a picked CS handled. */
     public function countCustomers(Trip $trip, ?int $onlyCreatedBy = null, ?array $csPicked = null): int
     {
-        return Order::where('trip_id', $trip->id)
-            ->when($onlyCreatedBy !== null, fn ($q) => $q->where('created_by', $onlyCreatedBy))
-            ->when($this->hasCsFilter($csPicked), fn ($q) => $q->whereIn('customer_id', $this->csCustomerSubquery($trip, $onlyCreatedBy, $csPicked)))
-            ->distinct()->count('customer_id');
+        return Order::invoiceCustomerCount($trip->id, $onlyCreatedBy, $csPicked);
     }
 
     /** "Rina, Dewi, No CS agent assigned" — the picked CS in words, for messages and the activity log. */

@@ -56,11 +56,9 @@
                 <ul class="dropdown-menu dropdown-menu-end" style="min-width:220px;">
                     <li><h6 class="dropdown-header">Export</h6></li>
                     <li>
-                        <a onclick="showExport('Preparing payment export…')"
-                           class="dropdown-item"
-                           href="{{ route('payments.export', ['trip_id' => $tripId]) }}">
+                        <button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#exportPaymentsModal">
                             <i class="bi bi-download me-2 text-success"></i>Export payments as Excel
-                        </a>
+                        </button>
                     </li>
                 </ul>
             </div>
@@ -726,6 +724,10 @@
         </div>
     </div>
 </div>
+
+@if(auth()->user()->hasPermission('payments.view'))
+    @include('partials.payment-export-modal', ['tripId' => $tripId, 'csAgents' => $csAgents])
+@endif
 
 @push('scripts')
 <script>

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\ActivityLog;
+use App\Models\Order;
 use App\Models\Trip;
 use App\Services\CombinedInvoiceService;
 use App\Services\InvoicePdfRenderer;
@@ -43,15 +44,16 @@ class TripInvoicePdfController extends Controller
 
         $ownerId = Auth::user()->isOwnDataOnly() ? Auth::id() : null; // staff who only see their own orders get just those
 
-        // Count customers with one cheap query BEFORE building anything. Checking the size
-        // after forTrip() would build every invoice in memory first — exactly the cost the
-        // limit exists to avoid — and only then refuse.
         // Optional CS checklist (same as the Excel export): only customers who have an order
         // handled by a ticked CS. Nothing ticked = everyone.
         $csPicked = $this->csPicked($request);
-        $csLabel  = $invoices->hasCsFilter($csPicked) ? $invoices->describeCsPick($csPicked) : null;
+        $csLabel  = $csPicked !== [] ? $invoices->describeCsPick($csPicked) : null;
 
-        $customerCount = $invoices->countCustomers($trip, $ownerId, $csPicked);
+        // Count customers with one cheap query BEFORE building anything. Checking the size
+        // after forTrip() would build every invoice in memory first — exactly the cost the
+        // limit exists to avoid — and only then refuse. A plain query on purpose: the invoice
+        // service's forTrip() is not touched until we know the trip is small enough to build.
+        $customerCount = Order::invoiceCustomerCount($trip->id, $ownerId, $csPicked);
 
         if ($customerCount === 0) {
             return back()->with('error', $csLabel
