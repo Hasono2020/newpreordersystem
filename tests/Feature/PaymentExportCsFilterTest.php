@@ -197,3 +197,21 @@ test('the Activity Log can be filtered to the two new export actions', function 
     $this->actingAs($s['admin'])->get(route('activity-logs.index'))
         ->assertOk()->assertSee('Payments exported to Excel')->assertSee('Orders exported to Excel');
 });
+
+// ── Payment Type column ─────────────────────────────────────────────
+
+test('the Payment Log has a Payment Type column right after Amount, in the words used when recording', function () {
+    $s = pxScenario($this);
+    $order = Order::where('trip_id', $s['trip']->id)->first();
+    Payment::factory()->create(['order_id' => $order->id, 'amount' => 111, 'type' => 'full',    'paid_at' => now(), 'voided_at' => null, 'verification_status' => 'verified']);
+    Payment::factory()->create(['order_id' => $order->id, 'amount' => 222, 'type' => 'partial', 'paid_at' => now(), 'voided_at' => null, 'verification_status' => 'verified']);
+
+    $rows = pxSheet(pxExport($this, $s), 2);
+
+    expect($rows[0])->toBe(['Date', 'Customer', 'Phone', 'Order Number', 'Amount (Rp)', 'Payment Type', 'Method', 'Reference', 'Notes', 'Recorded By', 'Voided']);
+
+    $byAmount = collect(array_slice($rows, 1))->mapWithKeys(fn ($r) => [(int) $r[4] => $r[5]]);
+    expect($byAmount[111])->toBe('Full Payment');   // not the stored word "Full"
+    expect($byAmount[222])->toBe('Partial');
+    expect($byAmount[100000])->toBe('Deposit');     // the scenario's own payments are deposits
+});

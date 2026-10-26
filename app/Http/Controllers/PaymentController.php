@@ -566,11 +566,11 @@ class PaymentController extends Controller
 
         // ── Sheet 2: Payment Log ──────────────────────────────────────
         $sheet2 = [
-            ['Date', 'Customer', 'Phone', 'Order Number', 'Amount (Rp)', 'Method', 'Reference', 'Notes', 'Recorded By', 'Voided'],
+            ['Date', 'Customer', 'Phone', 'Order Number', 'Amount (Rp)', 'Payment Type', 'Method', 'Reference', 'Notes', 'Recorded By', 'Voided'],
         ];
         // Payment Log: each payment belongs to one order, so with a CS ticked it lists the
         // payments made on the orders that CS handled.
-        $payments = Payment::with(['order.customer', 'recordedBy'])
+        $payments = Payment::with(['order.customer', 'recordedBy', 'salesAdjustment'])
             ->whereHas('order', fn($q) => $q->where('trip_id', $tripId)->handledByCs($csPicked))
             ->orderBy('paid_at', 'desc')
             ->get();
@@ -581,6 +581,9 @@ class PaymentController extends Controller
                 $p->order->customer->phone ?? '—',
                 $p->order->order_number ?? '—',
                 $p->amount,
+                // Same words as the Type choice when recording a payment: Deposit / Partial /
+                // Full Payment. A refund shows as Sales Return / Credit Note (or Refund).
+                $p->type === 'full' ? 'Full Payment' : $p->displayType(),
                 ucfirst($p->method ?? '—'),
                 $p->reference ?? '—',
                 $p->notes ?? '—',
