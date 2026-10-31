@@ -208,10 +208,41 @@ test('the Payment Log has a Payment Type column right after Amount, in the words
 
     $rows = pxSheet(pxExport($this, $s), 2);
 
-    expect($rows[0])->toBe(['Date', 'Customer', 'Phone', 'Order Number', 'Amount (Rp)', 'Payment Type', 'Method', 'Reference', 'Notes', 'Recorded By', 'Voided']);
+    expect($rows[0])->toBe(['Date', 'Customer', 'Phone', 'Order Number', 'Amount (Rp)', 'Payment Type', 'Method', 'Reference', 'Notes', 'Recorded By', 'Voided', 'CS Agent']);
 
     $byAmount = collect(array_slice($rows, 1))->mapWithKeys(fn ($r) => [(int) $r[4] => $r[5]]);
     expect($byAmount[111])->toBe('Full Payment');   // not the stored word "Full"
     expect($byAmount[222])->toBe('Partial');
     expect($byAmount[100000])->toBe('Deposit');     // the scenario's own payments are deposits
+});
+
+// ── CS Agent column: what the filter is really about ───────────────
+
+test('the Payment Log shows the order\'s CS agent, and a CS filter never lets another CS through, whoever recorded the payment', function () {
+    $s = pxScenario($this);
+
+    // The payments were typed in by assorted staff accounts — none of them is a CS agent. The
+    // filter is about the CS of the ORDER, so "Recorded By" can be anyone.
+    \App\Models\Payment::query()->update(['recorded_by' => $this->adminUser()->id]);
+
+    $rows = pxSheet(pxExport($this, $s, [(string) $s['dewi']->id]), 2);
+    $data = array_slice($rows, 1);
+
+    expect($data)->not->toBeEmpty();
+    foreach ($data as $r) {
+        expect($r[11])->toBe('Dewi');                       // CS Agent column — only the ticked CS
+    }
+
+    // and unfiltered, each row carries its own order's CS ('—' for an order with no CS)
+    $all = collect(array_slice(pxSheet(pxExport($this, $s), 2), 1))->pluck(11)->sort()->values()->all();
+    expect($all)->toBe(['Dewi', 'Dewi', 'Rina', 'Rina', '—']);
+});
+
+test('the Outstanding Balances sheet names the CS agent(s) of each customer', function () {
+    $s = pxScenario($this);
+
+    $rows = collect(array_slice(pxSheet(pxExport($this, $s), 1), 1));
+    expect($rows->firstWhere(0, 'Adi')[7])->toBe('Rina');
+    expect($rows->firstWhere(0, 'Budi')[7])->toBe('Dewi, Rina');   // two orders, two CS
+    expect($rows->firstWhere(0, 'Eka')[7])->toBe('—');
 });

@@ -535,9 +535,9 @@ class PaymentController extends Controller
         // that CS, and their figures still add up ALL their orders in the trip — a balance
         // worked out from only some of a customer's orders would be wrong.
         $sheet1 = [
-            ['Customer', 'Phone', 'Type', 'Orders', 'Total Ordered (Rp)', 'Total Paid (Rp)', 'Balance Due (Rp)'],
+            ['Customer', 'Phone', 'Type', 'Orders', 'Total Ordered (Rp)', 'Total Paid (Rp)', 'Balance Due (Rp)', 'CS Agent'],
         ];
-        $orders = Order::with('customer')
+        $orders = Order::with('customer', 'csAgent')
             ->where('trip_id', $tripId)
             ->when($csPicked !== [], fn ($q) => $q->whereIn(
                 'customer_id',
@@ -561,16 +561,19 @@ class PaymentController extends Controller
             $sheet1[] = [
                 $c->name ?? '—', $c->phone ?? '—', $c->type ?? '—',
                 $customerOrders->count(), $ordered, $paid, $balance,
+                // The CS agent(s) who handled this customer's orders in the trip (more than one
+                // when their orders were handled by different CS) — not the staff who typed them in.
+                $customerOrders->map(fn ($o) => $o->csAgent?->name)->filter()->unique()->sort()->implode(', ') ?: '—',
             ];
         }
 
         // ── Sheet 2: Payment Log ──────────────────────────────────────
         $sheet2 = [
-            ['Date', 'Customer', 'Phone', 'Order Number', 'Amount (Rp)', 'Payment Type', 'Method', 'Reference', 'Notes', 'Recorded By', 'Voided'],
+            ['Date', 'Customer', 'Phone', 'Order Number', 'Amount (Rp)', 'Payment Type', 'Method', 'Reference', 'Notes', 'Recorded By', 'Voided', 'CS Agent'],
         ];
         // Payment Log: each payment belongs to one order, so with a CS ticked it lists the
         // payments made on the orders that CS handled.
-        $payments = Payment::with(['order.customer', 'recordedBy', 'salesAdjustment'])
+        $payments = Payment::with(['order.customer', 'order.csAgent', 'recordedBy', 'salesAdjustment'])
             ->whereHas('order', fn($q) => $q->where('trip_id', $tripId)->handledByCs($csPicked))
             ->orderBy('paid_at', 'desc')
             ->get();
@@ -589,6 +592,9 @@ class PaymentController extends Controller
                 $p->notes ?? '—',
                 $p->recordedBy->name ?? '—',
                 $p->isVoided() ? 'Yes' : 'No',
+                // The CS agent who handled the ORDER — this is what the CS checklist filters on.
+                // "Recorded By" is a different thing: the staff account that typed the payment in.
+                $p->order->csAgent?->name ?? '—',
             ];
         }
 
