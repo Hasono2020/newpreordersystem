@@ -567,6 +567,28 @@ class ProductController extends Controller
         return back()->with('success', 'Variant updated.');
     }
 
+    /**
+     * Deactivate / reactivate ONE variant (e.g. "White / L" sold out). A deactivated variant
+     * can't be picked for new orders; orders that already contain it are untouched.
+     */
+    public function toggleVariantActive(Product $product, ProductVariant $variant)
+    {
+        abort_unless($variant->product_id === $product->id, 404);
+
+        $variant->update(['is_active' => !$variant->is_active]);
+
+        \App\Models\ActivityLog::record(
+            $variant->is_active ? 'variant.reactivated' : 'variant.deactivated',
+            ($variant->is_active ? 'Reactivated' : 'Deactivated') . " variant '{$variant->label}' on product {$product->product_code}",
+            'product',
+            $product->id
+        );
+
+        return back()->with('success', $variant->is_active
+            ? "Variant '{$variant->label}' is on sale again."
+            : "Variant '{$variant->label}' deactivated — it can no longer be chosen for new orders.");
+    }
+
     public function destroyVariant(Product $product, ProductVariant $variant)
     {
         // Block if any order items or purchase order items reference this variant

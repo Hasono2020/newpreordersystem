@@ -33,6 +33,20 @@ class Product extends Model
         return $this->status === 'deactivated';
     }
 
+    /**
+     * Can this product still be offered on a new order? Not if it is deactivated, nor if it has
+     * variants and every one of them is deactivated (it is sold out in every color/size).
+     * Uses the loaded variants — load them first to avoid a query per product.
+     */
+    public function canBeOrdered(): bool
+    {
+        if ($this->isDeactivated()) {
+            return false;
+        }
+        $variants = $this->variants;
+        return $variants->isEmpty() || $variants->contains('is_active', true);
+    }
+
     /** Products that can still be picked when creating an order or adding an item. */
     public function scopeOrderable(Builder $query): Builder
     {

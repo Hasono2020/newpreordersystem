@@ -99,6 +99,7 @@ class OrderController extends Controller
         // A deactivated product (sold out / off sale) can't go on a new order — even if an old
         // browser page still lists it, or the request was made by hand.
         $this->refuseDeactivatedProducts(collect($request->items)->pluck('product_id')->all(), 'items');
+        $this->refuseDeactivatedVariants(collect($request->items)->pluck('product_variant_id')->all(), 'items');
 
         // Duplicate-submission guard: the create form issues a fresh random
         // client_token per page view and disables its Save button on submit,
@@ -555,6 +556,7 @@ class OrderController extends Controller
 
         // A deactivated product can't be added to an order either.
         $this->refuseDeactivatedProducts([$request->product_id], 'product_id');
+        $this->refuseDeactivatedVariants([$request->product_variant_id], 'product_variant_id');
 
         // Verify variant belongs to the selected product
         if ($request->product_variant_id) {
@@ -855,18 +857,42 @@ class OrderController extends Controller
         ]);
     }
 
+    /**
+     * Stop a new order line for a deactivated VARIANT (e.g. "White / L" sold out).
+     *
+     * @param array<int,mixed> $variantIds
+     */
+    private function refuseDeactivatedVariants(array $variantIds, string $field): void
+    {
+        $ids = array_values(array_unique(array_filter($variantIds)));
+        if ($ids === []) return;
+
+        $gone = \App\Models\ProductVariant::with('product:id,product_code')
+            ->whereIn('id', $ids)->where('is_active', false)->get();
+        if ($gone->isEmpty()) return;
+
+        $names = $gone->map(fn ($v) => ($v->product->product_code ?? '?') . ' ' . $v->label)->implode(', ');
+        throw \Illuminate\Validation\ValidationException::withMessages([
+            $field => $gone->count() === 1
+                ? "Variant {$names} is deactivated and can no longer be ordered. Choose another color/size."
+                : "These variants are deactivated and can no longer be ordered: {$names}. Choose other colors/sizes.",
+        ]);
+    }
+
     // ── AJAX: trip products ──────────────────────────────────────────
 
     public function tripProducts(Trip $trip)
     {
         // Deactivated products (sold out / off sale) are not offered for new orders.
-        $products = $trip->products()->orderable()->with('variants')->get()->map(fn($p) => [
+        // Also left out: a product whose every variant is deactivated (sold out in all sizes).
+        $products = $trip->products()->orderable()->with('variants')->get()->filter(fn($p) => $p->canBeOrdered())->values()->map(fn($p) => [
             'id'       => $p->id,
             'name'     => $p->product_code,
             'code'     => $p->product_code,
             'price'    => $p->price,
             'weight'   => $p->weight_gram,
-            'variants' => $p->variants->map(fn($v) => [
+            // Deactivated variants (e.g. "White / L" sold out) are not offered.
+            'variants' => $p->variants->where('is_active', true)->values()->map(fn($v) => [
                 'id'    => $v->id,
                 'label' => $v->label,
                 'color' => $v->color,

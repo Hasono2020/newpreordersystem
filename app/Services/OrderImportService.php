@@ -99,6 +99,8 @@ class OrderImportService
                 });
                 if (!$variantFound) {
                     $errors[] = "Row {$lineNum} ({$name}): Variant '{$color}/{$size}' not found for code '{$code}'.";
+                } elseif (!$variantFound->is_active) {
+                    $errors[] = "Row {$lineNum} ({$name}): Variant '{$color}/{$size}' of '{$code}' is deactivated and can no longer be ordered.";
                 }
             }
         }

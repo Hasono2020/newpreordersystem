@@ -58,6 +58,7 @@ Route::middleware('auth')->group(function () {
         Route::put('products/{product}', [ProductController::class, 'update'])->name('products.update');
         Route::post('products/{product}/variants', [ProductController::class, 'storeVariant'])->name('products.variants.store');
         Route::patch('products/{product}/variants/{variant}', [ProductController::class, 'updateVariant'])->name('products.variants.update');
+        Route::patch('products/{product}/variants/{variant}/active', [ProductController::class, 'toggleVariantActive'])->name('products.variants.active');
         Route::delete('products/{product}/variants/{variant}', [ProductController::class, 'destroyVariant'])->name('products.variants.destroy');
         Route::post('products/{product}/variants/{variant}/merge', [ProductController::class, 'mergeVariant'])->name('products.variants.merge');
     });

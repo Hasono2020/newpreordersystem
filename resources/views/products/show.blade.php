@@ -66,12 +66,17 @@
             <div class="table-responsive">
                 <table class="table table-hover mb-0 small">
                     <thead class="table-light">
-                        <tr><th>Color / Size</th><th>Price</th><th>Supplier Stock</th><th>Allocated</th><th>Remaining</th><th></th></tr>
+                        <tr><th>Color / Size</th><th>Price</th><th>Supplier Stock</th><th>Allocated</th><th>Remaining</th><th>Sale</th><th></th></tr>
                     </thead>
                     <tbody>
                         @forelse($product->variants as $variant)
-                        <tr>
-                            <td class="fw-semibold">{{ $variant->label }}</td>
+                        <tr class="{{ $variant->is_active ? '' : 'table-secondary' }}">
+                            <td class="fw-semibold">
+                                {{ $variant->label }}
+                                @unless($variant->is_active)
+                                    <span class="badge bg-danger ms-1">Deactivated</span>
+                                @endunless
+                            </td>
                             <td>Rp {{ number_format($variant->final_price, 0, ',', '.') }}</td>
                             <td>
                                 @if($variant->allocated_qty > 0)
@@ -102,6 +107,25 @@
                                 <span class="{{ $variant->remaining_stock < 0 ? 'text-danger fw-bold' : ($variant->remaining_stock == 0 && $variant->allocated_qty > 0 ? 'text-success' : '') }}">
                                     {{ $variant->remaining_stock }}
                                 </span>
+                            </td>
+                            <td>
+                                @if(auth()->user()->hasPermission('products.edit'))
+                                    <form method="POST" action="{{ route('products.variants.active', [$product, $variant]) }}"
+                                          @if($variant->is_active) onsubmit="return confirm('Deactivate {{ addslashes($variant->label) }}? It will no longer be selectable on new orders. Existing orders are not changed.')" @endif>
+                                        @csrf @method('PATCH')
+                                        @if($variant->is_active)
+                                            <button type="submit" class="btn btn-sm btn-outline-secondary py-0 px-2" title="Sold out? Stop new orders for this variant only">
+                                                <i class="bi bi-slash-circle" style="font-size:.75rem;"></i> Deactivate
+                                            </button>
+                                        @else
+                                            <button type="submit" class="btn btn-sm btn-outline-success py-0 px-2" title="Make this variant orderable again">
+                                                <i class="bi bi-check-circle" style="font-size:.75rem;"></i> Reactivate
+                                            </button>
+                                        @endif
+                                    </form>
+                                @else
+                                    <span class="badge {{ $variant->is_active ? 'bg-success' : 'bg-danger' }}">{{ $variant->is_active ? 'On sale' : 'Deactivated' }}</span>
+                                @endif
                             </td>
                             <td>
                                 @php
@@ -163,7 +187,7 @@
                             </td>
                         </tr>
                         @empty
-                        <tr><td colspan="6" class="text-center text-muted py-3">No variants — orders will use base product</td></tr>
+                        <tr><td colspan="7" class="text-center text-muted py-3">No variants — orders will use base product</td></tr>
                         @endforelse
                     </tbody>
                 </table>
