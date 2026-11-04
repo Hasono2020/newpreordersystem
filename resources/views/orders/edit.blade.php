@@ -69,7 +69,7 @@
                                 <label class="form-label small fw-semibold">Product</label>
                                 <select name="product_id" id="aiProduct" class="form-select form-select-sm" required onchange="fillVariantsAndPrice()">
                                     <option value="">Select…</option>
-                                    @foreach($order->trip->products as $p)
+                                    @foreach($order->trip->products->where('status', '!=', 'deactivated') as $p)
                                         <option value="{{ $p->id }}"
                                             data-price="{{ $p->price }}"
                                             data-weight="{{ $p->weight_gram }}"

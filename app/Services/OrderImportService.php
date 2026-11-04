@@ -86,6 +86,11 @@ class OrderImportService
                 continue;
             }
 
+            if ($product->status === 'deactivated') {
+                $errors[] = "Row {$lineNum} ({$name}): Product '{$code}' is deactivated and can no longer be ordered.";
+                continue;
+            }
+
             if ($color || $size) {
                 $variantFound = $product->variants->first(function ($v) use ($color, $size) {
                     $colorMatch = !$color || strtolower($v->color ?? '') === strtolower($color);

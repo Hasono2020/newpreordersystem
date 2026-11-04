@@ -104,7 +104,7 @@
                         • <strong>One row per variant.</strong> Repeat the same Code on each row for different variants.<br>
                         • All rows must have Trip and Code — any missing value blocks the entire import.<br>
                         • Supplier is auto-created if it doesn't exist yet.<br>
-                        • <strong>Excluded from Promo:</strong> yes / no &nbsp;|&nbsp; <strong>Status:</strong> active / closed
+                        • <strong>Excluded from Promo:</strong> yes / no &nbsp;|&nbsp; <strong>Status:</strong> active / closed / arrived / deactivated
                     </span>
                     <a onclick="showExport('Preparing template download…')" href="{{ route('products.import.template') }}" class="small mt-1 d-inline-block">
                         <i class="bi bi-download me-1"></i>Download template (.xlsx)
@@ -187,7 +187,7 @@
                         @endif
                     </td>
                     <td data-label="Status">
-                        <span class="badge {{ $product->status === 'active' ? 'bg-success' : ($product->status === 'arrived' ? 'bg-info' : 'bg-secondary') }}">
+                        <span class="badge {{ $product->status === 'active' ? 'bg-success' : ($product->status === 'arrived' ? 'bg-info' : ($product->status === 'deactivated' ? 'bg-danger' : 'bg-secondary')) }}">
                             {{ ucfirst($product->status) }}
                         </span>
                     </td>

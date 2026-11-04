@@ -151,13 +151,17 @@
         <div class="col-md-4 offset-md-8">
             <label class="form-label fw-semibold">Status</label>
             <select name="status" class="form-select">
-                @foreach(['active' => 'Active', 'closed' => 'Closed', 'arrived' => 'Arrived'] as $val => $lbl)
+                @foreach(['active' => 'Active', 'closed' => 'Closed', 'arrived' => 'Arrived', 'deactivated' => 'Deactivated (sold out)'] as $val => $lbl)
                     <option value="{{ $val }}"
                         {{ old('status', $product->status) == $val ? 'selected' : '' }}>
                         {{ $lbl }}
                     </option>
                 @endforeach
             </select>
+            <div class="form-text">
+                <strong>Deactivated</strong> hides this product from New Order and Add Item.
+                Orders that already have it keep it.
+            </div>
         </div>
     </div>
 

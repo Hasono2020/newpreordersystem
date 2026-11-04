@@ -12,7 +12,7 @@
         <i class="bi bi-pencil me-1"></i>Edit
     </a>
     @endif
-    <span class="badge {{ $product->status === 'active' ? 'bg-success' : 'bg-secondary' }} align-self-center">
+    <span class="badge {{ $product->status === 'active' ? 'bg-success' : ($product->status === 'deactivated' ? 'bg-danger' : 'bg-secondary') }} align-self-center">
         {{ ucfirst($product->status) }}
     </span>
     <h5 class="mb-0 ms-2 fw-bold">{{ $product->product_code }}</h5>

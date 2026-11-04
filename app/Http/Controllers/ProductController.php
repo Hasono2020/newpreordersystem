@@ -152,7 +152,7 @@ class ProductController extends Controller
             'price'        => 'required|numeric|min:0',
             'weight_gram'  => 'required|integer|min:1',
             'notes'        => 'nullable|string',
-            'status'       => 'required|in:active,closed,arrived',
+            'status'       => 'required|in:' . implode(',', Product::STATUSES),
             'image'        => 'nullable|image|max:5120',
         ], [
             'product_code.unique' => 'This product code is already used by another product. Each product code must be unique.',
@@ -258,7 +258,7 @@ class ProductController extends Controller
         return $this->streamXlsx('product_import_template.xlsx', [
             ['Trip', 'Code', 'SKU', 'Brand', 'Supplier', 'Price', 'Weight (gram)', 'Excluded from Promo', 'Status', 'Color', 'Size', 'Price Adjustment', 'Supplier Stock'],
             // One row per variant. Same Code on multiple rows = same product, different variants.
-            // Excluded from Promo: yes / no    Status: active / closed
+            // Excluded from Promo: yes / no    Status: active / closed / arrived / deactivated
             ['Testing Trip', 'NA_01', '', 'Brand X', 'Shein', 250000, 30000, 'no', 'active', 'BLACK', 'L',  0, 25],
             ['Testing Trip', 'NA_01', '', 'Brand X', 'Shein', 250000, 30000, 'no', 'active', 'BLACK', 'XL', 0, 20],
             ['Testing Trip', 'NA_01', '', 'Brand X', 'Shein', 250000, 30000, 'no', 'active', 'BLACK', 'S',  0, 15],
@@ -413,7 +413,7 @@ class ProductController extends Controller
                         'price'               => $price  ?: $existing->price,
                         'weight_gram'         => $weight ?: $existing->weight_gram,
                         'excluded_from_promo' => $excluded,
-                        'status'              => in_array($status, ['active','closed','arrived']) ? $status : $existing->status,
+                        'status'              => in_array($status, Product::STATUSES, true) ? $status : $existing->status,
                     ]));
                     $product = $existing;
                     $imported++; // count as updated
@@ -427,7 +427,7 @@ class ProductController extends Controller
                         'price'               => $price,
                         'weight_gram'         => $weight,
                         'excluded_from_promo' => $excluded,
-                        'status'              => in_array($status, ['active','closed','arrived']) ? $status : 'active',
+                        'status'              => in_array($status, Product::STATUSES, true) ? $status : 'active',
                     ]);
                     $imported++;
                 }

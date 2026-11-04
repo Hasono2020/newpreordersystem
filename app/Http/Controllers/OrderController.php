@@ -96,6 +96,10 @@ class OrderController extends Controller
             'items.*.quantity.min'        => 'Quantity must be at least 1.',
         ]);
 
+        // A deactivated product (sold out / off sale) can't go on a new order — even if an old
+        // browser page still lists it, or the request was made by hand.
+        $this->refuseDeactivatedProducts(collect($request->items)->pluck('product_id')->all(), 'items');
+
         // Duplicate-submission guard: the create form issues a fresh random
         // client_token per page view and disables its Save button on submit,
         // but on an unstable connection a request can still be sent twice
@@ -549,6 +553,9 @@ class OrderController extends Controller
             'client_token'       => 'nullable|string|max:100',
         ]);
 
+        // A deactivated product can't be added to an order either.
+        $this->refuseDeactivatedProducts([$request->product_id], 'product_id');
+
         // Verify variant belongs to the selected product
         if ($request->product_variant_id) {
             $variant = ProductVariant::findOrFail($request->product_variant_id);
@@ -827,11 +834,33 @@ class OrderController extends Controller
         ));
     }
 
+    /**
+     * Stop a new order line for a deactivated product. Throws a validation error naming the
+     * product codes (the form goes back with the message and the user's input kept).
+     *
+     * @param array<int,mixed> $productIds
+     */
+    private function refuseDeactivatedProducts(array $productIds, string $field): void
+    {
+        $ids = array_values(array_unique(array_filter($productIds)));
+        if ($ids === []) return;
+
+        $codes = \App\Models\Product::whereIn('id', $ids)->where('status', 'deactivated')->pluck('product_code');
+        if ($codes->isEmpty()) return;
+
+        throw \Illuminate\Validation\ValidationException::withMessages([
+            $field => $codes->count() === 1
+                ? "Product {$codes->first()} is deactivated and can no longer be ordered. Remove it and choose another product."
+                : 'These products are deactivated and can no longer be ordered: ' . $codes->implode(', ') . '. Remove them and choose other products.',
+        ]);
+    }
+
     // ── AJAX: trip products ──────────────────────────────────────────
 
     public function tripProducts(Trip $trip)
     {
-        $products = $trip->products()->with('variants')->get()->map(fn($p) => [
+        // Deactivated products (sold out / off sale) are not offered for new orders.
+        $products = $trip->products()->orderable()->with('variants')->get()->map(fn($p) => [
             'id'       => $p->id,
             'name'     => $p->product_code,
             'code'     => $p->product_code,

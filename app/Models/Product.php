@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -23,6 +24,20 @@ class Product extends Model
     public function supplier()  { return $this->belongsTo(Supplier::class); }
     public function variants()  { return $this->hasMany(ProductVariant::class); }
     public function orderItems(){ return $this->hasMany(OrderItem::class); }
+
+    /** Every status a product can have. "deactivated" = off sale (e.g. sold out): can't be picked for a new order. */
+    public const STATUSES = ['active', 'closed', 'arrived', 'deactivated'];
+
+    public function isDeactivated(): bool
+    {
+        return $this->status === 'deactivated';
+    }
+
+    /** Products that can still be picked when creating an order or adding an item. */
+    public function scopeOrderable(Builder $query): Builder
+    {
+        return $query->where('products.status', '!=', 'deactivated');
+    }
 
     public function getTotalOrderedQuantityAttribute(): int
     {
