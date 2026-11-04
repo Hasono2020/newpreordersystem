@@ -20,6 +20,11 @@ class BackupController extends Controller
      */
     private function safePath(string $filename): ?string
     {
+        // The download link omits ".sql" (a URL ending in .sql is blocked by some web-server
+        // firewalls with a plain "Forbidden"), so accept the name with or without it.
+        if (!str_ends_with($filename, '.sql')) {
+            $filename .= '.sql';
+        }
         // Only allow our exact naming pattern — blocks ../, slashes, etc.
         if (!preg_match('/^backup-\d{4}-\d{2}-\d{2}-\d{6}\.sql$/', $filename)) {
             return null;
@@ -74,7 +79,8 @@ class BackupController extends Controller
         if (!$path) {
             abort(404, 'Backup not found.');
         }
-        return response()->download($path);
+        // Served under its real .sql name even though the URL has no extension.
+        return response()->download($path, basename($path), ['Content-Type' => 'application/octet-stream']);
     }
 
     public function run()

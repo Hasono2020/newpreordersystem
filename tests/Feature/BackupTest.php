@@ -81,3 +81,16 @@ test('admin deleting a bad filename is rejected', function () {
         ->delete('/backups/' . urlencode('../../.env'))
         ->assertStatus(404);
 });
+test('download also works with the link that has no .sql extension', function () {
+    $dir = storage_path('app/backups');
+    if (!is_dir($dir)) mkdir($dir, 0775, true);
+    $name = 'backup-2099-02-02-020202';
+    file_put_contents("$dir/$name.sql", '-- test dump');
+
+    try {
+        $this->actingAs($this->adminUser())->get("/backups/download/$name")
+            ->assertOk()->assertHeader('content-disposition');
+    } finally {
+        @unlink("$dir/$name.sql");
+    }
+});

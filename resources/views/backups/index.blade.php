@@ -35,7 +35,7 @@
                     <td class="small text-muted text-nowrap">{{ $b['created']->format('d M Y, H:i') }}</td>
                     <td class="small">{{ $b['size_mb'] }} MB</td>
                     <td class="text-end">
-                        <a href="{{ route('backups.download', $b['filename']) }}" class="btn btn-sm btn-outline-primary">
+                        <a href="{{ route('backups.download', preg_replace('/\.sql$/', '', $b['filename'])) }}" class="btn btn-sm btn-outline-primary">
                             <i class="bi bi-download me-1"></i>Download
                         </a>
                         <form method="POST" action="{{ route('backups.destroy', $b['filename']) }}" class="d-inline"
