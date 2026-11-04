@@ -88,8 +88,10 @@ test('download also works with the link that has no .sql extension', function ()
     file_put_contents("$dir/$name.sql", '-- test dump');
 
     try {
-        $this->actingAs($this->adminUser())->get("/backups/download/$name")
+        $response = $this->actingAs($this->adminUser())->get("/backups/download/$name")
             ->assertOk()->assertHeader('content-disposition');
+        expect($response->headers->get('content-disposition'))->toContain("$name.sql.gz");
+        expect(gzdecode($response->streamedContent()))->toBe('-- test dump');
     } finally {
         @unlink("$dir/$name.sql");
     }

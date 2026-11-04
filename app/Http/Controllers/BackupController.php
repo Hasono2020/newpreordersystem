@@ -78,8 +78,19 @@ class BackupController extends Controller
         if (!$path) {
             abort(404, 'Backup not found.');
         }
-        // Served under its real .sql name even though the URL has no extension.
-        return response()->download($path, basename($path), ['Content-Type' => 'application/octet-stream']);
+        // Sent gzip-compressed (.sql.gz), streamed in chunks. A raw SQL dump is blocked by some
+        // web-server firewalls (plain "Forbidden") because its body looks like SQL; a compressed
+        // file passes, and it is ~6x smaller to download. Open with 7-Zip / gunzip to get the .sql.
+        return response()->streamDownload(function () use ($path) {
+            $in  = fopen($path, 'rb');
+            $zip = deflate_init(ZLIB_ENCODING_GZIP, ['level' => 6]);
+            while (!feof($in)) {
+                echo deflate_add($zip, fread($in, 1048576), ZLIB_NO_FLUSH);
+                flush();
+            }
+            echo deflate_add($zip, '', ZLIB_FINISH);
+            fclose($in);
+        }, basename($path) . '.gz', ['Content-Type' => 'application/gzip']);
     }
 
     public function run()
