@@ -162,11 +162,21 @@ class PurchasingController extends Controller
             'items'                          => 'required|array|min:1',
             'items.*.product_id'             => 'required|exists:products,id',
             'items.*.product_variant_id'     => 'nullable|exists:product_variants,id',
-            'items.*.quantity_ordered'       => 'required|integer|min:1',
+            'items.*.quantity_ordered'       => 'required|integer|min:0',
             'items.*.unit_cost'              => 'required|numeric|min:0',
         ]);
 
-        DB::transaction(function () use ($request, &$po) {
+        // Only the lines with a quantity are ordered. The form leaves out the products that
+        // were not ticked, and a line left at 0 is simply skipped (not an error) — so a PO can
+        // cover just some of a supplier's products; the rest stays as uncovered demand.
+        $lines = array_values(array_filter($request->items, fn ($i) => (int) ($i['quantity_ordered'] ?? 0) > 0));
+        if ($lines === []) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'items' => 'Nothing to order — tick at least one product and give it a quantity above 0.',
+            ]);
+        }
+
+        DB::transaction(function () use ($request, $lines, &$po) {
             $supplierId = $request->supplier_id ?: null;
 
             // Enforce 1 active PO per supplier per trip — merge into existing if found
@@ -194,7 +204,7 @@ class PurchasingController extends Controller
 
             $inserts = [];
             $now     = now();
-            foreach ($request->items as $item) {
+            foreach ($lines as $item) {
                 $qty       = (int)   $item['quantity_ordered'];
                 $cost      = (float) $item['unit_cost'];
                 $varId     = $item['product_variant_id'] ?: null;

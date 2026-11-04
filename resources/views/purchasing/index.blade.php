@@ -44,6 +44,10 @@ body { padding-bottom: 72px; }
 .po-panel { display:none; border-top: 2px solid #3b82f6; }
 .po-panel.active { display:block; }
 .search-hidden { display:none !important; }
+/* A product left out of this PO: greyed, its boxes disabled so they are not sent. */
+.po-pg.po-off .pgh { opacity:.55; }
+.po-pg.po-off .pgb { opacity:.45; }
+.pgh .po-pick { flex-shrink:0; width:16px; height:16px; cursor:pointer; margin:0; }
 
 /* Skeleton loader */
 .skel-line { height:44px; background:linear-gradient(90deg,#f0f0f0 25%,#e8e8e8 50%,#f0f0f0 75%);
@@ -385,6 +389,11 @@ function buildPOForm(key, container) {
             <input type="text" class="form-control form-control-sm" placeholder="Search product in PO form…"
                 oninput="searchPOAccordion('${key}', this.value)">
         </div>
+        <div class="d-flex align-items-center gap-3 mb-2 small">
+            <span class="text-muted">Tick the products to include in this PO:</span>
+            <button type="button" class="btn btn-link btn-sm p-0" onclick="poPickAll('${key}', true)">Tick all</button>
+            <button type="button" class="btn btn-link btn-sm p-0" onclick="poPickAll('${key}', false)">Untick all</button>
+        </div>
         <div id="po-accordion-${key}">`;
 
     let fi = 0;
@@ -395,6 +404,9 @@ function buildPOForm(key, container) {
         html += `<div class="product-group po-pg" id="pg-${pgId}"
                       data-product-name="${escH((first.product_name+' '+(first.product_code||'')).toLowerCase())}">
             <div class="pgh open" onclick="togglePOGroup('${pgId}')">
+                <input type="checkbox" class="po-pick" id="pick-${pgId}" checked
+                    title="Include this product in the PO"
+                    onclick="event.stopPropagation();togglePOPick('${pgId}', this.checked)">
                 <i class="bi bi-chevron-right ti"></i>
                 <span class="gn">${escH(first.product_name)}</span>
                 ${first.product_code ? `<span class="gc">${escH(first.product_code)}</span>` : ''}
@@ -438,8 +450,25 @@ function togglePOGroup(pgId) {
     const open = !b.classList.contains('open');
     b.classList.toggle('open', open); h.classList.toggle('open', open);
 }
+// Include / leave out one product. Its boxes are DISABLED when left out, so the browser does not
+// send them: they are not on the PO, and the demand stays uncovered for a later PO.
+function togglePOPick(pgId, on) {
+    const g = document.getElementById(`pg-${pgId}`);
+    if (!g) return;
+    g.classList.toggle('po-off', !on);
+    g.querySelectorAll('.pgb input').forEach(i => { i.disabled = !on; });
+    updatePOGroupQty(pgId);
+    updateStickyBar();
+}
+function poPickAll(key, on) {
+    document.querySelectorAll(`#po-accordion-${key} .po-pg`).forEach(g => {
+        const id = g.id.replace(/^pg-/, '');
+        const box = document.getElementById(`pick-${id}`);
+        if (box) { box.checked = on; togglePOPick(id, on); }
+    });
+}
 function updatePOGroupQty(pgId) {
-    const t = [...document.querySelectorAll(`.po-qty[data-group="${pgId}"]`)].reduce((s,i)=>s+(parseInt(i.value)||0),0);
+    const t = [...document.querySelectorAll(`.po-qty[data-group="${pgId}"]:not(:disabled)`)].reduce((s,i)=>s+(parseInt(i.value)||0),0);
     const el = document.getElementById(`pogq-${pgId}`); if(el) el.textContent = t;
 }
 function closePOPanel(key) {
@@ -449,14 +478,44 @@ function closePOPanel(key) {
 function cancelPO() { if (activePOKey) closePOPanel(activePOKey); }
 function submitPO() { if (activePOKey) document.getElementById(`po-form-${activePOKey}`)?.requestSubmit(); }
 function confirmPO() {
-    return confirm(`Create PO for ${document.getElementById('stkSupplier').textContent}?\n\nTotal Qty: ${document.getElementById('stkQty').textContent}\nCost: ${document.getElementById('stkCost').textContent}\n\nOK to confirm.`);
+    const form = document.getElementById(`po-form-${activePOKey}`);
+    const picked = [...form.querySelectorAll('.po-qty:not(:disabled)')].filter(i => (parseInt(i.value)||0) > 0);
+    if (picked.length === 0) {
+        alert('Nothing to order. Tick at least one product and make sure it has a quantity above 0.');
+        return false;
+    }
+
+    // What goes on this PO (ticked products with a quantity) and what is left out (unticked).
+    const included = [], leftOut = [];
+    form.querySelectorAll('.po-pg').forEach(g => {
+        const name = (g.querySelector('.gn')?.textContent || '').trim();
+        const box  = g.querySelector('.po-pick');
+        if (box && !box.checked) { leftOut.push(name); return; }
+        const rows = [...g.querySelectorAll('.po-qty:not(:disabled)')].filter(i => (parseInt(i.value)||0) > 0);
+        if (!rows.length) return;                       // ticked, but every quantity is 0: not on the PO
+        const qty = rows.reduce((t,i) => t + (parseInt(i.value)||0), 0);
+        included.push(`${name}: ${rows.length} variant${rows.length>1?'s':''}, qty ${qty.toLocaleString('id-ID')}`);
+    });
+
+    const MAX = 15;   // keep the pop-up readable for a PO with very many products
+    const listed = included.slice(0, MAX).join('\n') + (included.length > MAX ? `\n… and ${included.length-MAX} more product(s)` : '');
+    const left   = leftOut.length
+        ? `\n\nNot included (${leftOut.length}): ${leftOut.slice(0, MAX).join(', ')}${leftOut.length > MAX ? ', …' : ''}`
+        : '';
+
+    return confirm(
+        `Create PO for ${document.getElementById('stkSupplier').textContent}?\n\n` +
+        `Products in this PO (${included.length}):\n${listed}\n\n` +
+        `Total Qty: ${document.getElementById('stkQty').textContent}\n` +
+        `Cost: ${document.getElementById('stkCost').textContent}${left}\n\nOK to confirm.`
+    );
 }
 
 // ── Sticky bar ────────────────────────────────────────────────────────
 function updateStickyBar() {
     if (!activePOKey) return;
-    const qs = document.querySelectorAll(`#po-form-${activePOKey} .po-qty`);
-    const cs = document.querySelectorAll(`#po-form-${activePOKey} .po-cost`);
+    const qs = document.querySelectorAll(`#po-form-${activePOKey} .po-qty:not(:disabled)`);
+    const cs = document.querySelectorAll(`#po-form-${activePOKey} .po-cost:not(:disabled)`);
     let tQ=0, tC=0, tV=0;
     qs.forEach((q,i) => { const v=parseInt(q.value)||0; tQ+=v; tC+=v*(parseFloat(cs[i]?.value)||0); if(v>0)tV++; });
     document.getElementById('stkVariants').textContent = tV;
