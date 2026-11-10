@@ -940,8 +940,9 @@ class PurchasingController extends Controller
         DB::connection()->disableQueryLog();
 
         $isCorrection = $purchasing->status === 'arrived';
+        $leftPending  = 0; // orders placed after the PO was built — NOT sold out
 
-        DB::transaction(function () use ($request, $purchasing, $isCorrection) {
+        DB::transaction(function () use ($request, $purchasing, $isCorrection, &$leftPending) {
 
             // Re-confirming an already-arrived PO (correcting a wrong received
             // qty): undo the previous allocation first, in the SAME
@@ -1010,20 +1011,37 @@ class PurchasingController extends Controller
                 $pending   = $allPending->get($key, collect());
                 $remaining = $received;
 
+                // Units of demand this PO line actually asked the supplier for.
+                // Orders beyond that were placed AFTER the PO was built/synced,
+                // so this PO's shortfall must not sold-out them — they stay
+                // pending and show up as uncovered demand for the next PO.
+                $coverage = (int) $poItem->quantity_ordered;
+                $walked   = 0;
+
                 foreach ($pending as $orderItem) {
                     if (isset($processedItemIds[$orderItem->id])) continue;
-                    $processedItemIds[$orderItem->id] = true;
-                    $affectedOrderIds[] = $orderItem->order_id;
+
+                    $coveredByPo = $walked < $coverage;
+                    $walked     += (int) $orderItem->quantity;
 
                     if ($remaining <= 0) {
+                        if (!$coveredByPo) { $leftPending++; continue; }
+                        $processedItemIds[$orderItem->id] = true;
+                        $affectedOrderIds[] = $orderItem->order_id;
                         $soldOutIds[] = $orderItem->id;
                         // Item became sold_out -> order total changes -> needs recalc
                         $ordersNeedingRecalc[$orderItem->order_id] = true;
                     } elseif ($orderItem->quantity <= $remaining) {
+                        $processedItemIds[$orderItem->id] = true;
+                        $affectedOrderIds[] = $orderItem->order_id;
                         $remaining -= $orderItem->quantity;
                         $arrivedIds[] = $orderItem->id;
                         // pending -> arrived: still counted in total, NO recalc needed
                     } else {
+                        // Partial fill. Never split an order the PO didn't cover.
+                        if (!$coveredByPo) { $leftPending++; continue; }
+                        $processedItemIds[$orderItem->id] = true;
+                        $affectedOrderIds[] = $orderItem->order_id;
                         $arrivedQty = $remaining;
                         $soldOutQty = $orderItem->quantity - $remaining;
                         $remaining  = 0;
@@ -1146,6 +1164,10 @@ class PurchasingController extends Controller
         $msg = $isCorrection
             ? 'Arrival corrected. Previous allocation reversed and stock re-allocated via FIFO with the updated quantities.'
             : 'Arrival confirmed. Stock allocated via FIFO (partial fills split automatically).';
+
+        if ($leftPending > 0) {
+            $msg .= " {$leftPending} order line(s) placed after this PO was built were left pending (not sold out) — include them in the next PO.";
+        }
 
         return back()->with('success', $msg);
     }
