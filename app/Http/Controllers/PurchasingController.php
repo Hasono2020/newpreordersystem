@@ -758,7 +758,14 @@ class PurchasingController extends Controller
 
         $tripId = $purchasing->trip_id;
 
-        $scopeToThisPo = function ($query) use ($variantIds, $productNoVariant) {
+        $scopeToThisPo = function ($query) use ($variantIds, $productNoVariant, $purchasing) {
+            // Only touch rows THIS PO allocated. Rows with no arrival_po_id are
+            // legacy (allocated before the column existed) and can't be
+            // attributed, so they are still included, as before.
+            $query->where(function ($q) use ($purchasing) {
+                $q->where('order_items.arrival_po_id', $purchasing->id)
+                  ->orWhereNull('order_items.arrival_po_id');
+            });
             if ($variantIds || $productNoVariant) {
                 $query->where(function ($q) use ($variantIds, $productNoVariant) {
                     if ($variantIds) {
@@ -806,6 +813,11 @@ class PurchasingController extends Controller
                 })
                 ->where('status', 'arrived')
                 ->where('id', '!=', $split->id)
+                ->when(
+                    $split->arrival_po_id,
+                    fn($q) => $q->where('arrival_po_id', $split->arrival_po_id),
+                    fn($q) => $q->whereNull('arrival_po_id')
+                )
                 ->first();
 
             $affectedOrderIds[] = $split->order_id;
@@ -814,7 +826,7 @@ class PurchasingController extends Controller
                 // No matching arrived row found (shouldn't normally happen) —
                 // restore the split row on its own rather than losing it.
                 DB::table('order_items')->where('id', $split->id)->update([
-                    'status' => 'pending', 'notes' => null, 'updated_at' => now(),
+                    'status' => 'pending', 'notes' => null, 'arrival_po_id' => null, 'updated_at' => now(),
                 ]);
                 continue;
             }
@@ -823,6 +835,7 @@ class PurchasingController extends Controller
             DB::table('order_items')->where('id', $original->id)->update([
                 'quantity'   => $restoredQty,
                 'line_total' => $original->unit_price * $restoredQty,
+                'arrival_po_id' => null,
                 'updated_at' => now(),
             ]);
             DB::table('order_items')->where('id', $split->id)->delete();
@@ -857,20 +870,48 @@ class PurchasingController extends Controller
 
         foreach (array_chunk($confirmIds, 1000) as $chunk) {
             DB::table('order_items')->whereIn('id', $chunk)
-                ->update(['status' => 'confirmed', 'updated_at' => now()]);
+                ->update(['status' => 'confirmed', 'arrival_po_id' => null, 'updated_at' => now()]);
         }
         foreach (array_chunk($pendingIds, 1000) as $chunk) {
             DB::table('order_items')->whereIn('id', $chunk)
-                ->update(['status' => 'pending', 'updated_at' => now()]);
+                ->update(['status' => 'pending', 'arrival_po_id' => null, 'updated_at' => now()]);
         }
 
-        // ── 3) Reset supplier_stock + allocated_qty to 0 ───────────
-        // Full clean undo: clear stock for all variants this PO touched,
-        // so the next arrival cycle starts fresh (no accumulation).
-        $resetVariantIds = array_keys($variantIds);
-        foreach (array_chunk($resetVariantIds, 1000) as $chunk) {
-            DB::table('product_variants')->whereIn('id', $chunk)
-                ->update(['supplier_stock' => 0, 'allocated_qty' => 0]);
+        // ── 3) Recompute supplier_stock + allocated_qty ─────────────
+        // NOT zeroed: other ARRIVED POs of this trip may share these
+        // variants, so keep what they received and what they still have
+        // allocated. Only this PO's contribution is removed.
+        foreach (array_chunk(array_keys($variantIds), 500) as $chunk) {
+            $stockByVariant = DB::table('purchase_order_items')
+                ->join('purchase_orders', 'purchase_orders.id', '=', 'purchase_order_items.purchase_order_id')
+                ->where('purchase_orders.trip_id', $tripId)
+                ->where('purchase_orders.status', 'arrived')
+                ->where('purchase_orders.id', '!=', $purchasing->id)
+                ->whereIn('purchase_order_items.product_variant_id', $chunk)
+                ->groupBy('purchase_order_items.product_variant_id')
+                ->selectRaw('purchase_order_items.product_variant_id as vid, SUM(purchase_order_items.quantity_received) as qty')
+                ->pluck('qty', 'vid');
+
+            $allocByVariant = DB::table('order_items')
+                ->join('orders', 'orders.id', '=', 'order_items.order_id')
+                ->where('orders.trip_id', $tripId)
+                ->where('order_items.status', 'arrived')
+                ->whereIn('order_items.product_variant_id', $chunk)
+                ->groupBy('order_items.product_variant_id')
+                ->selectRaw('order_items.product_variant_id as vid, SUM(order_items.quantity) as qty')
+                ->pluck('qty', 'vid');
+
+            $stockCases = ''; $allocCases = '';
+            foreach ($chunk as $vid) {
+                $vid = (int) $vid;
+                $stockCases .= "WHEN {$vid} THEN " . (int) ($stockByVariant[$vid] ?? 0) . ' ';
+                $allocCases .= "WHEN {$vid} THEN " . (int) ($allocByVariant[$vid] ?? 0) . ' ';
+            }
+            $idList = implode(',', array_map('intval', $chunk));
+            DB::update("UPDATE product_variants
+                SET supplier_stock = CASE id {$stockCases} END,
+                    allocated_qty  = CASE id {$allocCases} END
+                WHERE id IN ({$idList})");
         }
 
         // ── 4) Recalculate every affected customer ──────────────────
@@ -1060,6 +1101,7 @@ class PurchasingController extends Controller
                             'unit_price'         => $orderItem->unit_price,
                             'line_total'         => $orderItem->unit_price * $soldOutQty,
                             'status'             => 'sold_out',
+                            'arrival_po_id'      => $purchasing->id,
                             'notes'              => 'Partial — only '.$arrivedQty.' of '.($arrivedQty + $soldOutQty).' available (FIFO)',
                             'created_at'         => $now,
                             'updated_at'         => $now,
@@ -1087,16 +1129,17 @@ class PurchasingController extends Controller
             }
 
             foreach (array_chunk($arrivedIds, 1000) as $chunk) {
-                DB::table('order_items')->whereIn('id', $chunk)->update(['status' => 'arrived', 'updated_at' => $now]);
+                DB::table('order_items')->whereIn('id', $chunk)->update(['status' => 'arrived', 'arrival_po_id' => $purchasing->id, 'updated_at' => $now]);
             }
             foreach (array_chunk($soldOutIds, 1000) as $chunk) {
-                DB::table('order_items')->whereIn('id', $chunk)->update(['status' => 'sold_out', 'updated_at' => $now]);
+                DB::table('order_items')->whereIn('id', $chunk)->update(['status' => 'sold_out', 'arrival_po_id' => $purchasing->id, 'updated_at' => $now]);
             }
             foreach ($partialUpdates as $id => $upd) {
                 DB::table('order_items')->where('id', $id)->update([
                     'quantity'   => $upd['quantity'],
                     'line_total' => $upd['line_total'],
                     'status'     => 'arrived',
+                    'arrival_po_id' => $purchasing->id,
                     'updated_at' => $now,
                 ]);
             }
@@ -1110,8 +1153,17 @@ class PurchasingController extends Controller
             $stockVariantIds = array_keys($variantStockInc);
             foreach (array_chunk($stockVariantIds, 500) as $chunk) {
                 $cases = '';
+                $otherReceived = DB::table('purchase_order_items')
+                    ->join('purchase_orders', 'purchase_orders.id', '=', 'purchase_order_items.purchase_order_id')
+                    ->where('purchase_orders.trip_id', $purchasing->trip_id)
+                    ->where('purchase_orders.status', 'arrived')
+                    ->where('purchase_orders.id', '!=', $purchasing->id)
+                    ->whereIn('purchase_order_items.product_variant_id', $chunk)
+                    ->groupBy('purchase_order_items.product_variant_id')
+                    ->selectRaw('purchase_order_items.product_variant_id as vid, SUM(purchase_order_items.quantity_received) as qty')
+                    ->pluck('qty', 'vid');
                 foreach ($chunk as $vid) {
-                    $rec = (int) $variantStockInc[$vid];
+                    $rec = (int) $variantStockInc[$vid] + (int) ($otherReceived[$vid] ?? 0);
                     $cases .= "WHEN {$vid} THEN {$rec} ";
                 }
                 $idList = implode(',', $chunk);
