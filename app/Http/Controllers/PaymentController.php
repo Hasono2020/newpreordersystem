@@ -196,7 +196,9 @@ class PaymentController extends Controller
                     'customers.phone as customer_phone',
                     DB::raw('COUNT(orders.id) as order_count'),
                     DB::raw('SUM(orders.total_amount) as total_amount'),
-                    DB::raw("SUM(CASE WHEN orders.payment_status != 'paid' THEN 1 ELSE 0 END) as unpaid_count"),
+                    // A Rp 0 order with nothing paid on it (every item sold out / cancelled) owes nothing,
+                    // so it must not block shipment. Rp 0 with money paid on it still blocks (refund first).
+                    DB::raw("SUM(CASE WHEN orders.payment_status != 'paid' AND (orders.total_amount > 0 OR orders.deposit_paid > 0) THEN 1 ELSE 0 END) as unpaid_count"),
                     DB::raw("(SELECT COUNT(DISTINCT po.id) FROM orders po JOIN payments p ON p.order_id = po.id WHERE po.customer_id = orders.customer_id AND po.trip_id = {$tidInt} AND p.voided_at IS NULL AND p.verification_status != 'verified') as unverified_order_count"),
                     DB::raw('MAX(orders.invoice_printed_at) as printed_at'),
                     // One shipments row per customer+trip, so MAX() just picks that row's value.
@@ -773,7 +775,8 @@ class PaymentController extends Controller
             ->get();
 
         return $orders->isNotEmpty()
-            && $orders->every(fn($o) => $o->payment_status === 'paid')
+            && $orders->every(fn($o) => $o->payment_status === 'paid'
+                || ((float) $o->total_amount <= 0 && (float) $o->deposit_paid <= 0))
             && !Payment::whereIn('order_id', $orders->pluck('id'))
                 ->whereNull('voided_at')->where('verification_status', '!=', 'verified')->exists();
     }
