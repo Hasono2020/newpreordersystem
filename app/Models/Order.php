@@ -156,8 +156,33 @@ class Order extends Model
         return match($this->payment_status) {
             'paid'    => '<span class="badge bg-success">Fully Paid</span>',
             'partial' => '<span class="badge bg-warning text-dark">Partially Paid</span>',
-            default   => '<span class="badge bg-danger">Unpaid</span>',
+            default   => $this->nothingToPayBadge() ?? '<span class="badge bg-danger">Unpaid</span>',
         };
+    }
+
+    /**
+     * An order whose every item is sold out / cancelled has total Rp 0, so
+     * "Unpaid" is misleading — nothing is owed. Only evaluated for the rare
+     * unpaid + Rp 0 case, so lists don't pay an extra query per row.
+     * (The stored payment_status is untouched; this only changes the label.)
+     */
+    private function nothingToPayBadge(): ?string
+    {
+        if ((float) $this->total_amount > 0) {
+            return null;
+        }
+
+        $statuses = $this->relationLoaded('items')
+            ? $this->items->pluck('status')
+            : $this->items()->pluck('status');
+
+        if ($statuses->isEmpty() || $statuses->contains(fn ($st) => ! in_array($st, ['sold_out', 'cancelled'], true))) {
+            return null;
+        }
+
+        return $statuses->contains('sold_out')
+            ? '<span class="badge bg-secondary">Sold Out</span>'
+            : '<span class="badge bg-secondary">Cancelled</span>';
     }
 
     protected static function boot()
