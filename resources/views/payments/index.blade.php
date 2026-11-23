@@ -91,8 +91,8 @@
         <a class="nav-link {{ $tab === 'shipment' ? 'active' : '' }}"
            href="{{ route('payments.index', ['trip_id' => $tripId, 'tab' => 'shipment', 'search' => $search ?? '']) }}">
             <i class="bi bi-box-seam me-1"></i>Shipment
-            @if((($toShipCount ?? 0) + ($partialCount ?? 0)) > 0)
-                <span class="badge bg-success ms-1" title="Fully paid, with packages still to send">{{ ($toShipCount ?? 0) + ($partialCount ?? 0) }}</span>
+            @if(($toShipCount ?? 0) > 0)
+                <span class="badge bg-success ms-1" title="Fully paid, nothing sent yet">{{ $toShipCount }}</span>
             @endif
         </a>
     </li>
@@ -421,10 +421,9 @@
         $shipBase  = ['trip_id' => $tripId, 'tab' => 'shipment', 'search' => $search ?? ''];
         $savedId   = session('shipment_saved');
         $shipChips = [
-            ''        => ['All',     $toShipCount + $partialCount + $shippedCount],
+            ''        => ['All',     $toShipCount + $shippedCount],
             'pending' => ['To ship', $toShipCount],
-            'partial' => ['Partly sent', $partialCount],
-            'shipped' => ['All sent', $shippedCount],
+            'sent'    => ['Sent',    $shippedCount],
         ];
     @endphp
 
@@ -437,7 +436,7 @@
             </a>
         @endforeach
         <span class="small text-muted ms-2">
-            <i class="bi bi-shield-check me-1"></i>1) set the total packages &nbsp; 2) add each sending with its date. Saved numbers are locked until you press <b>Edit</b>.
+            <i class="bi bi-shield-check me-1"></i>Type how many packages are sent and press <b>Send</b> — the total is worked out for you, so a later sending just adds to it. Saved numbers are locked until you press <b>Edit</b>.
         </span>
     </div>
 
@@ -450,10 +449,8 @@
                     <i class="bi bi-inbox d-block mb-2" style="font-size:1.5rem;"></i>
                     @if(($shipFilter ?? '') === 'pending')
                         Nothing waiting — every fully paid customer already has something sent.
-                    @elseif(($shipFilter ?? '') === 'partial')
-                        No customer is partly sent.
-                    @elseif(($shipFilter ?? '') === 'shipped')
-                        No customer has had all packages sent yet.
+                    @elseif(($shipFilter ?? '') === 'sent')
+                        Nothing has been sent to any customer yet.
                     @else
                         No customers to ship yet — only customers whose orders are fully paid and all payments verified appear here.
                     @endif
@@ -492,18 +489,22 @@
 
                             <td>
                             @if($ptotal === null)
-                                {{-- Step 1: how many packages in total --}}
-                                <form method="POST" action="{{ route('payments.shipment.save') }}" class="ship-form" data-kind="total-new">
+                                {{-- First sending: no total needed — it becomes what was sent, later sendings add to it --}}
+                                <form method="POST" action="{{ route('payments.shipment.batch.store') }}" class="ship-form" data-kind="ship-new">
                                     @csrf
                                     <input type="hidden" name="customer_id" value="{{ $cid }}">
                                     <input type="hidden" name="trip_id" value="{{ $tripId }}">
                                     <div class="d-flex align-items-end gap-2 flex-wrap">
                                         <div>
-                                            <label class="form-label small text-muted mb-0">Total packages</label>
-                                            <input type="text" name="package_total" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off"
-                                                   class="form-control ship-count" style="width:110px;" placeholder="e.g. 10">
+                                            <label class="form-label small text-muted mb-0">Sent now</label>
+                                            <input type="text" name="packages" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off"
+                                                   class="form-control ship-count" style="width:110px;" placeholder="e.g. 1">
                                         </div>
-                                        <button type="submit" class="btn btn-primary ship-save"><i class="bi bi-check2 me-1"></i>Set total</button>
+                                        <div>
+                                            <label class="form-label small text-muted mb-0">Date <span>(blank = today)</span></label>
+                                            <input type="date" name="shipped_on" class="form-control ship-date" style="width:150px;">
+                                        </div>
+                                        <button type="submit" class="btn btn-primary ship-save"><i class="bi bi-truck me-1"></i>Send</button>
                                     </div>
                                 </form>
                             @else
@@ -570,10 +571,9 @@
                                 </div>
                                 @endforeach
 
-                                {{-- Add another sending (not when everything is already sent) --}}
-                                @if($pleft > 0)
+                                {{-- Add another sending. The total grows by itself when more than "left" is typed. --}}
                                 <form method="POST" action="{{ route('payments.shipment.batch.store') }}" class="ship-form border-top mt-2 pt-2"
-                                      data-kind="batch-add" data-left="{{ $pleft }}">
+                                      data-kind="batch-add" data-remaining="{{ $pleft }}" data-total="{{ $ptotal }}">
                                     @csrf
                                     <input type="hidden" name="customer_id" value="{{ $cid }}">
                                     <input type="hidden" name="trip_id" value="{{ $tripId }}">
@@ -581,18 +581,19 @@
                                         <div>
                                             <label class="form-label small text-muted mb-0">Sent now</label>
                                             <input type="text" name="packages" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off"
-                                                   class="form-control form-control-sm ship-count" style="width:90px;" placeholder="{{ $pleft }} left">
+                                                   class="form-control form-control-sm ship-count" style="width:90px;" placeholder="{{ $pleft > 0 ? $pleft . ' left' : 'e.g. 1' }}">
                                         </div>
                                         <div>
                                             <label class="form-label small text-muted mb-0">Date <span>(blank = today)</span></label>
                                             <input type="date" name="shipped_on" class="form-control form-control-sm ship-date" style="width:150px;">
                                         </div>
-                                        <button type="submit" class="btn btn-sm btn-primary ship-save"><i class="bi bi-plus-lg me-1"></i>Add</button>
+                                        <button type="submit" class="btn btn-sm btn-primary ship-save"><i class="bi bi-truck me-1"></i>Send</button>
+                                        @if($pleft > 0)
                                         <button type="submit" name="rest" value="1" class="btn btn-sm btn-outline-success ship-save"
                                                 title="Log everything that is still left as sent">Send the rest ({{ $pleft }})</button>
+                                        @endif
                                     </div>
                                 </form>
-                                @endif
                             @endif
                             </td>
 
@@ -819,7 +820,7 @@ function fallbackCopy(text, cb) {
 
     // Digits only (a text box, not a number box, so the mouse wheel and arrow keys can't change it).
     document.addEventListener('input', function (e) {
-        if (e.target.matches('.ship-count')) e.target.value = e.target.value.replace(/\D+/g, '');
+        if (e.target.matches('.ship-count, .ship-sent')) e.target.value = e.target.value.replace(/\D+/g, '');
     });
 
     // Say what is about to change, and stop empty or pointless saves.
@@ -829,6 +830,7 @@ function fallbackCopy(text, cb) {
         const name = row.dataset.name;
         const kind = form.dataset.kind;
         const rest = e.submitter && e.submitter.name === 'rest';
+        let raise  = false; // more than is left: the total is raised (add=1)
         const countEl = form.querySelector('.ship-count');
         const dateEl  = form.querySelector('.ship-date');
         const count = countEl ? countEl.value.trim() : '';
@@ -839,8 +841,8 @@ function fallbackCopy(text, cb) {
             return stop('Enter the number of packages for ' + name + '.');
         }
         let msg = null;
-        if (kind === 'total-new') {
-            if (parseInt(count, 10) > 20) msg = 'Total ' + count + ' packages for ' + name + '?\n\nThat is a lot — press OK only if it is right.';
+        if (kind === 'ship-new') {
+            if (parseInt(count, 10) > 20) msg = count + ' packages for ' + name + '?\n\nThat is a lot — press OK only if it is right.';
         } else if (kind === 'total-edit') {
             if (count === countEl.defaultValue) { e.preventDefault(); return window.shipClose(form.querySelector('.ship-save')); }
             msg = 'Change the total packages of ' + name + '?\n\n' + countEl.defaultValue + '  →  ' + count;
@@ -851,17 +853,23 @@ function fallbackCopy(text, cb) {
             if (!lines.length) { e.preventDefault(); return window.shipClose(form.querySelector('.ship-save')); }
             msg = 'Change this sending of ' + name + '?\n\n' + lines.join('\n');
         } else if (kind === 'batch-add') {
-            const left = parseInt(form.dataset.left, 10);
+            const left = parseInt(form.dataset.remaining, 10);
             const when = date ? date : 'today';
+            const total = parseInt(form.dataset.total, 10);
+            const n     = parseInt(count, 10);
             if (rest) msg = 'Mark the remaining ' + left + ' package(s) of ' + name + ' as sent (' + when + ')?';
-            else if (parseInt(count, 10) > left) return stop('Only ' + left + ' package(s) are left to send to ' + name + '.');
-            else if (parseInt(count, 10) > 20) msg = count + ' packages for ' + name + '?\n\nThat is a lot — press OK only if it is right.';
+            else if (n > left) {
+                raise = true; // the page adds the extra packages to the total
+                if (left > 0) msg = 'Only ' + left + ' package(s) are left of the total ' + total + '.\n\nSend ' + n + ' for ' + name + ' (' + when + ') anyway? The total goes up:  ' + total + '  →  ' + (total - left + n);
+                else if (n > 20) msg = n + ' packages for ' + name + '?\n\nThat is a lot — press OK only if it is right.';
+            }
+            else if (n > 20) msg = count + ' packages for ' + name + '?\n\nThat is a lot — press OK only if it is right.';
         }
         if (msg && !confirm(msg)) { e.preventDefault(); return; }
         form.dataset.submitting = '1';
         form.querySelectorAll('.ship-save').forEach(b => { b.disabled = true; });
         // a disabled submit button would drop its value (rest=1): send it along explicitly
-        if (rest) { const h = document.createElement('input'); h.type = 'hidden'; h.name = 'rest'; h.value = '1'; form.appendChild(h); }
+        if (rest || raise) { const h = document.createElement('input'); h.type = 'hidden'; h.name = rest ? 'rest' : 'add'; h.value = '1'; form.appendChild(h); }
     });
 
     // Don't lose typing by accident (page change, search, filter, closing the tab).

@@ -13,6 +13,7 @@ use App\Models\User;
  * tab. An order that owes nothing must not block shipment.
  */
 
+/** @param mixed $test */
 function zeroCustomer($test, User $admin, Trip $trip, float $zeroDeposit = 0): Customer
 {
     $customer = $test->customer($admin);
@@ -76,4 +77,32 @@ test('a genuinely unpaid order still blocks shipment', function () {
         ->get(route('payments.index', ['trip_id' => $trip->id, 'tab' => 'shipment']))
         ->assertOk()
         ->assertDontSee('id="ship-' . $customer->id . '"', false);
+});
+
+
+test('a customer whose every item is sold out has nothing to ship, even though money was paid', function () {
+    $admin    = $this->adminUser();
+    $trip     = $this->openTrip();
+    $customer = $this->customer($admin);
+
+    // Like ANGELICA CHANDRA: Rp 500.000 paid, every item sold out -> total Rp 0, still saved as 'paid'.
+    $order = Order::factory()->create([
+        'trip_id' => $trip->id, 'customer_id' => $customer->id, 'created_by' => $admin->id,
+        'subtotal' => 0, 'total_amount' => 0, 'deposit_paid' => 500000, 'payment_status' => 'paid',
+    ]);
+    Payment::factory()->create([
+        'order_id' => $order->id, 'amount' => 500000, 'type' => 'deposit',
+        'paid_at' => now(), 'voided_at' => null, 'verification_status' => 'verified',
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('payments.index', ['trip_id' => $trip->id, 'tab' => 'shipment']))
+        ->assertOk()
+        ->assertDontSee('id="ship-' . $customer->id . '"', false);
+
+    // ...and nothing can be logged as sent for her either.
+    $this->actingAs($admin)->post(route('payments.shipment.batch.store'), [
+        'customer_id' => $customer->id, 'trip_id' => $trip->id, 'packages' => 1,
+    ])->assertSessionHas('error');
+    expect(\App\Models\Shipment::count())->toBe(0);
 });

@@ -173,10 +173,12 @@ class PaymentController extends Controller
         $readyToPack = collect();
         $readyCount  = 0;
         $toShipCount = 0;    // nothing sent yet
-        $partialCount = 0;   // some sent, some still to send
-        $shippedCount = 0;   // everything sent
+        $shippedCount = 0;   // at least one sending logged
         $shipBatches = collect();
-        $shipFilter  = in_array($request->get('ship'), ['pending', 'partial', 'shipped'], true) ? $request->get('ship') : '';
+        // Filters: To ship (nothing sent yet) / Sent (something sent). Old bookmarks ship=partial|shipped mean Sent.
+        $shipFilter  = $request->get('ship');
+        $shipFilter  = in_array($shipFilter, ['partial', 'shipped'], true) ? 'sent' : $shipFilter;
+        $shipFilter  = in_array($shipFilter, ['pending', 'sent'], true) ? $shipFilter : '';
         if ($tripId) {
             $tidInt = (int) $tripId;
             $custQuery = DB::table('orders')
@@ -207,26 +209,25 @@ class PaymentController extends Controller
                 ])
                 ->having('unpaid_count', '=', 0)
                 ->having('unverified_order_count', '=', 0)
+                // Nothing to ship when every item is sold out / cancelled (all orders Rp 0), even if the
+                // customer paid: that money is a credit to refund or move, not a parcel.
+                ->havingRaw('SUM(orders.total_amount) > 0')
                 ->when($search && $this->isMoneySearch($search), fn($q) =>
                     $q->havingRaw('SUM(orders.total_amount) = ?', [(int) preg_replace('/[^0-9]/', '', $search)]))
                 ->orderBy('customers.name');
 
-            // Counts for the tab badge and the All / To ship / Partial / Shipped buttons (they follow the search box).
-            //   Shipped = every package sent;  Partial = some sent;  To ship = none sent yet.
-            $doneSql    = '(package_total IS NOT NULL AND packages_sent >= package_total)';
-            $partialSql = "(packages_sent > 0 AND NOT {$doneSql})";
+            // Counts for the tab badge and the All / To ship / Sent buttons (they follow the search box).
+            //   Sent = at least one sending logged;  To ship = nothing sent yet.
+            // (The total number of packages is not known up front, so there is no "partly sent".)
             $shipCounts = DB::query()->fromSub((clone $custQuery)->reorder(), 'ready')
                 ->selectRaw("COUNT(*) as total,
-                    COALESCE(SUM(CASE WHEN {$doneSql} THEN 1 ELSE 0 END), 0) as done,
-                    COALESCE(SUM(CASE WHEN {$partialSql} THEN 1 ELSE 0 END), 0) as partial")
+                    COALESCE(SUM(CASE WHEN packages_sent > 0 THEN 1 ELSE 0 END), 0) as sent")
                 ->first();
-            $shippedCount = (int) $shipCounts->done;
-            $partialCount = (int) $shipCounts->partial;
-            $toShipCount  = (int) $shipCounts->total - $shippedCount - $partialCount;
+            $shippedCount = (int) $shipCounts->sent;
+            $toShipCount  = (int) $shipCounts->total - $shippedCount;
 
             $custQuery->when($shipFilter === 'pending', fn($q) => $q->havingRaw('packages_sent = 0'))
-                      ->when($shipFilter === 'partial', fn($q) => $q->havingRaw($partialSql))
-                      ->when($shipFilter === 'shipped', fn($q) => $q->havingRaw($doneSql));
+                      ->when($shipFilter === 'sent', fn($q) => $q->havingRaw('packages_sent > 0'));
 
             $readyToPack = $custQuery->paginate(50, ['*'], 'pack_page')->withQueryString();
             $readyCount  = $readyToPack->total();
@@ -310,7 +311,7 @@ class PaymentController extends Controller
         // For the CS checklist in the Excel export pop-up.
         $csAgents = \App\Models\CsAgent::orderByDesc('is_active')->orderBy('name')->get(['id', 'name', 'is_active']);
 
-        return view('payments.index', compact('trips', 'tripId', 'tab', 'outstanding', 'log', 'search', 'verificationFilter', 'verificationCounts', 'createdByFilter', 'staffList', 'readyToPack', 'readyCount', 'toShipCount', 'partialCount', 'shippedCount', 'shipFilter', 'shipBatches', 'batchMeta', 'overpaid', 'csAgents'));
+        return view('payments.index', compact('trips', 'tripId', 'tab', 'outstanding', 'log', 'search', 'verificationFilter', 'verificationCounts', 'createdByFilter', 'staffList', 'readyToPack', 'readyCount', 'toShipCount', 'shippedCount', 'shipFilter', 'shipBatches', 'batchMeta', 'overpaid', 'csAgents'));
     }
 
     /**
@@ -775,6 +776,7 @@ class PaymentController extends Controller
             ->get();
 
         return $orders->isNotEmpty()
+            && $orders->sum('total_amount') > 0 // all items sold out = nothing to ship
             && $orders->every(fn($o) => $o->payment_status === 'paid'
                 || ((float) $o->total_amount <= 0 && (float) $o->deposit_paid <= 0))
             && !Payment::whereIn('order_id', $orders->pluck('id'))
@@ -847,16 +849,28 @@ class PaymentController extends Controller
 
     /**
      * Log one sending: some of the customer's packages, on a date (today if left blank).
-     * "rest=1" sends everything that is still left. Never more than the total.
+     *
+     * Staff usually do not know the total number of packages on the first day, so the total is
+     * not needed up front:
+     *  - First sending: the total simply becomes what was sent. (An explicit "package_total" is
+     *    still accepted; then a blank "packages" means "all of them".)
+     *  - Later sendings: "packages" up to what is left, or "rest=1" for everything that is left.
+     *  - "add=1": more than what is left (or everything was already sent). The total is raised
+     *    just enough to cover it and the packages are logged as sent in the same step. The page
+     *    sends this by itself, after asking for confirmation, when the number typed is above
+     *    what is left.
+     * Without add=1 it is never more than the total.
      */
     public function storeShipmentBatch(Request $request)
     {
         $data = $request->validate([
-            'customer_id' => 'required|exists:customers,id',
-            'trip_id'     => 'required|exists:trips,id',
-            'packages'    => 'nullable|integer|min:1|max:9999',
-            'shipped_on'  => 'nullable|date',
-            'rest'        => 'nullable|boolean',
+            'customer_id'   => 'required|exists:customers,id',
+            'trip_id'       => 'required|exists:trips,id',
+            'package_total' => 'nullable|integer|min:1|max:9999',
+            'packages'      => 'nullable|integer|min:1|max:9999',
+            'shipped_on'    => 'nullable|date',
+            'rest'          => 'nullable|boolean',
+            'add'           => 'nullable|boolean',
         ]);
         $customerId = (int) $data['customer_id'];
         $tripId     = (int) $data['trip_id'];
@@ -870,11 +884,55 @@ class PaymentController extends Controller
         // Locked while we count, so two people logging a sending at the same moment
         // cannot together send more packages than the total.
         $result = DB::transaction(function () use ($customerId, $tripId, $data, $request, $customer) {
-            $shipment = Shipment::where(['customer_id' => $customerId, 'trip_id' => $tripId])->lockForUpdate()->first();
+            $keys     = ['customer_id' => $customerId, 'trip_id' => $tripId];
+            $shipment = Shipment::where($keys)->lockForUpdate()->first();
+            $date     = $data['shipped_on'] ?? now()->toDateString();
+            $when     = Carbon::parse($date)->format('d M Y');
+
+            // ── First sending: the total is what was sent (unless given) ──
             if (!$shipment || !$shipment->package_total) {
-                return ['error', "Set the total number of packages for {$customer->name} first."];
+                $total    = $data['package_total'] ?? null;
+                $packages = $data['packages'] ?? null;
+                if ($total === null && $packages === null) {
+                    return ['error', "Enter how many packages were sent to {$customer->name}."];
+                }
+                $total    = $total ?? $packages;     // total not known yet: it is what was sent
+                $packages = $packages ?? $total;     // total given, nothing typed: all of them
+                if ($packages > $total) {
+                    return ['error', "Sent now ({$packages}) is more than the total ({$total}) for {$customer->name}."];
+                }
+
+                $shipment = Shipment::updateOrCreate($keys, ['package_total' => $total, 'updated_by' => Auth::id()]);
+                $shipment->batches()->create(['packages' => $packages, 'shipped_on' => $date, 'created_by' => Auth::id()]);
+
+                $left = $total - $packages;
+                return ['success', "Saved for {$customer->name}: {$packages} package(s) sent on {$when}"
+                    . ($left > 0 ? " — {$left} left to send." : '.')];
             }
 
+            // ── More than what is left: raise the total just enough ──────
+            if ($request->boolean('add')) {
+                $packages = $data['packages'] ?? null;
+                if ($packages === null) {
+                    return ['error', "Enter how many packages were sent to {$customer->name}."];
+                }
+                $sent     = $shipment->packagesSent();
+                $newTotal = max($shipment->package_total, $sent + $packages);
+                if ($newTotal > 9999) {
+                    return ['error', "The total for {$customer->name} cannot be more than 9999 packages."];
+                }
+
+                $raised = $newTotal > $shipment->package_total;
+                $shipment->update(['package_total' => $newTotal, 'updated_by' => Auth::id()]);
+                $shipment->batches()->create(['packages' => $packages, 'shipped_on' => $date, 'created_by' => Auth::id()]);
+
+                $left = $newTotal - ($sent + $packages);
+                return ['success', "Saved for {$customer->name}: {$packages} package(s) sent on {$when}"
+                    . ($raised ? " — the total is now {$newTotal}" : '')
+                    . ($left > 0 ? ($raised ? ", {$left} left to send." : " — {$left} left to send.") : '.')];
+            }
+
+            // ── A normal later sending ───────────────────────────────────
             $sent = $shipment->packagesSent();
             $left = $shipment->package_total - $sent;
             if ($left <= 0) {
@@ -889,13 +947,12 @@ class PaymentController extends Controller
                 return ['error', "Only {$left} package(s) are left to send to {$customer->name} (total {$shipment->package_total}, already sent {$sent})."];
             }
 
-            $date = $data['shipped_on'] ?? now()->toDateString();
             $shipment->batches()->create(['packages' => $packages, 'shipped_on' => $date, 'created_by' => Auth::id()]);
             $shipment->update(['updated_by' => Auth::id()]);
 
             $left -= $packages;
-            return ['success', "Saved for {$customer->name}: {$packages} package(s) sent on " . Carbon::parse($date)->format('d M Y')
-                . ($left > 0 ? " — {$left} left to send." : ' — all packages are sent.')];
+            return ['success', "Saved for {$customer->name}: {$packages} package(s) sent on {$when}"
+                . ($left > 0 ? " — {$left} left to send." : '.')];
         });
 
         return $this->shipmentBack($customer, $result[0], $result[1]);

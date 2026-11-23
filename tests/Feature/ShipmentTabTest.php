@@ -106,7 +106,7 @@ test('the old tab=pack address still opens the Shipment tab', function () {
     $customer = shCustomer($this, $admin, $trip);
 
     $this->actingAs($admin)->get(route('payments.index', ['trip_id' => $trip->id, 'tab' => 'pack']))
-        ->assertOk()->assertSee($customer->name)->assertSee('name="package_total"', false);
+        ->assertOk()->assertSee($customer->name)->assertSee('name="packages"', false);
 });
 
 // ── Step 1: the total ───────────────────────────────────────────────
@@ -225,12 +225,13 @@ test('more packages than are left cannot be logged', function () {
     expect(ShipmentBatch::count())->toBe(1);
 });
 
-test('nothing can be sent before the total is set, or once everything is already sent', function () {
+test('nothing can be sent without a number, or once everything is already sent', function () {
     $admin = $this->adminUser();
     $trip  = $this->openTrip();
     $customer = shCustomer($this, $admin, $trip);
 
-    shAdd($this, $admin, $customer, $trip, ['packages' => 1])->assertSessionHas('error');
+    // nothing typed at all (no packages, no total) is refused
+    shAdd($this, $admin, $customer, $trip, [])->assertSessionHas('error');
     expect(ShipmentBatch::count())->toBe(0);
 
     shTotal($this, $admin, $customer, $trip, 2);
@@ -339,7 +340,7 @@ test('the sendings of one trip do not show on another trip', function () {
     shAdd($this, $admin, $customer, $trip1, ['packages' => 2, 'shipped_on' => '2026-10-15']);
 
     $other = shRow(shTab($this, $admin, $trip2)->assertOk()->getContent(), $customer);
-    expect($other)->not->toContain('2 of 7')->not->toContain('15 Oct 2026')->toContain('name="package_total"');
+    expect($other)->not->toContain('2 of 7')->not->toContain('15 Oct 2026')->toContain('name="packages"');
     expect(shRow(shTab($this, $admin, $trip1)->getContent(), $customer))->toContain('2 of 7 sent');
 });
 
@@ -358,10 +359,12 @@ test('a saved total is locked until Edit total is pressed, a new row is open for
     expect($setRow)->toContain('shipOpen(')
         ->and($setRow)->toMatch('/name="package_total"[^>]*disabled/');
 
+    // a new row has no total box any more: just "Sent now" + date, open for typing
     $newRow = shRow($html, $new);
     expect($newRow)->not->toContain('shipOpen(')
-        ->and($newRow)->toContain('name="package_total"')
-        ->and($newRow)->not->toMatch('/name="package_total"[^>]*disabled/');
+        ->and($newRow)->not->toContain('name="package_total"')
+        ->and($newRow)->toContain('name="packages"')
+        ->and($newRow)->not->toMatch('/name="packages"[^>]*disabled/');
 });
 
 test('a saved sending is locked until Edit is pressed', function () {
@@ -401,13 +404,13 @@ test('package boxes are text boxes for digits, so the mouse wheel cannot change 
         ->and($html)->not->toMatch('/<input type="number" name="(package_total|packages)"/');
 });
 
-test('the buttons filter into To ship, Partly sent and All sent, and show the counts', function () {
+test('the buttons filter into To ship and Sent, and show the counts', function () {
     $admin = $this->adminUser();
     $trip  = $this->openTrip();
     $none    = shCustomer($this, $admin, $trip);   // nothing sent (not even a total)
-    $total   = shCustomer($this, $admin, $trip);   // total set, nothing sent
-    $partial = shCustomer($this, $admin, $trip);
-    $done    = shCustomer($this, $admin, $trip);
+    $total   = shCustomer($this, $admin, $trip);   // total set by hand, nothing sent
+    $partial = shCustomer($this, $admin, $trip);   // some sent, some still to come
+    $done    = shCustomer($this, $admin, $trip);   // everything sent
     shTotal($this, $admin, $total, $trip, 5);
     shTotal($this, $admin, $partial, $trip, 5);
     shAdd($this, $admin, $partial, $trip, ['packages' => 2]);
@@ -416,21 +419,27 @@ test('the buttons filter into To ship, Partly sent and All sent, and show the co
 
     $all     = shTab($this, $admin, $trip)->getContent();
     $pending = shTab($this, $admin, $trip, ['ship' => 'pending'])->getContent();
-    $partlyH = shTab($this, $admin, $trip, ['ship' => 'partial'])->getContent();
-    $sentH   = shTab($this, $admin, $trip, ['ship' => 'shipped'])->getContent();
+    $sentH   = shTab($this, $admin, $trip, ['ship' => 'sent'])->getContent();
 
     foreach ([$none, $total, $partial, $done] as $c) expect($all)->toContain(e($c->name));
 
     expect($pending)->toContain(e($none->name))->toContain(e($total->name))
         ->not->toContain(e($partial->name))->not->toContain(e($done->name));
-    expect($partlyH)->toContain(e($partial->name))->not->toContain(e($none->name))->not->toContain(e($done->name));
-    expect($sentH)->toContain(e($done->name))->not->toContain(e($partial->name))->not->toContain(e($none->name));
+    expect($sentH)->toContain(e($partial->name))->toContain(e($done->name))
+        ->not->toContain(e($none->name))->not->toContain(e($total->name));
 
-    // counts: All 4, To ship 2, Partly sent 1, All sent 1
-    expect($all)->toMatch('/All\s*<span[^>]*>4<\/span>/')
-        ->and($all)->toMatch('/To ship\s*<span[^>]*>2<\/span>/')
-        ->and($all)->toMatch('/Partly sent\s*<span[^>]*>1<\/span>/')
-        ->and($all)->toMatch('/All sent\s*<span[^>]*>1<\/span>/');
+    // old bookmarks (ship=partial / ship=shipped) still open the Sent list
+    foreach (['partial', 'shipped'] as $old) {
+        $h = shTab($this, $admin, $trip, ['ship' => $old])->getContent();
+        expect($h)->toContain(e($done->name))->not->toContain(e($none->name));
+    }
+
+    // counts: All 4, To ship 2, Sent 2 — and no "Partly sent" button any more
+    expect($all)->toMatch('/All\\s*<span[^>]*>4<\\/span>/')
+        ->and($all)->toMatch('/To ship\\s*<span[^>]*>2<\\/span>/')
+        ->and($all)->toMatch('/Sent\\s*<span[^>]*>2<\\/span>/')
+        ->and($all)->not->toContain('Partly sent')
+        ->and($all)->not->toContain('All sent');
 });
 
 test('the filter buttons keep the search and the trip', function () {
@@ -439,10 +448,10 @@ test('the filter buttons keep the search and the trip', function () {
     $customer = shCustomer($this, $admin, $trip);
 
     $html = shTab($this, $admin, $trip, ['search' => $customer->name])->getContent();
-    expect($html)->toContain('ship=pending')->toContain('ship=partial')->toContain('trip_id=' . $trip->id);
+    expect($html)->toContain('ship=pending')->toContain('ship=sent')->toContain('trip_id=' . $trip->id);
 });
 
-test('the tab badge counts customers that still have packages to send', function () {
+test('the tab badge counts customers that have nothing sent yet', function () {
     $admin = $this->adminUser();
     $trip  = $this->openTrip();
     $untouched = shCustomer($this, $admin, $trip);
@@ -456,7 +465,7 @@ test('the tab badge counts customers that still have packages to send', function
     shAdd($this, $admin, $done, $trip, ['rest' => 1]);
 
     $html = shTab($this, $admin, $trip)->assertOk()->getContent();
-    expect($html)->toMatch('/Shipment\s*<span class="badge bg-success ms-1"[^>]*>2<\/span>/'); // untouched + partial
+    expect($html)->toMatch('/Shipment\s*<span class="badge bg-success ms-1"[^>]*>1<\/span>/'); // only the untouched one
 });
 
 test('printing still works from the Shipment tab', function () {
